@@ -1,0 +1,53 @@
+# --- Python ---
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+build/
+dist/
+
+# --- Virtual environments ---
+.venv/
+venv/
+env/
+
+# --- Pytest / coverage ---
+.pytest_cache/
+.coverage
+htmlcov/
+
+# --- Test artifacts (NFR-T-01: confined to tests/_artifacts/, gitignored) ---
+tests/_artifacts/
+
+# --- Databases & backups (never commit — contain data + hashed credentials) ---
+*.duckdb
+*.duckdb.bak-*
+*.db
+backups/
+
+# --- Runtime data & generated output (kept locally, not published) ---
+# Ignore everything under data/ except the directory placeholders, so a fresh
+# clone has the structure the app + init_database() expect but no run data.
+data/*
+!data/.gitkeep
+!data/raw/
+data/raw/*
+!data/raw/.gitkeep
+reports/*
+!reports/.gitkeep
+synthetic_data/output/
+
+# --- Governance: local credentials override (Phase 4; real bootstrap passwords) ---
+config/governance_config.local.yaml
+.env
+.env.local
+
+# --- Archived / superseded docs (kept locally) ---
+docs_archive/
+
+# --- Local tooling & editor/OS cruft ---
+.planning/
+.claude/settings.local.json
+requirements.txt
+.DS_Store
+.Rhistory

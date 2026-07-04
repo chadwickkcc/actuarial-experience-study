@@ -1,0 +1,196 @@
+# YAML mapping config for Variable Universal Life (VUL) products.
+# Maps raw CSV column names to canonical silver_vul_policies column names
+# with type casting and code-list translations.
+
+source_product: VUL
+source_table: bronze_vul_policies
+target_table: silver_vul_policies
+
+field_mappings:
+  - source_field: policy_id
+    target_field: policy_id
+    target_type: VARCHAR
+
+  - source_field: product_code
+    target_field: product_code
+    target_type: VARCHAR
+
+  - source_field: plan_code
+    target_field: plan_code
+    target_type: VARCHAR
+
+  - source_field: issue_date
+    target_field: issue_date
+    target_type: DATE
+    date_format: "%Y-%m-%d"
+
+  - source_field: date_of_birth
+    target_field: date_of_birth
+    target_type: DATE
+    date_format: "%Y-%m-%d"
+
+  - source_field: issue_age_anb
+    target_field: issue_age_anb
+    target_type: INTEGER
+
+  - source_field: gender
+    target_field: gender
+    target_type: VARCHAR
+
+  - source_field: smoker_status
+    target_field: smoker_status
+    target_type: VARCHAR
+
+  - source_field: risk_class
+    target_field: risk_class
+    target_type: VARCHAR
+
+  - source_field: annual_premium
+    target_field: annual_premium
+    target_type: DOUBLE
+
+  - source_field: premium_mode
+    target_field: premium_mode
+    target_type: VARCHAR
+
+  - source_field: reinsurance_flag
+    target_field: reinsurance_flag
+    target_type: BOOLEAN
+
+  - source_field: status_code
+    target_field: status_code
+    target_type: VARCHAR
+
+  - source_field: termination_date
+    target_field: termination_date
+    target_type: DATE
+    date_format: "%Y-%m-%d"
+    nullable: true
+
+  - source_field: termination_cause_code
+    target_field: termination_cause_code
+    target_type: VARCHAR
+    nullable: true
+
+  - source_field: specified_amount
+    target_field: specified_amount
+    target_type: DOUBLE
+
+  - source_field: death_benefit_option
+    target_field: death_benefit_option
+    target_type: VARCHAR
+
+  - source_field: account_value_bom
+    target_field: account_value_bom
+    target_type: DOUBLE
+
+  - source_field: account_value_eom
+    target_field: account_value_eom
+    target_type: DOUBLE
+
+  - source_field: current_coi_rate
+    target_field: current_coi_rate
+    target_type: DOUBLE
+
+  - source_field: guaranteed_coi_rate
+    target_field: guaranteed_coi_rate
+    target_type: DOUBLE
+
+  - source_field: surrender_charge_remaining
+    target_field: surrender_charge_remaining
+    target_type: DOUBLE
+
+  - source_field: planned_premium
+    target_field: planned_premium
+    target_type: DOUBLE
+    nullable: true
+
+  - source_field: mec_status_flag
+    target_field: mec_status_flag
+    target_type: BOOLEAN
+
+  - source_field: separate_account_total_value
+    target_field: separate_account_total_value
+    target_type: DOUBLE
+
+  - source_field: fixed_account_value
+    target_field: fixed_account_value
+    target_type: DOUBLE
+
+  - source_field: sub_account_allocations
+    target_field: sub_account_allocations
+    target_type: VARCHAR
+    nullable: true
+
+  - source_field: equity_allocation_pct
+    target_field: equity_allocation_pct
+    target_type: DOUBLE
+
+  - source_field: fund_value_to_spec_amount_ratio
+    target_field: fund_value_to_spec_amount_ratio
+    target_type: DOUBLE
+    nullable: true
+
+  - source_field: ma_charge_annual_rate
+    target_field: ma_charge_annual_rate
+    target_type: DOUBLE
+
+  - source_field: withdrawal_active_flag
+    target_field: withdrawal_active_flag
+    target_type: BOOLEAN
+
+  - source_field: withdrawal_rate_pct
+    target_field: withdrawal_rate_pct
+    target_type: DOUBLE
+
+  - source_field: withdrawal_regime
+    target_field: withdrawal_regime
+    target_type: VARCHAR
+
+  - source_field: ci_rider_flag
+    target_field: ci_rider_flag
+    target_type: BOOLEAN
+
+  - source_field: ci_rider_sum_assured
+    target_field: ci_rider_sum_assured
+    target_type: DOUBLE
+    nullable: true
+
+  - source_field: ci_rider_premium
+    target_field: ci_rider_premium
+    target_type: DOUBLE
+    nullable: true
+
+  - source_field: illness_code
+    target_field: illness_code
+    target_type: VARCHAR
+    nullable: true
+
+  - source_field: distribution_channel
+    target_field: distribution_channel
+    target_type: VARCHAR
+    nullable: true
+
+  - source_field: issue_state
+    target_field: issue_state
+    target_type: VARCHAR
+    nullable: true
+
+code_translations:
+  status_code:
+    "IF": "IF"
+    "LAPSE": "LAPSE"
+    "DEATH": "DEATH"
+    "CI_CLAIM": "CI_CLAIM"
+
+  termination_cause_code:
+    "LAPSE": "LAPSE"
+    "DEATH_BENEFIT_CLAIM": "DEATH_BENEFIT_CLAIM"
+    "CI_ACCELERATED_BENEFIT": "CI_ACCELERATED_BENEFIT"
+
+valid_risk_classes:
+  - SUPER_PREF
+  - PREF_NS
+  - STD_NS
+  - PREF_SM
+  - STD_SM

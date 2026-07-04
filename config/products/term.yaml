@@ -1,0 +1,156 @@
+# YAML mapping config for Term Life (TERM) product.
+# Maps raw CSV column names to canonical silver_term_policies column names
+# with type casting and code-list translations.
+
+source_product: TERM
+source_table: bronze_term_policies
+target_table: silver_term_policies
+
+field_mappings:
+  - source_field: policy_id
+    target_field: policy_id
+    target_type: VARCHAR
+
+  - source_field: product_code
+    target_field: product_code
+    target_type: VARCHAR
+
+  - source_field: plan_code
+    target_field: plan_code
+    target_type: VARCHAR
+
+  - source_field: issue_date
+    target_field: issue_date
+    target_type: DATE
+    date_format: "%Y-%m-%d"
+
+  - source_field: date_of_birth
+    target_field: date_of_birth
+    target_type: DATE
+    date_format: "%Y-%m-%d"
+
+  - source_field: issue_age_anb
+    target_field: issue_age_anb
+    target_type: INTEGER
+
+  - source_field: gender
+    target_field: gender
+    target_type: VARCHAR
+
+  - source_field: smoker_status
+    target_field: smoker_status
+    target_type: VARCHAR
+
+  - source_field: risk_class
+    target_field: risk_class
+    target_type: VARCHAR
+
+  - source_field: face_amount
+    target_field: face_amount
+    target_type: DOUBLE
+
+  - source_field: premium_mode
+    target_field: premium_mode
+    target_type: VARCHAR
+
+  - source_field: annual_premium
+    target_field: annual_premium
+    target_type: DOUBLE
+
+  - source_field: reinsurance_flag
+    target_field: reinsurance_flag
+    target_type: BOOLEAN
+
+  - source_field: status_code
+    target_field: status_code
+    target_type: VARCHAR
+
+  - source_field: termination_date
+    target_field: termination_date
+    target_type: DATE
+    date_format: "%Y-%m-%d"
+    nullable: true
+
+  - source_field: termination_cause_code
+    target_field: termination_cause_code
+    target_type: VARCHAR
+    nullable: true
+
+  - source_field: level_period_years
+    target_field: level_period_years
+    target_type: INTEGER
+
+  - source_field: plt_premium_year_1
+    target_field: plt_premium_year_1
+    target_type: DOUBLE
+    nullable: true
+
+  - source_field: plt_structure_code
+    target_field: plt_structure_code
+    target_type: VARCHAR
+    nullable: true
+
+  - source_field: premium_jump_ratio
+    target_field: premium_jump_ratio
+    target_type: DOUBLE
+    nullable: true
+
+  - source_field: conversion_flag
+    target_field: conversion_flag
+    target_type: BOOLEAN
+
+  - source_field: ci_rider_flag
+    target_field: ci_rider_flag
+    target_type: VARCHAR
+    # Cast through VARCHAR first; pipeline converts to BOOLEAN explicitly
+
+  - source_field: ci_rider_flag
+    target_field: ci_rider_flag
+    target_type: BOOLEAN
+
+  - source_field: ci_rider_sum_assured
+    target_field: ci_rider_sum_assured
+    target_type: DOUBLE
+    nullable: true
+
+  - source_field: ci_rider_premium
+    target_field: ci_rider_premium
+    target_type: DOUBLE
+    nullable: true
+
+  - source_field: illness_code
+    target_field: illness_code
+    target_type: VARCHAR
+    nullable: true
+
+  - source_field: distribution_channel
+    target_field: distribution_channel
+    target_type: VARCHAR
+    nullable: true
+
+  - source_field: issue_state
+    target_field: issue_state
+    target_type: VARCHAR
+    nullable: true
+
+# Code-list translations applied after type casting.
+# Key = target_field name; value = {raw_value: canonical_value}.
+# Only entries that require translation are listed; unmapped values pass through.
+code_translations:
+  status_code:
+    # Map CONVERSION (10 chars) to the canonical 4-char code used throughout the system
+    "CONVERSION": "CONV"
+    # Identity mappings (documented for completeness)
+    "IF": "IF"
+    "LAPSE": "LAPSE"
+    "DEATH": "DEATH"
+    "CI_CLAIM": "CI_CLAIM"
+    "EXPIRY": "EXPIRY"
+
+  termination_cause_code:
+    # Raw values are already canonical for Term Life — documented as identity mappings
+    "LAPSE": "LAPSE"
+    "DEATH_BENEFIT_CLAIM": "DEATH_BENEFIT_CLAIM"
+    "CI_ACCELERATED_BENEFIT": "CI_ACCELERATED_BENEFIT"
+    "CONVERSION": "CONVERSION"
+    "EXPIRY": "EXPIRY"

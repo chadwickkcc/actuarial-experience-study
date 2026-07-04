@@ -1,0 +1,112 @@
+# config/chatbot_few_shots.yaml — curated Q->SQL few-shot examples (FR-3B-29).
+#
+# 20-30 pairs spanning the five products and the query classes (factual lookup,
+# multi-dimension segmentation, TEV, credibility context, run comparison). These
+# are inlined into the sql_generation prompt by the chatbot pipeline.
+#
+# DISJOINTNESS (FR-3B-30/49): these must stay disjoint from the Session-22 golden
+# set (tests/eval/golden_set.yaml). Authored here with deliberately distinct
+# phrasings; the disjointness test lands in Session 22.
+#
+# Every SQL follows the boundary gates: a single SELECT over an allowlisted Gold
+# table, carrying `LIMIT 500` (rows) or a single-row aggregate, allowlisted
+# columns only, no PII.
+few_shots:
+  - question: "What is the count-based mortality A/E for Term in duration band 1?"
+    sql: "SELECT ae_count, credibility_z, expected_deaths_count FROM gold_ae_results WHERE product_code = 'TERM' AND duration_band = '1' LIMIT 500"
+  - question: "Give me the amount-basis mortality A/E for Whole Life smokers."
+    sql: "SELECT ae_amount, credibility_z, expected_deaths_count FROM gold_ae_results WHERE product_code = 'WL' AND smoker_status = 'SM' LIMIT 500"
+  - question: "Show mortality A/E by attained age band for Universal Life."
+    sql: "SELECT attained_age_band, ae_count, credibility_z FROM gold_ae_results WHERE product_code = 'UL' ORDER BY attained_age_band LIMIT 500"
+  - question: "Lapse A/E by duration band for Whole Life, please."
+    sql: "SELECT duration_band, ae_lapse, credibility_z_lapse FROM gold_ae_results WHERE product_code = 'WL' ORDER BY duration_band LIMIT 500"
+  - question: "How many actual lapses were recorded for Term in duration band 2-5?"
+    sql: "SELECT actual_lapses, expected_lapses, ae_lapse FROM gold_ae_results WHERE product_code = 'TERM' AND duration_band = '2-5' LIMIT 500"
+  - question: "What is the surrender A/E for fixed deferred annuities?"
+    sql: "SELECT ae_surrender, expected_surrenders, surrender_exposure FROM gold_ae_results WHERE product_code = 'DA_FIXED' LIMIT 500"
+  - question: "Critical-illness incidence A/E by illness code for Term."
+    sql: "SELECT illness_code, ae_ci, credibility_z_ci FROM gold_ae_results WHERE product_code = 'TERM' AND illness_code IS NOT NULL ORDER BY illness_code LIMIT 500"
+  - question: "What was the CI incidence A/E for Whole Life females?"
+    sql: "SELECT ae_ci, credibility_z_ci, expected_ci_claims FROM gold_ae_results WHERE product_code = 'WL' AND gender = 'F' AND illness_code IS NOT NULL LIMIT 500"
+  - question: "Compare count-basis mortality A/E across all products."
+    sql: "SELECT product_code, ae_count, credibility_z FROM gold_ae_results ORDER BY product_code LIMIT 500"
+  - question: "Total expected deaths on a count basis for VUL."
+    sql: "SELECT SUM(expected_deaths_count) AS total_expected_deaths FROM gold_ae_results WHERE product_code = 'VUL'"
+  - question: "How much count exposure does Term have in total?"
+    sql: "SELECT SUM(exposure_count) AS total_exposure_count FROM gold_ae_results WHERE product_code = 'TERM'"
+  - question: "Mortality A/E for Term male non-smokers by risk class."
+    sql: "SELECT risk_class, ae_count, credibility_z FROM gold_ae_results WHERE product_code = 'TERM' AND gender = 'M' AND smoker_status = 'NS' ORDER BY risk_class LIMIT 500"
+  - question: "Show the post-level-term cells and their lapse A/E for Term."
+    sql: "SELECT premium_jump_ratio_band, ae_lapse, credibility_z_lapse FROM gold_ae_results WHERE product_code = 'TERM' AND is_plt_flag = TRUE ORDER BY premium_jump_ratio_band LIMIT 500"
+  - question: "What is the credibility Z for the Whole Life mortality cell at duration 6-10?"
+    sql: "SELECT credibility_z, ae_count, expected_deaths_count FROM gold_ae_results WHERE product_code = 'WL' AND duration_band = '6-10' LIMIT 500"
+  - question: "Lapse A/E by distribution channel for Universal Life."
+    sql: "SELECT distribution_channel, ae_lapse, credibility_z_lapse FROM gold_ae_results WHERE product_code = 'UL' ORDER BY distribution_channel LIMIT 500"
+  - question: "Mortality A/E by calendar year for Whole Life."
+    sql: "SELECT calendar_year, ae_count, credibility_z FROM gold_ae_results WHERE product_code = 'WL' ORDER BY calendar_year LIMIT 500"
+  - question: "What is the total embedded value for Whole Life at baseline?"
+    sql: "SELECT tev, vif, anw FROM gold_tev_results WHERE product_code = 'WL' AND sensitivity_id IS NULL LIMIT 500"
+  - question: "Show the PVFP and PVCoC for Term at baseline."
+    sql: "SELECT pvfp, pvcoc, vif FROM gold_tev_results WHERE product_code = 'TERM' AND sensitivity_id IS NULL LIMIT 500"
+  - question: "Total TEV across all products at baseline."
+    sql: "SELECT SUM(tev) AS total_tev FROM gold_tev_results WHERE sensitivity_id IS NULL"
+  - question: "What is the ANW required capital for Universal Life?"
+    sql: "SELECT anw_required_capital, anw_free_surplus, anw FROM gold_tev_results WHERE product_code = 'UL' AND sensitivity_id IS NULL LIMIT 500"
+  - question: "How did TEV change versus prior for VUL at baseline?"
+    sql: "SELECT delta_tev, tev FROM gold_tev_results WHERE product_code = 'VUL' AND sensitivity_id IS NULL LIMIT 500"
+  - question: "List the products and their VIF at baseline."
+    sql: "SELECT product_code, vif FROM gold_tev_results WHERE sensitivity_id IS NULL ORDER BY product_code LIMIT 500"
+  - question: "Average count-basis mortality A/E across the Term cells."
+    sql: "SELECT AVG(ae_count) AS mean_ae_count FROM gold_ae_results WHERE product_code = 'TERM'"
+  - question: "Surrender A/E by surrender-charge position for variable annuities."
+    sql: "SELECT duration_band, ae_surrender, credibility_z_lapse FROM gold_ae_results WHERE product_code = 'DA_VA' ORDER BY duration_band LIMIT 500"
+  # ---- aggregate (ratio-of-sums) and list examples ------------------------- #
+  # A/E is a ratio of sums: aggregate SUM(actual)/SUM(expected) across the detail
+  # cells (illness_code IS NULL for mortality/lapse/surrender) — never read a raw
+  # ae_* column from one detail row.
+  - question: "Provide the overall mortality A/E ratio for Whole Life."
+    sql: "SELECT SUM(actual_deaths_count) AS actual_deaths, SUM(expected_deaths_count) AS expected_deaths, SUM(exposure_count) AS exposure, SUM(actual_deaths_count)/NULLIF(SUM(expected_deaths_count),0) AS ae_amount FROM gold_ae_results WHERE product_code = 'WL' AND illness_code IS NULL"
+  - question: "Give me the mortality A/E by attained age band for Whole Life as a ratio of sums."
+    sql: "SELECT attained_age_band, SUM(actual_deaths_count) AS actual_deaths, SUM(expected_deaths_count) AS expected_deaths, SUM(actual_deaths_count)/NULLIF(SUM(expected_deaths_count),0) AS ae_amount FROM gold_ae_results WHERE product_code = 'WL' AND illness_code IS NULL AND attained_age_band IS NOT NULL GROUP BY attained_age_band ORDER BY attained_age_band LIMIT 500"
+  - question: "Which products appear in the study results?"
+    sql: "SELECT DISTINCT product_code FROM gold_ae_results WHERE product_code IS NOT NULL ORDER BY product_code LIMIT 500"
+  - question: "What's the overall lapse A/E for Universal Life?"
+    sql: "SELECT SUM(actual_lapses) AS actual_lapses, SUM(expected_lapses) AS expected_lapses, SUM(actual_lapses)/NULLIF(SUM(expected_lapses),0) AS ae_lapse FROM gold_ae_results WHERE product_code = 'UL' AND illness_code IS NULL"
+  # Overall A/E + "how credible is it?": SUMs only — never select/average a per-cell
+  # credibility_z* for a roll-up; the system appends the correct aggregate Z.
+  - question: "Overall lapse A/E for Traditional UL and how credible is the experience?"
+    sql: "SELECT SUM(actual_lapses) AS actual_lapses, SUM(expected_lapses) AS expected_lapses, SUM(actual_lapses)/NULLIF(SUM(expected_lapses),0) AS ae_lapse FROM gold_ae_results WHERE product_code = 'UL' AND illness_code IS NULL"
+  - question: "Overall critical-illness incidence A/E for Whole Life."
+    sql: "SELECT SUM(actual_ci_claims) AS actual_ci, SUM(expected_ci_claims) AS expected_ci, SUM(actual_ci_claims)/NULLIF(SUM(expected_ci_claims),0) AS ae_ci FROM gold_ae_results WHERE product_code = 'WL' AND illness_code IS NOT NULL"
+  - question: "Overall surrender A/E for variable annuities."
+    sql: "SELECT SUM(actual_surrenders) AS actual_surrenders, SUM(expected_surrenders) AS expected_surrenders, SUM(actual_surrenders)/NULLIF(SUM(expected_surrenders),0) AS ae_surrender FROM gold_ae_results WHERE product_code = 'DA_VA' AND illness_code IS NULL"
+  # ---- ranking / "most common" / "top N" examples -------------------------- #
+  - question: "What are the most common critical-illness causes claimed across the book?"
+    sql: "SELECT illness_code, SUM(actual_ci_claims) AS actual_ci_claims FROM gold_ae_results WHERE illness_code IS NOT NULL GROUP BY illness_code ORDER BY SUM(actual_ci_claims) DESC LIMIT 10"
+  - question: "Which three illness conditions drive the most CI claims for Whole Life?"
+    sql: "SELECT illness_code, SUM(actual_ci_claims) AS actual_ci_claims FROM gold_ae_results WHERE product_code = 'WL' AND illness_code IS NOT NULL GROUP BY illness_code ORDER BY SUM(actual_ci_claims) DESC LIMIT 3"
+  - question: "Rank the products by overall count-basis mortality A/E, highest first."
+    sql: "SELECT product_code, SUM(actual_deaths_count) AS actual_deaths, SUM(expected_deaths_count) AS expected_deaths, SUM(actual_deaths_count)/NULLIF(SUM(expected_deaths_count),0) AS ae_count FROM gold_ae_results WHERE illness_code IS NULL GROUP BY product_code ORDER BY SUM(actual_deaths_count)/NULLIF(SUM(expected_deaths_count),0) DESC LIMIT 500"
+  # ---- credibility ranking across products (credibility grows with claim count) #
+  # Credibility Z = sqrt(actual_claims / 1082), so ranking products by their summed
+  # actual claims orders them from most credible to thinnest.
+  - question: "Across the products, where is our mortality experience most credible and where is it thinnest?"
+    sql: "SELECT product_code, SUM(actual_deaths_count) AS actual_deaths, SUM(expected_deaths_count) AS expected_deaths FROM gold_ae_results WHERE illness_code IS NULL GROUP BY product_code ORDER BY SUM(actual_deaths_count) DESC LIMIT 500"
+  # ---- TEV profit-source margins (which decrement/source drives PVFP) ---------- #
+  - question: "Which profit source contributes the most to total PVFP across the book?"
+    sql: "SELECT SUM(pvfp_mortality_margin) AS mortality, SUM(pvfp_lapse_margin) AS lapse, SUM(pvfp_ci_margin) AS ci, SUM(pvfp_investment_spread) AS investment_spread, SUM(pvfp_expense_margin) AS expense FROM gold_tev_results WHERE sensitivity_id IS NULL"
+  - question: "Show the PVFP profit-source margin breakdown by product at baseline."
+    sql: "SELECT product_code, pvfp_mortality_margin, pvfp_lapse_margin, pvfp_ci_margin, pvfp_investment_spread, pvfp_expense_margin FROM gold_tev_results WHERE sensitivity_id IS NULL ORDER BY product_code LIMIT 500"
+  # ---- widened governed tables (read-only, no PII; one table per query) ----- #
+  - question: "What are the AI-proposed Term mortality adjustment factors by attained age band?"
+    sql: "SELECT sex, smoker, attained_age_band, factor, ci_low, ci_high, credibility_z FROM gold_ai_proposed_factors WHERE product_code = 'TERM' AND decrement = 'MORTALITY' AND model_type = 'GLM' ORDER BY attained_age_band LIMIT 500"
+  - question: "Show the proposed lapse factors for Whole Life from the GLM."
+    sql: "SELECT duration_band, factor, ci_low, ci_high FROM gold_ai_proposed_factors WHERE product_code = 'WL' AND decrement = 'LAPSE' AND model_type = 'GLM' ORDER BY duration_band LIMIT 500"
+  - question: "Show the in-force reconciliation movements for Term by calendar year."
+    sql: "SELECT calendar_year, beg_if_count, new_issues_count, deaths_count, lapses_count, end_if_count, recon_passes FROM gold_inforce_reconciliation WHERE product_code = 'TERM' ORDER BY calendar_year LIMIT 500"
+  - question: "What was the data-quality score and how many records were quarantined for Universal Life?"
+    sql: "SELECT dq_score_pct, total_records, records_quarantined, records_halted, critical_failure FROM gold_dq_run_summary WHERE product_code = 'UL' LIMIT 500"
+  - question: "What is the RDR and status of the assumption sets?"
+    sql: "SELECT assumption_set_id, status, rdr, earned_rate_ga, tax_rate FROM gold_assumption_sets ORDER BY effective_date DESC LIMIT 500"
+  - question: "Which AI mortality models were fitted and did they converge?"
+    sql: "SELECT product_code, model_type, converged, n_cells, aic FROM gold_ai_model_registry WHERE decrement = 'MORTALITY' ORDER BY product_code LIMIT 500"

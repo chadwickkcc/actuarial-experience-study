@@ -1,0 +1,8 @@
+study_start_date: "2016-01-01"
+study_end_date: "2023-12-31"
+exposure_method: "ANNUAL"
+credibility_method: "LF"          # "LF" (Limited Fluctuation) or "BUHLMANN" (simplified fixed-K)
+credibility_threshold: 1082.0     # LF full-credibility standard; also reused as the Bühlmann constant K
+mortality_table_path: "config/reference_tables/mortality_2015vbt.parquet"
+lapse_table_path: "config/reference_tables/lapse_benchmarks.parquet"
+ci_table_path: "config/reference_tables/ci_incidence.parquet"

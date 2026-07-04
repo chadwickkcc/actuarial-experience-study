@@ -1,0 +1,527 @@
+# Life Insurance Experience Studies: End-to-End Methodology and Practical Guide
+
+## 1. Executive Summary
+
+Experience studies translate raw in-force and claims data into Actual-to-Expected (A/E) metrics that drive life insurance pricing, valuation, and assumption governance. A robust process covers data sourcing, ETL, exposure and expected-value calculations, aggregation and diagnostics, interpretation, and documentation, with careful attention to product features, time dimensions, and statistical credibility.[1][2][3][4]
+
+This report synthesizes guidance from the Society of Actuaries (SOA) "Experience Study Calculations" monograph and tool, the companion "Experience Study Rate Errors" paper, industry articles on experience studies and assumption setting, and several large-scale mortality and lapse studies. It focuses on life insurance applications (mortality, lapses/surrenders, expenses) and aims to be practical enough that a junior actuary can implement a basic study after working through the material.[2][3][4][5][6][7][8][9][10][11][1]
+
+## 2. Role and Objectives of Life Insurance Experience Studies
+
+Experience studies serve several core purposes in a life insurer:
+
+- Assumption setting and monitoring: They provide empirical evidence for mortality, lapse, and expense assumptions used in pricing, reserving, and capital modeling, often under regulatory frameworks such as VM-20 / PBR.[9][12]
+- Experience diagnostics: They reveal deviations between actual results and expectations by risk factor (e.g., age, gender, smoker status, underwriting class, duration), highlighting areas where models are inadequate or business mix has shifted.[1][9]
+- Governance and feedback loop: They are part of the actuarial control cycle, informing management actions (re-pricing, underwriting changes) and validating whether prior assumption changes achieved their goals.[13][1]
+
+For life insurance, separate (but related) studies are typically performed for:
+
+- Mortality: Death counts and amounts vs. expected under a reference table.
+- Lapse / surrender: Policy termination behavior, often segmented into shock lapse periods (e.g., post-level term) and continuing periods.[10][11]
+- Expenses: Per-policy, per-amount, or percent-of-premium expenses for acquisition and maintenance.
+
+## 3. End-to-End Process Overview
+
+Most modern experience study processes follow a similar high-level sequence.[2][1]
+
+1. Define scope and study design
+   - Product(s), blocks, and coverages.
+   - Experience type (mortality, lapse, expense, etc.).
+   - Study period (e.g., calendar years 2019-2023).
+   - Measurement basis (policy count, sum assured, premium, claim count, claim amount).
+   - Time basis (policy-year, calendar-year, attained-age, duration).[3][5]
+
+2. Specify segmentation and expected basis
+   - Risk factors (e.g., gender, smoker, underwriting class, duration band, product type, face amount band).
+   - Reference table(s) for expected (e.g., company pricing table, SOA table, PBR-prescribed tables).[14][9]
+   - Any adjustment factors (improvement, selection factors, margins).
+
+3. Data sourcing and ETL
+   - Extract in-force, movements, and claims data from policy admin, billing, and data warehouse systems.
+   - Clean, standardize, and join data, resolving duplicates and inconsistencies.[1]
+   - Construct event histories and study windows (exposure periods) at the seriatim level.[6][3]
+
+4. Exposure calculation
+   - Determine which days are "at risk" for each policy during the study period, adjusting for issue dates, termination dates, and coverage changes.[15][3]
+   - Choose and implement an exposure convention (annual, initial vs central, UDD, constant force).[4][3][15]
+
+5. Expected value calculation
+   - Map each exposure segment to a reference rate (e.g., mortality rate $$q_x$$, lapse rate $$w_{x,t}$$).[12][3]
+   - Adjust for partial periods using fractional age or duration assumptions.
+   - Aggregate expected counts and amounts across records and cells.[3]
+
+6. Actual experience aggregation
+   - Aggregate actual claims or terminations by the same segmentation and time dimensions.[9]
+   - Align amounts (e.g., sum assured at risk vs claim amount).
+
+7. A/E calculation and diagnostics
+   - Compute A/E ratios, confidence intervals, and possibly credibility-weighted metrics.[7][3]
+   - Visualize patterns across age, duration, and other factors, and investigate anomalies.[1]
+
+8. Interpretation, assumption setting, and documentation
+   - Translate A/E patterns into future assumptions (level shifts, slopes vs age/duration, segmentation changes).[10][9]
+   - Document methodology, data sources, limitations, and recommended assumptions.
+
+Each step has specific inputs, processes, and outputs that feed the next, as detailed below.
+
+## 4. Study Design: Inputs and Outputs
+
+### 4.1 Scope and Objectives
+
+A clear scope statement describes the block, time frame, and purpose.
+
+- Inputs: Product list, policy forms, coverage types, reinsurance structure, and business question (e.g., "update mortality assumptions for term life pricing").[9][1]
+- Process: Decide what constitutes the unit of exposure (policy, life, coverage), the event of interest (death, lapse, surrender, expense payment), and whether the aim is assumption setting, monitoring, or regulatory compliance.[1]
+- Outputs: Study charter (one-pager), including study period, product scope, experience types, key risk factors, and which reference tables will be used.[13]
+
+### 4.2 Time Basis and Study Period
+
+The time basis determines how exposure is aligned with age and duration.
+
+- Common choices:
+  - Calendar-year attained-age studies (e.g., exposure in calendar year 2022 by attained age on birthday in that year).[12][3]
+  - Policy-year or duration-based studies (e.g., exposure in policy years 3-10).[3]
+  - Mixed (e.g., calendar year but split on policy anniversaries to reduce partial-age bias).[4][7]
+
+- Inputs: Company's historical practice, availability of birthday/anniversary dates, regulatory requirements (e.g., PBR A/E definitions), and desired alignment with valuation assumptions.[12]
+- Outputs: A precise definition of study start and end dates and rules for assigning exposure fragments to ages/durations (e.g., split at each policy anniversary within the calendar year).[4][12]
+
+### 4.3 Segmentation and Cell Design
+
+Segmentation trades off homogeneity against volume and credibility.
+
+- Typical dimensions:
+  - Demographic: age, gender, smoker status.
+  - Underwriting: preferred/standard, medically underwritten vs simplified issue.
+  - Policy features: product type (term, WL, UL), face amount band, premium structure, riders.[9]
+  - Time: duration since issue, calendar period, attained age.
+
+- Nuances:
+  - Too fine segmentation creates sparse cells and volatile A/E; too coarse masks important patterns (e.g., PLT shock lapses by premium jump).[7][10]
+  - Practical studies often use relatively fine segmentation in internal modeling but present aggregates (e.g., A/E by broad age and duration bands) in reports.[9]
+
+- Outputs: A data dictionary of segmentation variables, definitions, bands, and which metrics will be calculated (e.g., claim count, amount, A/E ratios, confidence intervals).[1]
+
+## 5. Data Sourcing and ETL
+
+### 5.1 Data Sources
+
+Typical experience studies draw from several systems:[2][1]
+
+- Policy administration / in-force system: Issue date, product, plan code, face amount, premium, policy status, termination date and reason, underwriting class.
+- Claims system: Date of death, date reported, claim amount, cause of death, claim status.
+- Billing / premium systems: Premiums paid, modes, lapses for non-payment.
+- Reinsurance system: Cessions, retention, treaty codes.
+
+### 5.2 ETL Process
+
+The ETL process converts raw data into a seriatim exposure and event file.[6][3]
+
+- Inputs: Extracts (e.g., CSV, database tables) from each source system as of specific cut-off dates.
+- Process:
+  - Standardize keys and join across systems using policy IDs, coverage IDs, or life IDs.
+  - Apply filters to exclude ineligible records (e.g., test policies, reinsurers' own assumption blocks, policies outside product scope).[9]
+  - Resolve conflicting information (e.g., multiple termination reasons, reinstatements), using business rules.
+  - Create a timeline for each policy/coverage: issue date, any changes in amount or plan code, all termination and reinstatement events, claims.
+  - Derive study-specific variables (e.g., attained age, duration, exposure start/end dates).
+
+- Outputs:
+  - Exposure file: One record per policy/coverage per exposure segment, with start/end dates, amount at risk, demographic and product attributes.[6][3]
+  - Event file: One record per event (death, lapse, surrender, expense payment) with event date, amount, and link to exposure record.
+
+### 5.3 Data Quality Checks
+
+Robust data checks are critical to avoid biased exposures or events.
+
+- Checks include:
+  - Consistency of issue vs termination dates (no negative durations, no exposure after termination).[3]
+  - Consistency between claim dates and policy status (death claims only when policy in force).[9]
+  - Reasonable ranges for ages and durations (e.g., ages 0-120, durations 0-50).[3]
+  - Reconciliation of totals (in-force count/amount vs financial/actuarial records) for completeness.[1]
+
+## 6. Exposure Calculation Methodology
+
+### 6.1 Concept of Exposure
+
+Exposure measures the amount of time a life, policy, or amount is "at risk" of the event of interest during the study period. For mortality, it is often expressed in policy-years or life-years; for lapses, policy-years at risk of termination; for expenses, policies in force or premium volume over time.[16][3]
+
+### 6.2 Seriatim Exposure Construction
+
+A widely recommended approach is to compute exposure at the individual record level (seriatim) and then aggregate.[7][3]
+
+- Inputs: Issue date, termination date (if any), claim or lapse dates, coverage changes, study window, and rules for splitting exposure at birthdays/anniversaries.
+- Process:
+  1. For each policy, define the exposure start as the later of issue date and study start.
+  2. Define the exposure end as the earliest of termination date, claim date (for mortality/lapse studies), or study end.
+  3. Split long exposure intervals at boundaries relevant to the rate table:
+     - Birthdays (for attained-age mortality tables).[12]
+     - Policy anniversaries (for duration-based tables).[7][12]
+  4. For each sub-interval, compute:
+     - Exposure length in years, $$E_i = \text{days}/365.25$$ or using exact calendar year fractions.[3]
+     - Exposure weight (e.g., amount at risk vs policy count).
+
+- Outputs: Seriatim exposure records labeled with the associated table age/duration and weight.
+
+This split exposure method aligns closely with the A/E definitions in PBR guidance and minimizes rate errors from partial-year approximations.[4][7][12]
+
+### 6.3 Exposure Conventions
+
+The SOA monograph discusses several exposure conventions:[3]
+
+- Initial exposure (I): Exposure measured at the start of the period (e.g., policy count in force at period start). In classical actuarial notation, this is analogous to $$l_x$$ for a life table.[15][3]
+- Central exposure (C): Exposure measured around the middle of the period, reflecting the time during which the risk is present, often approximated by person-years at risk.[15][3]
+- Final exposure (F): Exposure at end of period; more common in some non-life applications.
+
+For mortality studies, central exposure is usually preferred, particularly when experience is heterogeneous or rates are high. Central exposure corresponds to the denominator when estimating a central death rate $$m_x = D_x / C_x$$.[15][7][3]
+
+### 6.4 Actuarial Approximations for Partial Periods
+
+When rates are defined on a one-year interval but exposure is fractional (e.g., half-year), an assumption about the distribution of risk within the year is needed.[7][3]
+
+Common assumptions include:[3]
+
+- Uniform distribution of deaths (UDD): Assumes that deaths are uniformly distributed over the year. For a fractional year $$t$$, $$q_{x:t} \approx t q_x$$.
+- Constant force of mortality: Assumes $$\mu_x$$ is constant over the interval; for fractional exposure, $$q_{x:t} = 1 - \exp(-t m_x)$$ where $$m_x$$ is the central death rate.
+- Actuarial approximations: For small $$q_x$$, $$q_{x:t}$$ is close to $$t q_x$$, so simple proportional scaling is sufficient.[3]
+
+The Experience Study Rate Errors paper demonstrates that different approximations can produce non-trivial bias in A/E ratios, especially when rates vary sharply with age or duration.[4][7]
+
+## 7. Expected Value and A/E Calculation
+
+### 7.1 Mortality: Expected Deaths and A/E
+
+For mortality experience, the expected number of deaths in a cell is calculated by summing over all exposure fragments:
+
+$$
+E[D] = \sum_i E_i \cdot q_{x_i}^{\text{ref}},
+$$
+
+where $$E_i$$ is the exposure (in years or partial years) for fragment $$i$$, labeled by table age $$x_i$$, and $$q_{x_i}^{\text{ref}}$$ is the reference mortality rate at that age (possibly adjusted by improvement factors).[12][3]
+
+- Inputs: Seriatim exposure file with age/duration labels, reference mortality table rates, and any adjustment factors (e.g., selection factors by duration).[14][3]
+- Process:
+  1. Join exposure fragments to reference rates based on age, duration, gender, smoking status, etc.
+  2. Multiply exposure $$E_i$$ by $$q_{x_i}^{\text{ref}}$$ and any multipliers (e.g., improvement factors). For amounts, use exposure $$A_i$$ (amount at risk) and multiply by $$q_{x_i}^{\text{ref}}$$ to get expected claim amount.
+  3. Aggregate expected deaths or amounts by cell.
+
+- Actual deaths:
+  - Count of deaths in each cell: $$D = \sum_j 1$$ over death events in that cell.
+  - Actual claim amount: $$C = \sum_j \text{claim amount}_j$$.
+
+- A/E ratio:
+  - On counts: $$\text{A/E} = D / E[D]$$, often expressed in percent.[3]
+  - On amounts: $$\text{A/E} = C / E[C]$$.
+
+### 7.2 Lapse / Surrender: Expected Terminations and A/E
+
+For lapses and surrenders, the logic is analogous, but the reference rates are lapse or surrender rates, often by duration and sometimes by attained age or premium jump.[11][10]
+
+- Inputs:
+  - Exposure file with policy-years at risk of lapse/surrender.
+  - Reference lapse/surrender rates $$w_t^{\text{ref}}$$ by duration (and possibly age, premium jump, or product type).
+
+- Process:
+  1. For each policy exposure fragment in duration $$t$$, calculate expected lapses: $$E[L] = E_t \cdot w_t^{\text{ref}}$$.
+  2. For surrenders by amount, multiply face amount or account value by $$w_t^{\text{ref}}$$.
+  3. Aggregate by cell.
+
+- Actual terminations:
+  - Count of lapses/surrenders and surrendered amounts.
+
+- A/E ratio:
+  - $$\text{A/E} = \text{Actual lapses} / \text{Expected lapses}$$ or $$\text{Actual surrendered amount} / \text{Expected}.$$[11]
+
+Special attention is needed for shock lapses (e.g., at end of level term period), where rates may spike and reference tables may be behavior-based (e.g., as functions of premium jump ratios). Predictive modeling studies (e.g., GLMs) may be used to derive expected lapse curves.[10]
+
+### 7.3 Expenses: Expected vs Actual
+
+Expense studies often measure per-policy, per-amount, or percent-of-premium expenses.[1]
+
+- Inputs:
+  - Exposure base (e.g., policy-years, face amount, premium volume).
+  - Reference expense assumptions (e.g., $$e$$ per policy per year, $$b$$ per face amount unit, $$c$$ percent of premium).
+  - Actual expense data from general ledger and allocation models.
+
+- Process:
+  1. Compute total exposure (e.g., sum of policy-years) and expected expenses by applying expense assumptions to this base.
+  2. Allocate actual expenses from financial records to the block and to the same exposure base.
+
+- A/E ratio:
+  - $$\text{A/E} = \text{Actual expenses} / \text{Expected expenses}.$$
+
+Because expense data is often aggregated and subject to allocation rules, expense studies tend to be coarser and more judgmental than mortality or lapse studies.[1]
+
+### 7.4 Statistical Diagnostics and Credibility
+
+Beyond raw A/E ratios, statistical diagnostics help assess reliability.[7][3]
+
+- Confidence intervals: Under a Poisson approximation, the standard error of $$D$$ is $$\sqrt{D}$$, so a 95% confidence interval for $$D$$ translates into a confidence interval for A/E.[3]
+- Credibility: Partial credibility weighting of cell-level A/E towards an overall mean (e.g., Buhlmann or limited fluctuation methods) is common when cell volumes are low.[3]
+- Rate errors: The Experience Study Rate Errors paper quantifies how calendar-year approximations can induce systematic error and underscores the importance of exposure definition.[4][7]
+
+## 8. Practical Intricacies and Nuances
+
+### 8.1 Granularity vs Credibility
+
+Choosing segmentation is one of the most consequential design decisions.
+
+- Too fine: Many cells with low exposure and few or no events lead to volatile A/E, wide confidence intervals, and misleading apparent patterns.[7][9]
+- Too coarse: Important differences (e.g., PLT vs non-PLT term, smoker vs non-smoker, preferred vs standard) are averaged away, leading to biased assumptions.[10]
+
+Practical strategies include:
+
+- Designing primary cells for assumption setting (finer segmentation) and reporting cells for communication (coarser aggregation).
+- Using hierarchical analysis: start with broad segments to identify major patterns, then drill down only where exposure is sufficient.[1]
+- Applying credibility adjustments so that unstable cells borrow strength from larger aggregates.[3]
+
+### 8.2 Number of Study Years and Period Selection
+
+Study length involves trade-offs between volume and relevance.
+
+- Long periods (e.g., 10+ years): Higher exposure and more stable estimates but may mix different underwriting eras, pricing, and economic regimes.[9]
+- Short periods (e.g., 2-3 years): More reflective of current business mix and underwriting but lower exposure and higher volatility.[9]
+
+Common practice in SOA individual life mortality studies is to use multi-year periods (e.g., 5-7 years) for primary analysis and then show sub-periods to highlight trends. For behavioral lapses (e.g., PLT), shorter windows around key events (end of level term) are often used, sometimes with additional time-since-shock segmentation.[11][10][9]
+
+### 8.3 Calendar-Year vs Policy-Year and Rate Errors
+
+Calendar-year studies that assign all exposure in a year to a single age or duration can produce significant rate errors, particularly when rates change rapidly with age/duration or when exposure is not uniform across the year.[4][7]
+
+- The Experience Study Rate Errors paper shows that partial rate years (splitting exposure at birthdays/anniversaries) roughly halve the error compared to naive calendar-year approaches.[4]
+- A more robust approach is seriatim exposure splitting as described above, aligning exposure fragments with the exact ages/durations used in the reference table.[12][3]
+
+### 8.4 Treatment of Reinsurance, Riders, and Partial Amounts
+
+- Reinsurance: Studies may be on a gross (full amount) or net of reinsurance basis.
+  - For pricing and underwriting insights, gross may be preferred.
+  - For assumption setting tied to net liabilities, net exposure and results are often used.[9]
+- Riders: Critical illness, AD&D, and term riders may need separate experience studies due to different risk profiles.
+- Partial surrenders / face amount changes: Exposure should reflect the amount at risk over time; this may require splitting exposure at each change in face amount or account value.[11][3]
+
+### 8.5 Selection Effects and Cohort Effects
+
+New business often exhibits selection (mortality lower than ultimate table) in early durations, particularly for fully underwritten term. Additionally, underwriting standards and distribution channels can change over time, leading to cohort effects where experience differs by issue year.[9]
+
+Practically, this leads to:
+
+- Separate analysis by duration band (e.g., 1-2, 3-5, 6-10, 11+) and sometimes by issue cohorts.[9]
+- Explicit selection factors (e.g., multiplicative adjustments to ultimate tables) derived from A/E by duration.[14][9]
+
+### 8.6 Interpretation of PLT (Post-Level Term) Mortality and Lapses
+
+PLT studies reveal complex interactions between mortality and lapse.[10][11]
+
+- At the end of the level premium period, shock lapses spike, heavily influenced by the premium jump ratio (renewal premium vs replacement premium).[10]
+- Mortality among persisting policyholders often deteriorates relative to level-term period assumptions, as healthier lives tend to lapse to cheaper coverage.[11][10]
+
+This has several practical implications:
+
+- PLT assumptions typically involve higher mortality A/E than level-term assumptions and elevated lapse assumptions at the shock point.[10]
+- Predictive modeling (e.g., GLMs) is often used to model lapse as a function of premium jump, age, face amount, and distribution channel, which then feeds into expected lapse rates for future pricing and valuation.[10]
+
+## 9. Worked Examples
+
+The following simplified worked examples illustrate the mechanics. Exact conventions should follow the SOA Experience Study Calculations tool for implementation.[6][3]
+
+### 9.1 Mortality: Simple Policy-Year Exposure and A/E by Duration
+
+Scenario: Level term life policies with issue age 40, study years 2020-2024. Mortality assumed to follow a reference table $$q_{x+t}^{\text{ref}}$$ by attained age and duration.
+
+Inputs per policy:
+
+- Issue date, term length, face amount.
+- Birthdate (for attained age), gender, smoker status.
+- Termination date and reason (including death).
+
+Step 1: Construct exposure by duration
+
+For each policy, define policy years as intervals from one policy anniversary to the next. For each policy year within the study window:
+
+1. Exposure start: max(anniversary date, study start).
+2. Exposure end: min(next anniversary, termination/death date, study end).
+3. Policy-year exposure $$E_t$$: days in interval / 365.25.
+
+Step 2: Expected deaths
+
+For a given duration $$t$$ and age $$x+t$$:
+
+$$
+E[D_{x+t,t}] = \sum_{i \in \text{cell}} E_{i,t} \cdot q_{x_i+t}^{\text{ref}}.
+$$
+
+If using amount exposure, replace $$E_{i,t}$$ with amount at risk in that interval.[3]
+
+Step 3: Actual deaths and A/E
+
+Count actual deaths in each cell and compute:
+
+$$
+\text{A/E}_{x+t,t} = \frac{D_{x+t,t}}{E[D_{x+t,t}]}.
+$$
+
+This yields A/E by duration (and possibly age band). Confidence intervals can be estimated using Poisson approximations.[3]
+
+### 9.2 Mortality: Calendar-Year Exposure with Age Splits
+
+Scenario: A calendar-year experience study for attained ages 35-64.
+
+Inputs: For each policy, in-force status by date, birthdate, termination date.
+
+Step 1: Calendar-year exposure splitting
+
+Within a single calendar year (e.g., 2022):
+
+1. For each policy, find the portion of the year before the birthday and after the birthday.
+2. If the policy is in force for the full year and the birthday occurs halfway through, the policy contributes 0.5 exposure at age 44 and 0.5 at age 45.
+
+Step 2: Expected deaths
+
+For each age cell, multiply exposure by the reference $$q_x^{\text{ref}}$$ and sum across policies.[12]
+
+This method, recommended in PBR A/E guidance, greatly reduces bias compared with assigning all exposure to a single attained age.[12][4]
+
+### 9.3 Lapse: Basic Annual Lapse Study for Term Life
+
+Scenario: Evaluate annual lapse rates for a 20-year level term product by duration and premium jump ratio.
+
+Inputs:
+
+- Issue date, policy status, termination dates and reasons (lapse, surrender, death, maturity).
+- Premium schedule: level premium and post-level premium.
+
+Step 1: Define exposure and events
+
+- Exposure base: policies in force at the start of each policy year that are at risk of lapse (alive, in force, not already in final term).[3]
+- For each policy year $$t$$:
+  - Initial exposure $$E_t$$ = count of in-force policies at beginning of policy year (or central exposure using person-years at risk).
+  - Lapse events: policies that terminate for lapse/surrender during that policy year.
+
+Step 2: Actual lapse rates
+
+For each cell (e.g., duration and premium jump band):
+
+$$
+\hat{w}_t = \frac{L_t}{E_t},
+$$
+
+where $$L_t$$ is count of lapses.[3]
+
+Step 3: Expected lapse and A/E
+
+If the company has assumed lapse rates $$w_t^{\text{ref}}$$:
+
+$$
+E[L_t] = E_t \cdot w_t^{\text{ref}}, \quad \text{A/E} = \frac{L_t}{E[L_t]}.
+$$
+
+PLT studies extend this by defining shock lapse periods (e.g., duration 20-21) and modeling $$w_t$$ as a function of premium jump (ratio of renewal to replacement premium).[11][10]
+
+### 9.4 Expenses: Per-Policy Maintenance Expense Study
+
+Scenario: Evaluate whether per-policy maintenance expense assumption of 50 units per policy-year is adequate.
+
+Inputs:
+
+- Exposure base: policy-years in force for the target block over 2020-2022.
+- Actual maintenance expenses allocated to the block over the same period.
+
+Step 1: Exposure and expected expenses
+
+- Compute total policy-years exposure $$E$$ (sum of central exposure for all policies).[1]
+- Expected expenses: $$E[\text{Exp}] = 50 \times E$$.
+
+Step 2: Actual expenses
+
+- Obtain allocated actual expenses $$A$$ from finance.
+
+Step 3: A/E and implied per-policy expense
+
+$$
+\text{A/E} = \frac{A}{E[\text{Exp}]}, \quad \hat{e} = \frac{A}{E}.
+$$
+
+If $$\hat{e}$$ is materially higher than 50, assumptions may need to be updated, subject to trend analysis and adjustments for temporary items.[1]
+
+### 9.5 Combined Mortality and Lapse Analysis in PLT
+
+PLT studies illustrate the interaction between mortality and lapse.
+
+Scenario: Analyze mortality and lapse experience in the 2 years before and after the end of level term (duration 19-21 for a 20-year term).[11][10]
+
+Steps:
+
+1. Build parallel mortality and lapse studies with exposure segmented by duration and premium jump band.
+2. Compute A/E for mortality and lapse separately by cell.
+3. Interpretation:
+   - High lapse A/E (greater lapses than expected) at shock durations, particularly for high premium jump ratios.[10]
+   - Elevated mortality A/E among persisting policies, reflecting anti-selection (less healthy lives remain).[11][10]
+
+These patterns feed into updated PLT assumptions that reflect both the shock lapse and mortality deterioration.
+
+## 10. Putting It All Together: Practical Execution Checklist
+
+The following checklist can guide an analyst through a full study cycle.
+
+### 10.1 Planning and Design
+
+- Define purpose, scope, and study period.
+- Select measurement and time basis (policy-year vs calendar-year; attained age vs duration).[12][3]
+- Choose segmentation and document cell definitions.
+- Select reference tables and any adjustment factors.
+
+### 10.2 Data and ETL
+
+- Identify and extract data from source systems.
+- Join and reconcile seriatim records; resolve inconsistencies.[1][3]
+- Construct exposure and event files with all derived attributes.
+- Run data quality checks and reconcile counts/amounts.
+
+### 10.3 Exposure and Expected Calculations
+
+- Implement seriatim exposure splitting at birthdates/anniversaries.
+- Apply exposure conventions (central exposure recommended for mortality).[15][3]
+- Join exposure to reference rates and compute expected counts and amounts.
+
+### 10.4 Aggregation and Analysis
+
+- Aggregate actual and expected by cell, compute A/E and confidence intervals.
+- Perform sanity checks (e.g., aggregate A/E near 100% if reference based on own experience).[9]
+- Visualize patterns by age, duration, product, and other key risk factors.
+
+### 10.5 Interpretation and Governance
+
+- Translate A/E patterns into assumption changes, considering credibility and trends.[14][9]
+- Document methodology, limitations, and rationale for assumptions.
+- Socialize results with pricing, valuation, and risk management teams.
+
+## 11. Additional References and Learning Path
+
+For deeper understanding and practical implementation, the following resources are recommended:
+
+- SOA Experience Study Calculations Educational Tool: Monograph and workbook covering all major exposure and A/E methods, with numerical examples.[5][6][3]
+- Experience Study Rate Errors: Detailed analysis of bias from common exposure conventions and guidance on error-minimizing methods.[7][4]
+- SOA Individual Life Mortality Experience Studies: Methodology and results sections illustrating real-world life mortality studies.[9]
+- PLT Lapse and Mortality Studies: RGA/SOA predictive modeling papers on post-level term experience.[11][10]
+- Product Matters articles on experience studies: High-level overviews and practical insights for life product actuaries.[8][1]
+- actxps R package: Open-source toolkit embodying modern experience study practices, suitable for hands-on learning and prototyping.[17][18][19]
+
+Sources
+[1] [PDF] Product Matters, February 2014, Issue 88 - SOA https://www.soa.org/globalassets/assets/library/newsletters/product-development-news/2014/february/pro-2014-iss88.pdf
+[2] Understanding Experience Study - Actuarial-Reflections https://ikshrestha.github.io/Actuarial-Reflections/posts/Understanding%20Experiance%20Study.html
+[3] [PDF] Experience Study Calculations - SOA https://www.soa.org/globalassets/assets/Files/Research/2016-10-experience-study-calculations.pdf
+[4] [PDF] Experience Study Rate Errors - SOA.org https://www.soa.org/globalassets/assets/Files/Research/experience-study-rate-errors.pdf
+[5] [PDF] Experience Study Calculations - SOA https://www.soa.org/globalassets/assets/files/research/experience-study-calculations.pdf
+[6] Experience Study Calculations Educational Tool - SOA https://www.soa.org/resources/tables-calcs-tools/experience-study-tool/
+[7] Experience Study Rate Errors https://www.soa.org/49378b/globalassets/assets/files/research/experience-study-rate-errors.pdf
+[8] Product Matters, February 2014, Issue 88 https://www.soa.org/4934a8/globalassets/assets/library/newsletters/product-development-news/2014/february/pro-2014-iss88.pdf
+[9] Individual Life - Mortality Experience Studies - SOA https://www.soa.org/research/topics/indiv-mort-exp-study-list/
+[10] U.S. Post-Level Term Lapse and Mortality Predictive Modeling https://www.scor.com/en/expert-views/us-post-level-term-lapse-and-mortality-predictive-modeling
+[11] Report on the Lapse and Mortality https://www.soa.org/48ff5f/globalassets/assets/files/resources/experience-studies/2020/lapse-mort-post-level-canada.pdf
+[12] [DOC] A/E Calculation Methodology - NAIC https://content.naic.org/sites/default/files/pbr-a-to-e-calculations.docx
+[13] [PDF] Experience Analysis and its feedback into the Actuarial Control Cycle https://www.actuariesindia.org/sites/default/files/2022-05/EA_ACC_GM_SS.PDF
+[14] [PDF] Table Development - SOA https://www.soa.org/globalassets/assets/files/research/table-development.pdf
+[15] [PDF] Comparison of approaches for calculating initial exposure https://www.actuaries.org.uk/documents/cmi-technical-note-comparison-approaches-calculating-initial-exposure
+[16] [PDF] LOSS ESTIMATION: THE EXPOSURE APPROACH https://www.casact.org/sites/default/files/database/dpp_dpp88_88dpp315.pdf
+[17] [PDF] actxps: Create Actuarial Experience Studies - CRAN https://cran.r-project.org/web/packages/actxps/actxps.pdf
+[18] actxps: Create Actuarial Experience Studies: Prepare Data ... - rdrr.io https://rdrr.io/cran/actxps/
+[19] actxps: Create Actuarial Experience Studies - mattheaphy - R-universe https://mattheaphy.r-universe.dev/actxps

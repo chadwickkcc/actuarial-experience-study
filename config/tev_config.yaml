@@ -1,0 +1,20 @@
+rdr: 0.090
+earned_rate_ga: 0.050
+earned_rate_sa: 0.060
+tax_rate: 0.21
+expense_inflation: 0.025
+avr_pct_of_reserve: 0.005
+statutory_surplus: 50000000.0
+rc_pct_reserve:
+  Term: 0.030
+  WL: 0.045
+  UL: 0.060
+  ULSG: 0.080
+  VUL: 0.035
+  DA: 0.045
+acquisition_per_policy: 350
+maintenance_per_policy: 72
+maintenance_pct_premium: 0.020
+max_projection_years: 60
+optimiser_max_evaluations: 200
+fast_projection_years: 25

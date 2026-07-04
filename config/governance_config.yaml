@@ -1,0 +1,71 @@
+# Governance configuration (Phase 4) — Tech Spec v3.0 §I.1
+# The single configuration surface for governance; no governance constant is
+# hard-coded (FR-4-27 / NFR-Q-01). Org-specific values (roles, chain, thresholds,
+# attestation, retention, users) all live here.
+#
+# Real bootstrap passwords must NOT be committed: place them in a sibling
+# git-ignored `config/governance_config.local.yaml` whose `users` block overrides
+# these entries by `username` (see src/governance/users.seed_users_from_config).
+# The placeholder passwords below seed accounts that cannot log in until set.
+
+roles:                              # the four roles (FR-4-01)
+  - analyst
+  - junior_actuary
+  - senior_actuary
+  - chief_actuary
+
+permissions:                       # role -> allowed actions (FR-4-04)
+  analyst:        [propose, view]
+  junior_actuary: [sign_off, view, export]
+  senior_actuary: [sign_off, view, export]
+  chief_actuary:  [sign_off, view, export]
+
+approval_chain:                    # ordered sign-off chain (FR-4-12) — consumed from Session 25
+  - level: 1
+    required_role: junior_actuary
+  - level: 2
+    required_role: senior_actuary
+  - level: 3
+    required_role: chief_actuary
+
+segregation:
+  allow_multi_level_signoff: false # default false (FR-4-05); proposer != approver always enforced
+
+materiality:                       # consumed from Session 25 (FR-4-16)
+  delta_tev_threshold: 0.01        # |ΔTEV| fraction vs prior approved set that forces
+                                   # chief_actuary final sign-off. NEW governance threshold
+                                   # (not the §6.8 envelope-width floor). Placeholder — owner sets.
+  final_level_below_threshold: senior_actuary   # required final sign-off level when the
+                                   # change is below the threshold. Must be a role in the chain.
+
+attestation_text: >               # statement captured at each sign-off (FR-4-15)
+  I attest that I have reviewed this artifact and that, to the best of my
+  professional judgement, it is fit for its stated purpose.
+
+retention:                         # FR-4-25; no hard deletes
+  hard_delete: false
+  archive_after_days: 3650
+
+compliance:                        # compliance-pack export controls (FR-4-24)
+  # When false (default): an assumption-set pack whose SOURCE study run is not yet
+  # governance-approved ("fit") still exports, but carries a prominent warning banner.
+  # When true: such a pack is refused (ValueError) instead of warned.
+  require_fit_source_run: false
+
+users:                             # seed identities (FR-4-01; §I.2)
+  - username: a.analyst
+    display_name: A. Analyst
+    role: analyst
+    bootstrap_password: "<set at first run>"   # hashed at seed; never stored plaintext
+  - username: j.junior
+    display_name: J. Junior
+    role: junior_actuary
+    bootstrap_password: "<set at first run>"
+  - username: s.senior
+    display_name: S. Senior
+    role: senior_actuary
+    bootstrap_password: "<set at first run>"
+  - username: c.chief
+    display_name: C. Chief
+    role: chief_actuary
+    bootstrap_password: "<set at first run>"

@@ -1,0 +1,310 @@
+# =============================================================================
+# config/ai_config.yaml — AI layer settings (Tech Spec v2.0.1 §F.1)
+# -----------------------------------------------------------------------------
+# Single source for all non-secret AI settings. Every threshold, grain, cap, and
+# seed lives here (NFR-CF-10); none is hard-coded.
+#
+# SESSION 14 SCOPE: only the `chatbot.allowlist` block is required now — it is
+# the table/column allowlist consumed by src/utils/sql_boundary.load_allowlist
+# (and shared with the MCP server, FR-3B-32). The full chatbot limits and the
+# glm:/gbm:/eval: tuning blocks are authored in their owning sessions
+# (15 / 16 / 20 / 22). The allowlist CONTENT below is finalised in Session 20;
+# it is populated here from §F.1 so the loader and its tests are exercisable.
+# =============================================================================
+
+chatbot:
+  max_turns_per_session: 30         # FR-3B-40 — prompt for a fresh session at the cap
+  conversation_token_window: 16000  # FR-3B-39 — assembled-history trim window
+  session_token_budget: 1000000     # FR-3B-44 — per-session token budget (NFR-L-01)
+  budget_warning_fraction: 0.8      # FR-3B-44 — warn at 80%, hard-stop at 100%
+  max_tokens:                       # per-call output caps (NFR-CF-10); generous headroom
+    routing: 2048                   # for reasoning models (e.g. DeepSeek V4) whose hidden
+    sql_generation: 2048            # reasoning tokens count against this budget — too
+    commentary: 4096                # small a cap returns an empty completion the provider
+    faithfulness: 64                # surfaces as an error (now a safe block, not silence).
+    synthesis: 4096                 # multi-query EXPLORATORY synthesis (round 3, Phase D)
+  faithfulness_llm_judge: false     # FR-3B-46 — optional judge (Session 21); deterministic checks always on
+  faithfulness_flag_threshold: 3    # FR-3B-46 — 1-5 scale; <= threshold flags a draft (Session 21)
+  analyst_mode_default: false       # round 3 — opt-in flag-not-block for numeric traceability;
+                                    # default OFF keeps the hard guarantee (FR-3B-34). SQL gates never relax.
+  multi_query_default: false        # round 3 Phase D — EXPLORATORY plan→fetch→synthesise; default OFF
+                                    # (single-query path) so the eval harness/tests are unaffected; the
+                                    # AI Analyst page turns it on for the richer experience.
+  max_synthesis_queries: 4          # round 3 Phase D — max SELECTs an EXPLORATORY turn may plan
+  sql_row_cap: 500                  # FR-3B-31 gate 4 (boundary default)
+  rag:                              # FR-3B-36 — commentary grounds in the tool's OWN artifacts only
+    reports_dir: reports            # generated A/E + TEV reports (relative to project root)
+    methodology_docs:               # shipped methodology documentation (not an external KB)
+      - Reference Materials/Life Insurance Experience Studies End-to-End Methodology and Practical Guide.md
+      - Reference Materials/tev-methodology-report.md
+    max_grounding_chars: 12000      # cap on assembled grounding text fed to the LLM
+  allowlist:                        # FR-3B-32 — shared with MCP server; Gold tables -> permitted columns
+    # Canonical gold_ae_results / gold_tev_results columns (Tech Spec §A.3/§A.4).
+    # NO PII columns (no names, DOB, policy-holder identifiers) appear anywhere.
+    gold_ae_results:
+      - study_run_id
+      - assumption_set_id
+      - product_code
+      - plan_code
+      - gender
+      - smoker_status
+      - risk_class
+      - issue_age_band
+      - attained_age_band
+      - duration_band
+      - policy_year
+      - calendar_year
+      - is_plt_flag
+      - premium_jump_ratio_band
+      - distribution_channel
+      - illness_code
+      - exposure_count
+      - exposure_amount
+      - actual_deaths_count
+      - expected_deaths_count
+      - ae_count
+      - ae_amount
+      - credibility_z
+      - lapse_exposure_count
+      - actual_lapses
+      - expected_lapses
+      - ae_lapse
+      - credibility_z_lapse
+      - ci_exposure_count
+      - actual_ci_claims
+      - expected_ci_claims
+      - ae_ci
+      - credibility_z_ci
+      - surrender_exposure
+      - actual_surrenders
+      - expected_surrenders
+      - ae_surrender
+      # Amount-basis deaths, standard errors, confidence-interval bounds, the
+      # credibility-weighted A/E and the anti-selection flag (governed-maximum
+      # data-surface widening, 2026-06-27). All non-PII.
+      - actual_deaths_amount
+      - expected_deaths_amount
+      - se_ae_count
+      - se_ae_amount
+      - ci_lower_count
+      - ci_upper_count
+      - ci_lower_amount
+      - ci_upper_amount
+      - credibility_wtd_ae
+      - se_ae_lapse
+      - ci_lower_lapse
+      - ci_upper_lapse
+      - se_ae_ci
+      - ci_lower_ci
+      - ci_upper_ci
+      - anti_selection_flag
+    gold_tev_results:
+      - tev_run_id
+      - assumption_set_id
+      - sensitivity_id
+      - product_code
+      - anw
+      - anw_required_capital
+      - anw_free_surplus
+      - pvfp
+      - pvcoc
+      - vif
+      - tev
+      - delta_tev
+      # Profit-source margin breakdown (governed-maximum widening, 2026-06-27).
+      - pvfp_mortality_margin
+      - pvfp_lapse_margin
+      - pvfp_ci_margin
+      - pvfp_investment_spread
+      - pvfp_expense_margin
+      - pvfp_other
+      - pvfp_tax
+      - pvfp_reserve_release
+      - pvfp_change
+    # ----------------------------------------------------------------------- #
+    # Governed-maximum data-surface widening (2026-06-27). These additional
+    # Gold *results/summary* tables are exposed read-only through the gated MCP
+    # path so the analyst can answer reconciliation, data-quality, model-point,
+    # AI-proposal and assumption-set questions. NO PII column appears anywhere:
+    # no policy_id / date_of_birth / names, no author/reviewer person ids, no
+    # Silver/Bronze, no gold_dq_quarantine or gold_exposure_segments (both carry
+    # policy_id). The boundary is allowlist-not-blocklist, so any column omitted
+    # here is simply unreachable. See Req v3.0.1 / Tech v2.0.1 (2026-06-27
+    # amendments) and the PII-reachability guard test.
+    # ----------------------------------------------------------------------- #
+    gold_inforce_reconciliation:
+      - study_run_id
+      - product_code
+      - calendar_year
+      - beg_if_count
+      - new_issues_count
+      - deaths_count
+      - lapses_count
+      - surrenders_count
+      - other_decrements
+      - end_if_count
+      - recon_diff_count
+      - beg_if_amount
+      - new_issues_amount
+      - deaths_amount
+      - lapses_amount
+      - surrenders_amount
+      - other_amount
+      - end_if_amount
+      - recon_diff_amount
+      - recon_passes
+    gold_dq_run_summary:
+      - study_run_id
+      - product_code
+      - total_records
+      - records_passed
+      - records_quarantined
+      - records_halted
+      - dq_score_pct
+      - critical_failure
+    gold_model_points:
+      - tev_run_id
+      - product_code
+      - plan_code
+      - gender
+      - smoker_status
+      - risk_class
+      - issue_age_band
+      - attained_age_band
+      - wtd_avg_attained_age
+      - wtd_avg_issue_age
+      - wtd_avg_duration
+      - duration_band
+      - is_plt_flag
+      - premium_jump_ratio_band
+      - is_ulsg_flag
+      - av_band
+      - equity_allocation_band
+      - glwb_elected_flag
+      - surrender_charge_yr_band
+      - participating_flag
+      - policy_count
+      - face_amount_total
+      - reserve_total
+      - account_value_total
+      - premium_total
+      - ci_rider_count
+      - ci_rider_sa_total
+      - required_capital
+    gold_ai_model_registry:        # which GLM/GBM models were fit + diagnostics
+      - model_id
+      - run_id
+      - model_type
+      - decrement
+      - product_code
+      - fit_ts
+      - converged
+      - n_cells
+      - deviance
+      - dispersion
+      - aic
+      - cv_metric_name
+      - cv_metric_value
+      - seed
+      - message
+    gold_assumption_sets:          # assumption-set status + economics + AI provenance
+      - assumption_set_id
+      - version
+      - status
+      - effective_date
+      - basis
+      - source_study_run_id
+      - created_ts
+      - approved_ts
+      - superseded_by
+      - description
+      - rdr
+      - earned_rate_ga
+      - earned_rate_sa
+      - tax_rate
+      - expense_inflation
+      - ai_proposed_value
+      - ai_model_id
+    gold_ai_proposed_factors:      # materialised GLM/GBM proposed adjustment factors
+      - model_id
+      - run_id
+      - model_type
+      - decrement
+      - product_code
+      - sex
+      - smoker
+      - attained_age_band
+      - duration_band
+      - grain_key
+      - factor
+      - ci_low
+      - ci_high
+      - expected_events
+      - credibility_z
+      - ae_derived_factor
+      - fit_ts
+
+# =============================================================================
+# GLM assumption engine (Session 15; Tech Spec v2.0.1 §F.1, Req §7.4)
+# -----------------------------------------------------------------------------
+# Every threshold, grain, seed, covariate list and validation tolerance lives
+# here (NFR-CF-10); none is hard-coded in src/ai/glm/.
+# =============================================================================
+glm:
+  seed: 42
+  min_events_to_fit: 200            # FR-3A-29 guardrail (per decrement-product)
+  bootstrap:
+    n_resamples: 1000               # FR-3A-21
+    ci_level: 0.95
+  output_grain:                     # FR-3A-18
+    mortality:    [product, sex, smoker, attained_age_band]
+    lapse:        [product, duration_band]
+    ci_incidence: [attained_age_band, sex]
+  covariates:                       # FR-3A-13/16
+    mortality:    [product_code, gender, smoker_status, risk_class, attained_age_band, duration_band, premium_jump_ratio_band]
+    lapse:        [product_code, duration_band, premium_jump_ratio_band]
+    ci_incidence: [attained_age_band, gender, smoker_status]
+  validation:                       # FR-3A-26/27 tolerance table (explicit)
+    min_expected_events: 30
+    coverage_min: 0.90
+    tolerance_pct:
+      mortality: { TERM: 0.10, WL: 0.10, UL: 0.10, ULSG: 0.10, VUL: 0.10, DA: 0.15 }
+      lapse:     { TERM: 0.15, WL: 0.25, UL: 0.15, ULSG: 0.15, VUL: 0.15, DA: 0.15 }
+      ci_incidence: 0.20
+
+# =============================================================================
+# GBM overlay + SHAP (Session 16; Tech Spec v2.0.1 §F.1, Req §7.5)
+# -----------------------------------------------------------------------------
+# The GBM is the challenge/explain overlay, never the proposal engine. It is fit
+# at the SAME output grain on the SAME covariates as the GLM (those lists and the
+# validation tolerance table are reused from the glm: block above, so GLM and GBM
+# are directly comparable). Only the GBM-specific knobs live here: fixed,
+# version-controlled hyperparameters (no tuning, FR-3A-32), a pinned seed and
+# single thread for bit-stable refits, the divergence-flag threshold (FR-3A-33),
+# and an independently configurable bootstrap resample count (FR-3A-34).
+# =============================================================================
+gbm:
+  seed: 42
+  divergence_threshold: 0.10        # FR-3A-33 "interaction signal — investigate" flag
+  bootstrap:
+    n_resamples: 200                # FR-3A-34 (independent of the GLM's count)
+    ci_level: 0.95
+  hyperparams:                      # FIXED, no tuning (FR-3A-32); stability-over-fit
+    max_depth: 3
+    n_estimators: 200
+    learning_rate: 0.05
+    min_child_weight: 10            # sparse-cell guard
+    gamma: 1.0                      # sparse-cell guard
+    reg_lambda: 2.0                 # L2
+    nthread: 1                      # determinism (bit-stable refits)
+    cv_folds: 5                     # FR-3A-32 cross-validated deviance / logloss
+
+# =============================================================================
+# eval: — evaluation harness settings (Session 22; Tech Spec §F.1, FR-3B-53/54).
+# -----------------------------------------------------------------------------
+# The CLI harness (python -m src.ai.eval) shows an approximate cost estimate up
+# front and requires interactive confirmation above this threshold (NFR-L-04).
+# Live eval runs are owner-triggered and are NOT part of the pytest gate.
+# =============================================================================
+eval:
+  eval_cost_confirm_threshold: 5.00   # USD; interactive confirm above this (NFR-L-04)

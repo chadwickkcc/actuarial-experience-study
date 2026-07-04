@@ -1,0 +1,284 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Chief Actuary Summary — {{ run_id[:8] }}</title>
+<style>
+  body { font-family: 'Segoe UI', Arial, sans-serif; margin: 48px 60px; color: #2c3e50; font-size: 14px; max-width: 900px; }
+  h1 { color: #1a5276; border-bottom: 3px solid #1a5276; padding-bottom: 10px; font-size: 22px; }
+  h2 { color: #1a5276; border-bottom: 1px solid #d5d8dc; padding-bottom: 4px; margin-top: 28px; font-size: 16px; }
+  table { border-collapse: collapse; width: 100%; margin: 10px 0; font-size: 13px; }
+  th { background: #1a5276; color: white; padding: 6px 10px; text-align: left; }
+  td { border: 1px solid #d5d8dc; padding: 5px 10px; }
+  tr:nth-child(even) { background: #f8f9fa; }
+  .banner { background: #eaf4fb; border-left: 5px solid #2980b9; padding: 14px 18px; margin: 16px 0; border-radius: 3px; }
+  .banner-warn { background: #fef5e7; border-left: 5px solid #e67e22; padding: 14px 18px; margin: 16px 0; border-radius: 3px; }
+  .banner-pass { background: #eafaf1; border-left: 5px solid #1e8449; padding: 14px 18px; margin: 16px 0; border-radius: 3px; }
+  .kpi-row { display: flex; gap: 16px; margin: 16px 0; }
+  .kpi { flex: 1; background: #f0f3f4; border-top: 4px solid #2980b9; padding: 12px 16px; border-radius: 3px; }
+  .kpi.good { border-top-color: #1e8449; }
+  .kpi.bad  { border-top-color: #c0392b; }
+  .kpi-label { font-size: 11px; color: #666; text-transform: uppercase; letter-spacing: 0.5px; }
+  .kpi-value { font-size: 26px; font-weight: bold; color: #1a5276; }
+  .kpi-sub { font-size: 11px; color: #888; margin-top: 2px; }
+  .rec-box { background: #f9f9f9; border: 2px solid #1a5276; padding: 16px 20px; margin: 16px 0; border-radius: 4px; }
+  .rec-label { font-size: 11px; color: #666; text-transform: uppercase; letter-spacing: 1px; }
+  .rec-body { font-size: 14px; margin-top: 6px; line-height: 1.6; }
+  .footer { margin-top: 48px; padding-top: 12px; border-top: 1px solid #d5d8dc; font-size: 11px; color: #888; }
+  .pass { color: #1e8449; font-weight: bold; }
+  .fail { color: #c0392b; font-weight: bold; }
+  .neutral { color: #2980b9; font-weight: bold; }
+  ul { line-height: 1.8; }
+</style>
+</head>
+<body>
+
+<h1>Chief Actuary Summary — Experience Study Results</h1>
+
+<table style="width:auto; margin-bottom:16px; font-size:13px;">
+  <tr><td><strong>Study Run</strong></td><td>{{ run_id[:16] }}...</td></tr>
+  <tr><td><strong>Prepared</strong></td><td>{{ generated_ts }}</td></tr>
+  <tr><td><strong>Study Period</strong></td><td>{{ study_start }} — {{ study_end }}</td></tr>
+  <tr><td><strong>Products</strong></td><td>{{ products }}</td></tr>
+</table>
+
+<!-- OVERALL STATUS BANNER -->
+{% if overall_pass %}
+<div class="banner-pass">
+  <strong>Overall Study Status: PASS</strong> — All headline A/E metrics are within specification tolerances.
+  Aggregate mortality A/E {{ "%.3f"|format(ae_count) }} (target: 0.85–1.00 count basis).
+</div>
+{% else %}
+<div class="banner-warn">
+  <strong>Overall Study Status: ATTENTION REQUIRED</strong> — One or more headline A/E metrics are outside specification tolerances.
+  Review findings below before finalising assumption changes.
+</div>
+{% endif %}
+
+<!-- SECTION 1: KEY PERFORMANCE INDICATORS -->
+<h2>1. Headline Experience vs Prior Assumption</h2>
+
+<div class="kpi-row">
+  <div class="kpi {% if 0.85 <= ae_count <= 1.00 %}good{% else %}bad{% endif %}">
+    <div class="kpi-label">Mortality A/E (Count)</div>
+    <div class="kpi-value">{{ "%.3f"|format(ae_count) }}</div>
+    <div class="kpi-sub">Target: 0.850 – 1.000 | Exp. Deaths: {{ "{:,.0f}".format(total_expected_deaths) }}</div>
+  </div>
+  <div class="kpi {% if ae_amount and 0.80 <= ae_amount <= 0.95 %}good{% else %}bad{% endif %}">
+    <div class="kpi-label">Mortality A/E (Amount)</div>
+    <div class="kpi-value">{{ "%.3f"|format(ae_amount) if ae_amount else "N/A" }}</div>
+    <div class="kpi-sub">Target: 0.800 – 0.950</div>
+  </div>
+  <div class="kpi {% if ae_lapse and 0.95 <= ae_lapse <= 1.05 %}good{% elif ae_lapse %}bad{% endif %}">
+    <div class="kpi-label">Lapse A/E</div>
+    <div class="kpi-value">{{ "%.3f"|format(ae_lapse) if ae_lapse else "N/A" }}</div>
+    <div class="kpi-sub">Target: 0.950 – 1.050</div>
+  </div>
+  <div class="kpi {% if ae_ci and 0.90 <= ae_ci <= 1.10 %}good{% elif ae_ci %}bad{% endif %}">
+    <div class="kpi-label">CI Incidence A/E</div>
+    <div class="kpi-value">{{ "%.3f"|format(ae_ci) if ae_ci else "N/A" }}</div>
+    <div class="kpi-sub">Target: 0.900 – 1.100</div>
+  </div>
+</div>
+
+<table>
+  <tr>
+    <th>Metric</th><th>Actual</th><th>Expected</th><th>A/E Ratio</th>
+    <th>Target Range</th><th>Status</th>
+  </tr>
+  <tr>
+    <td>Deaths (count)</td>
+    <td>{{ "{:,}".format(total_deaths) }}</td>
+    <td>{{ "{:,.1f}".format(total_expected_deaths) }}</td>
+    <td>{{ "%.3f"|format(ae_count) }}</td>
+    <td>0.850 – 1.000</td>
+    <td class="{% if 0.85 <= ae_count <= 1.00 %}pass{% else %}fail{% endif %}">
+      {% if 0.85 <= ae_count <= 1.00 %}PASS{% else %}OUTSIDE SPEC{% endif %}
+    </td>
+  </tr>
+  {% if ae_amount %}
+  <tr>
+    <td>Deaths (amount)</td>
+    <td>—</td>
+    <td>—</td>
+    <td>{{ "%.3f"|format(ae_amount) }}</td>
+    <td>0.800 – 0.950</td>
+    <td class="{% if 0.80 <= ae_amount <= 0.95 %}pass{% else %}fail{% endif %}">
+      {% if 0.80 <= ae_amount <= 0.95 %}PASS{% else %}OUTSIDE SPEC{% endif %}
+    </td>
+  </tr>
+  {% endif %}
+  {% if ae_lapse %}
+  <tr>
+    <td>Lapses</td>
+    <td>{{ "{:,}".format(total_lapses) }}</td>
+    <td>{{ "{:,.1f}".format(total_expected_lapses) }}</td>
+    <td>{{ "%.3f"|format(ae_lapse) }}</td>
+    <td>0.950 – 1.050</td>
+    <td class="{% if 0.95 <= ae_lapse <= 1.05 %}pass{% else %}fail{% endif %}">
+      {% if 0.95 <= ae_lapse <= 1.05 %}PASS{% else %}OUTSIDE SPEC{% endif %}
+    </td>
+  </tr>
+  {% endif %}
+  {% if ae_ci %}
+  <tr>
+    <td>CI Claims</td>
+    <td>{{ "{:,}".format(total_ci_claims) }}</td>
+    <td>{{ "{:,.1f}".format(total_expected_ci) }}</td>
+    <td>{{ "%.3f"|format(ae_ci) }}</td>
+    <td>0.900 – 1.100</td>
+    <td class="{% if 0.90 <= ae_ci <= 1.10 %}pass{% else %}fail{% endif %}">
+      {% if 0.90 <= ae_ci <= 1.10 %}PASS{% else %}OUTSIDE SPEC{% endif %}
+    </td>
+  </tr>
+  {% endif %}
+</table>
+
+<!-- SECTION 2: KEY FINDINGS -->
+<h2>2. Key Findings</h2>
+
+<div class="banner">
+  <strong>Study Scope:</strong> {{ "{:,.0f}".format(total_exposure) }} exposure years across
+  {{ "{:,}".format(total_deaths) }} deaths, {{ "{:,}".format(total_lapses) }} lapses,
+  and {{ "{:,}".format(total_ci_claims) }} CI claims during the study period
+  {{ study_start }} – {{ study_end }}.
+</div>
+
+<ul>
+  <li>
+    <strong>Mortality:</strong>
+    Aggregate mortality A/E of <span class="{% if 0.85 <= ae_count <= 1.00 %}pass{% else %}fail{% endif %}">{{ "%.3f"|format(ae_count) }}</span>
+    on a count basis against the 2015 VBT reference table.
+    {% if ae_count < 0.85 %}
+    Experience is materially better than expected — consider a mortality improvement assumption.
+    {% elif ae_count > 1.00 %}
+    Experience exceeds expected — review anti-selection and risk classification assumptions.
+    {% else %}
+    Experience is consistent with prior assumption. No material change recommended.
+    {% endif %}
+  </li>
+
+  {% if ae_lapse %}
+  <li>
+    <strong>Lapse:</strong>
+    Base lapse A/E of <span class="{% if 0.95 <= ae_lapse <= 1.05 %}pass{% else %}fail{% endif %}">{{ "%.3f"|format(ae_lapse) }}</span>.
+    {% if ae_lapse < 0.95 %}
+    Lapse experience is below expected — policies persisting longer than assumed; review reserve adequacy.
+    {% elif ae_lapse > 1.05 %}
+    Lapse experience exceeds expected — review premium competitiveness and retention initiatives.
+    {% else %}
+    Lapse experience is consistent with prior assumption.
+    {% endif %}
+  </li>
+  {% endif %}
+
+  {% if ae_ci %}
+  <li>
+    <strong>CI Incidence:</strong>
+    Aggregate CI A/E of <span class="{% if 0.90 <= ae_ci <= 1.10 %}pass{% else %}fail{% endif %}">{{ "%.3f"|format(ae_ci) }}</span>
+    across all illness codes.
+    {% if ae_ci < 0.90 %}
+    CI claims are materially below expected — consider revising incidence rates downward.
+    {% elif ae_ci > 1.10 %}
+    CI claims exceed expected — review rider pricing and underwriting guidelines.
+    {% else %}
+    CI incidence is consistent with the reference table.
+    {% endif %}
+  </li>
+  {% endif %}
+
+  <li>
+    <strong>Data Quality:</strong>
+    {% if dq_critical_failure %}
+    <span class="fail">One or more critical DQ failures were recorded. Review quarantine log before proceeding.</span>
+    {% else %}
+    Data quality checks passed with an average DQ score of {{ "%.1f"|format(avg_dq_score) }}%.
+    {% if total_quarantined > 0 %}
+    {{ "{:,}".format(total_quarantined) }} records were quarantined for non-critical issues.
+    {% endif %}
+    {% endif %}
+  </li>
+
+  <li>
+    <strong>Credibility:</strong>
+    Aggregate mortality credibility Z = {{ "%.3f"|format(agg_credibility_z) if agg_credibility_z else "N/A" }}.
+    {% if agg_credibility_z and agg_credibility_z >= 1.0 %}
+    <span class="pass">Full credibility achieved.</span> Results can be used as-is.
+    {% elif agg_credibility_z %}
+    <span class="fail">Partial credibility only ({{ "%.1f"|format(agg_credibility_z * 100) }}%).</span>
+    Supplement with prior assumption; credibility-weighted A/E = {{ "%.3f"|format(cred_wtd_ae) if cred_wtd_ae else "N/A" }}.
+    {% endif %}
+  </li>
+</ul>
+
+<!-- SECTION 3: RECOMMENDED ASSUMPTION CHANGE -->
+<h2>3. Recommended Assumption Change</h2>
+
+<div class="rec-box">
+  <div class="rec-label">Working Actuary Recommendation</div>
+  <div class="rec-body">
+    {% if 0.85 <= ae_count <= 1.00 and (not ae_lapse or 0.95 <= ae_lapse <= 1.05) and (not ae_ci or 0.90 <= ae_ci <= 1.10) %}
+    Based on the study results, <strong>no material changes to the current assumption set are required</strong>
+    at this time. Mortality, lapse, and CI incidence experience are all within specification tolerances.
+    The current best-estimate assumptions remain appropriate for pricing and valuation purposes.
+    {% else %}
+    Based on the study results, the following assumption adjustments are recommended for review:
+    <ul>
+      {% if ae_count < 0.85 or ae_count > 1.00 %}
+      <li>
+        <strong>Mortality multiplier:</strong> Current A/E of {{ "%.3f"|format(ae_count) }}
+        suggests a mortality multiplier adjustment.
+        Recommended multiplier: {{ "%.3f"|format(ae_count) }}
+        (subject to credibility weighting and Chief Actuary sign-off).
+      </li>
+      {% endif %}
+      {% if ae_lapse and (ae_lapse < 0.95 or ae_lapse > 1.05) %}
+      <li>
+        <strong>Lapse multiplier:</strong> Current A/E of {{ "%.3f"|format(ae_lapse) }}
+        suggests updating the lapse assumption.
+        Recommended multiplier: {{ "%.3f"|format(ae_lapse) }}.
+      </li>
+      {% endif %}
+      {% if ae_ci and (ae_ci < 0.90 or ae_ci > 1.10) %}
+      <li>
+        <strong>CI incidence multiplier:</strong> Current A/E of {{ "%.3f"|format(ae_ci) }}
+        suggests updating the CI incidence assumption.
+        Recommended multiplier: {{ "%.3f"|format(ae_ci) }}.
+      </li>
+      {% endif %}
+    </ul>
+    All proposed changes require Chief Actuary sign-off before being applied to pricing or valuation bases.
+    {% endif %}
+  </div>
+</div>
+
+<!-- SECTION 4: CREDIBILITY STATEMENT -->
+<h2>4. Credibility Statement</h2>
+
+<p>
+  This study is based on <strong>{{ "{:,.0f}".format(total_exposure) }} exposure years</strong>
+  and <strong>{{ "{:,}".format(total_deaths) }} actual deaths</strong>.
+  The aggregate mortality credibility factor is
+  <strong>Z = {{ "%.3f"|format(agg_credibility_z) if agg_credibility_z else "N/A" }}</strong>
+  under the {{ credibility_method | default("Limited Fluctuation") }} method
+  ({% if credibility_method == "Bühlmann" %}credibility constant K = 1,082{% else %}full credibility threshold: 1,082 expected claims
+  at 5% precision, 90% confidence{% endif %}).
+</p>
+
+{% if agg_credibility_z and agg_credibility_z < 1.0 %}
+<div class="banner-warn">
+  <strong>Partial Credibility Warning:</strong> With Z = {{ "%.3f"|format(agg_credibility_z) }},
+  the study data is not fully credible on its own. Any proposed assumption changes must be
+  blended with the prior assumption using:
+  <code>A/E_adopted = {{ "%.3f"|format(agg_credibility_z) }} × A/E_study + {{ "%.3f"|format(1 - agg_credibility_z) }} × A/E_prior</code>
+</div>
+{% endif %}
+
+<div class="footer">
+  AI-Powered Actuarial Experience Study Tool — Phase 1A |
+  Chief Actuary Summary generated {{ generated_ts }} |
+  Run ID: {{ run_id }} |
+  <em>This report is a working document. All recommendations require actuary review and sign-off before adoption.</em>
+</div>
+</body>
+</html>

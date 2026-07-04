@@ -1,0 +1,60 @@
+# LLM provider configuration (Phase 3b, Session 18; Tech Spec v2.0.1 §F.2).
+#
+# Model strings live ONLY here, never in Python code (FR-3B-03 / NFR-CF-11).
+# API keys are read from environment variables only — never from this file,
+# code, logs, or the audit trail (FR-3B-04). A model whose provider api_key_env
+# is unset greys out in the UI dropdown with reason "API key not configured";
+# the app otherwise functions normally.
+#
+# PRICING (filled 2026-06-20, Session 18 — owner directed sourcing from public
+# rates rather than hand-entering). Per-1M-token USD list rates, cache-miss
+# input / standard output:
+#   - Anthropic (claude-opus-4-8, claude-sonnet-4-6): from the authoritative
+#     Anthropic model pricing reference (claude-api skill, cached 2026-06-04).
+#   - DeepSeek (deepseek-v4-pro, deepseek-v4-flash): published V4 GA rates as of
+#     2026-06 (V4 Pro reflects the now-official 1/4 price effective 2026-05-31).
+# These are list/cache-miss rates; cached-input discounts are not modelled here.
+# Owner may override any value; if a rate is later corrected, update it here only
+# (NFR-CF-11 — pricing lives in this file, never in code).
+
+default_model: claude-sonnet-4-6
+request_timeout_seconds: 60          # NFR-L-03
+max_retries: 2
+
+# Per-call parameters for the prompt-artifact Skills (Session 19; FR-3B-17..23).
+# Call-level settings live with the provider config so a Skill needs only this
+# one config dict; none is hard-coded in Python (NFR-CF-10/11).
+skills:
+  memo:
+    max_tokens: 4096        # headroom for reasoning models (e.g. DeepSeek V4),
+    temperature: 0.0        # whose reasoning tokens count against this budget
+  shap_explain:
+    max_tokens: 2048
+    temperature: 0.0
+
+providers:
+  anthropic:
+    sdk: anthropic
+    api_key_env: ANTHROPIC_API_KEY
+    models:
+      - id: claude-opus-4-8
+        display_name: "Claude Opus 4.8"
+        price_per_mtok_input: 5.00
+        price_per_mtok_output: 25.00
+      - id: claude-sonnet-4-6
+        display_name: "Claude Sonnet 4.6"
+        price_per_mtok_input: 3.00
+        price_per_mtok_output: 15.00
+  deepseek:
+    sdk: openai                       # OpenAI-compatible endpoint (FR-3B-02)
+    base_url: https://api.deepseek.com
+    api_key_env: DEEPSEEK_API_KEY
+    models:
+      - id: deepseek-v4-pro
+        display_name: "DeepSeek V4 Pro"
+        price_per_mtok_input: 0.435
+        price_per_mtok_output: 0.87
+      - id: deepseek-v4-flash
+        display_name: "DeepSeek V4 Flash"
+        price_per_mtok_input: 0.14
+        price_per_mtok_output: 0.28

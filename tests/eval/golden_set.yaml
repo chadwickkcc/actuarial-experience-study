@@ -1,0 +1,240 @@
+# =============================================================================
+# tests/eval/golden_set.yaml — locked golden Q->SQL evaluation set (FR-3B-48).
+# -----------------------------------------------------------------------------
+# 36 curated entries spanning all five product families (Term, Whole Life,
+# UL/ULSG, VUL, Deferred Annuity) and the five query classes: simple factual
+# lookups, multi-dimension segmented queries, TEV result queries, credibility-
+# context questions, and time/run-comparison questions.
+#
+# Schema (§F.5): id, question, intent, sql, expected_result{columns, row_count,
+# value_check}. All SQL references only the chatbot allowlist columns and is
+# gate-compliant (a single-row aggregate, OR a LIMIT <= 500). The harness compares
+# the model's generated query result to THIS reference query's result under the
+# FR-3B-51 result-match rule, executed live; for value_check: false the row_count
+# is a documented bound (only column-set + row-count are checked). Disjoint from
+# config/chatbot_few_shots.yaml (FR-3B-30/49; enforced by tests/test_eval_sets.py).
+#
+# STATUS: LOCKED by owner 2026-06-20 — authoritative baseline. Do not revise these
+# entries to make a model pass; a change requires a fresh owner lock.
+# =============================================================================
+golden:
+  # ---- Simple factual lookups (single-row aggregate) ----
+  - id: G001
+    question: "Total actual deaths on a count basis for Whole Life."
+    intent: FACTUAL_LOOKUP
+    sql: "SELECT SUM(actual_deaths_count) AS actual_deaths FROM gold_ae_results WHERE product_code = 'WL'"
+    expected_result: {columns: [actual_deaths], row_count: 1, value_check: true}
+
+  - id: G002
+    question: "What is the aggregate amount-basis exposure for Universal Life?"
+    intent: FACTUAL_LOOKUP
+    sql: "SELECT SUM(exposure_amount) AS total_amount_exposure FROM gold_ae_results WHERE product_code = 'UL'"
+    expected_result: {columns: [total_amount_exposure], row_count: 1, value_check: true}
+
+  - id: G003
+    question: "How many actual critical-illness claims were recorded for Term overall?"
+    intent: FACTUAL_LOOKUP
+    sql: "SELECT SUM(actual_ci_claims) AS ci_claims FROM gold_ae_results WHERE product_code = 'TERM'"
+    expected_result: {columns: [ci_claims], row_count: 1, value_check: true}
+
+  - id: G004
+    question: "Aggregate expected lapses across all Universal Life cells."
+    intent: FACTUAL_LOOKUP
+    sql: "SELECT SUM(expected_lapses) AS expected_lapses FROM gold_ae_results WHERE product_code = 'UL'"
+    expected_result: {columns: [expected_lapses], row_count: 1, value_check: true}
+
+  - id: G005
+    question: "What is the total actual surrender count for fixed deferred annuities?"
+    intent: FACTUAL_LOOKUP
+    sql: "SELECT SUM(actual_surrenders) AS surrenders FROM gold_ae_results WHERE product_code = 'DA_FIXED'"
+    expected_result: {columns: [surrenders], row_count: 1, value_check: true}
+
+  - id: G006
+    question: "Total expected critical-illness claims for Whole Life."
+    intent: FACTUAL_LOOKUP
+    sql: "SELECT SUM(expected_ci_claims) AS expected_ci FROM gold_ae_results WHERE product_code = 'WL'"
+    expected_result: {columns: [expected_ci], row_count: 1, value_check: true}
+
+  - id: G007
+    question: "Total count exposure for variable universal life."
+    intent: FACTUAL_LOOKUP
+    sql: "SELECT SUM(exposure_count) AS total_exposure FROM gold_ae_results WHERE product_code = 'VUL'"
+    expected_result: {columns: [total_exposure], row_count: 1, value_check: true}
+
+  - id: G008
+    question: "Sum of expected deaths on a count basis for Term."
+    intent: FACTUAL_LOOKUP
+    sql: "SELECT SUM(expected_deaths_count) AS expected_deaths FROM gold_ae_results WHERE product_code = 'TERM'"
+    expected_result: {columns: [expected_deaths], row_count: 1, value_check: true}
+
+  - id: G009
+    question: "How many actual surrenders for variable annuities in total?"
+    intent: FACTUAL_LOOKUP
+    sql: "SELECT SUM(actual_surrenders) AS surrenders FROM gold_ae_results WHERE product_code = 'DA_VA'"
+    expected_result: {columns: [surrenders], row_count: 1, value_check: true}
+
+  - id: G010
+    question: "Total actual deaths for ULSG on a count basis."
+    intent: FACTUAL_LOOKUP
+    sql: "SELECT SUM(actual_deaths_count) AS actual_deaths FROM gold_ae_results WHERE product_code = 'ULSG'"
+    expected_result: {columns: [actual_deaths], row_count: 1, value_check: true}
+
+  # ---- Multi-dimension segmented queries (GROUP BY + LIMIT) ----
+  - id: G011
+    question: "Break down actual Term deaths by risk class."
+    intent: EXPLORATORY
+    sql: "SELECT risk_class, SUM(actual_deaths_count) AS deaths FROM gold_ae_results WHERE product_code = 'TERM' GROUP BY risk_class ORDER BY risk_class LIMIT 50"
+    expected_result: {columns: [risk_class, deaths], row_count: 5, value_check: false}
+
+  - id: G012
+    question: "How do Whole Life actual lapses split across duration bands?"
+    intent: EXPLORATORY
+    sql: "SELECT duration_band, SUM(actual_lapses) AS lapses FROM gold_ae_results WHERE product_code = 'WL' GROUP BY duration_band ORDER BY duration_band LIMIT 50"
+    expected_result: {columns: [duration_band, lapses], row_count: 7, value_check: false}
+
+  - id: G013
+    question: "Show count exposure split by gender for Universal Life."
+    intent: EXPLORATORY
+    sql: "SELECT gender, SUM(exposure_count) AS exposure FROM gold_ae_results WHERE product_code = 'UL' GROUP BY gender ORDER BY gender LIMIT 10"
+    expected_result: {columns: [gender, exposure], row_count: 2, value_check: false}
+
+  - id: G014
+    question: "Actual critical-illness claims grouped by illness code for Term."
+    intent: EXPLORATORY
+    sql: "SELECT illness_code, SUM(actual_ci_claims) AS claims FROM gold_ae_results WHERE product_code = 'TERM' AND illness_code IS NOT NULL GROUP BY illness_code ORDER BY illness_code LIMIT 50"
+    expected_result: {columns: [illness_code, claims], row_count: 10, value_check: false}
+
+  - id: G015
+    question: "Distribute Whole Life actual deaths across attained age bands."
+    intent: EXPLORATORY
+    sql: "SELECT attained_age_band, SUM(actual_deaths_count) AS deaths FROM gold_ae_results WHERE product_code = 'WL' GROUP BY attained_age_band ORDER BY attained_age_band LIMIT 50"
+    expected_result: {columns: [attained_age_band, deaths], row_count: 12, value_check: false}
+
+  - id: G016
+    question: "Fixed-annuity actual surrenders by duration band, please."
+    intent: EXPLORATORY
+    sql: "SELECT duration_band, SUM(actual_surrenders) AS surrenders FROM gold_ae_results WHERE product_code = 'DA_FIXED' GROUP BY duration_band ORDER BY duration_band LIMIT 50"
+    expected_result: {columns: [duration_band, surrenders], row_count: 7, value_check: false}
+
+  - id: G017
+    question: "Count exposure for Term broken down by smoker status."
+    intent: EXPLORATORY
+    sql: "SELECT smoker_status, SUM(exposure_count) AS exposure FROM gold_ae_results WHERE product_code = 'TERM' GROUP BY smoker_status ORDER BY smoker_status LIMIT 10"
+    expected_result: {columns: [smoker_status, exposure], row_count: 2, value_check: false}
+
+  - id: G018
+    question: "Compare actual and expected deaths by gender for VUL."
+    intent: EXPLORATORY
+    sql: "SELECT gender, SUM(actual_deaths_count) AS actual, SUM(expected_deaths_count) AS expected FROM gold_ae_results WHERE product_code = 'VUL' GROUP BY gender ORDER BY gender LIMIT 10"
+    expected_result: {columns: [gender, actual, expected], row_count: 2, value_check: false}
+
+  - id: G019
+    question: "ULSG actual lapses grouped by distribution channel."
+    intent: EXPLORATORY
+    sql: "SELECT distribution_channel, SUM(actual_lapses) AS lapses FROM gold_ae_results WHERE product_code = 'ULSG' GROUP BY distribution_channel ORDER BY distribution_channel LIMIT 50"
+    expected_result: {columns: [distribution_channel, lapses], row_count: 4, value_check: false}
+
+  - id: G020
+    question: "Segment Universal Life count exposure by issue age band."
+    intent: EXPLORATORY
+    sql: "SELECT issue_age_band, SUM(exposure_count) AS exposure FROM gold_ae_results WHERE product_code = 'UL' GROUP BY issue_age_band ORDER BY issue_age_band LIMIT 50"
+    expected_result: {columns: [issue_age_band, exposure], row_count: 9, value_check: false}
+
+  # ---- Credibility-context questions ----
+  - id: G021
+    question: "Give the total Whole Life mortality deaths alongside total exposure."
+    intent: FACTUAL_LOOKUP
+    sql: "SELECT SUM(actual_deaths_count) AS deaths, SUM(exposure_count) AS exposure FROM gold_ae_results WHERE product_code = 'WL'"
+    expected_result: {columns: [deaths, exposure], row_count: 1, value_check: true}
+
+  - id: G022
+    question: "Show the count-basis A/E with its credibility Z by duration band for Universal Life mortality."
+    intent: EXPLORATORY
+    sql: "SELECT duration_band, ae_count, credibility_z FROM gold_ae_results WHERE product_code = 'UL' AND ae_count IS NOT NULL ORDER BY duration_band LIMIT 100"
+    expected_result: {columns: [duration_band, ae_count, credibility_z], row_count: 50, value_check: false}
+
+  - id: G023
+    question: "List the lapse A/E with its lapse credibility for Term by duration band."
+    intent: EXPLORATORY
+    sql: "SELECT duration_band, ae_lapse, credibility_z_lapse FROM gold_ae_results WHERE product_code = 'TERM' AND ae_lapse IS NOT NULL ORDER BY duration_band LIMIT 100"
+    expected_result: {columns: [duration_band, ae_lapse, credibility_z_lapse], row_count: 50, value_check: false}
+
+  - id: G024
+    question: "What is the highest mortality credibility Z among Whole Life cells?"
+    intent: FACTUAL_LOOKUP
+    sql: "SELECT MAX(credibility_z) AS max_z FROM gold_ae_results WHERE product_code = 'WL'"
+    expected_result: {columns: [max_z], row_count: 1, value_check: true}
+
+  - id: G025
+    question: "Average count-basis A/E across Universal Life cells, weighted equally."
+    intent: FACTUAL_LOOKUP
+    sql: "SELECT AVG(ae_count) AS avg_ae FROM gold_ae_results WHERE product_code = 'UL' AND ae_count IS NOT NULL"
+    expected_result: {columns: [avg_ae], row_count: 1, value_check: true}
+
+  - id: G026
+    question: "Give the total CI exposure and actual CI claims for Whole Life."
+    intent: FACTUAL_LOOKUP
+    sql: "SELECT SUM(ci_exposure_count) AS ci_exposure, SUM(actual_ci_claims) AS ci_claims FROM gold_ae_results WHERE product_code = 'WL'"
+    expected_result: {columns: [ci_exposure, ci_claims], row_count: 1, value_check: true}
+
+  # ---- TEV result queries ----
+  - id: G027
+    question: "Show the baseline embedded value for each product."
+    intent: EXPLORATORY
+    sql: "SELECT product_code, tev FROM gold_tev_results WHERE sensitivity_id IS NULL ORDER BY product_code LIMIT 50"
+    expected_result: {columns: [product_code, tev], row_count: 6, value_check: false}
+
+  - id: G028
+    question: "Present PVFP and PVCoC by product at the baseline run."
+    intent: EXPLORATORY
+    sql: "SELECT product_code, pvfp, pvcoc FROM gold_tev_results WHERE sensitivity_id IS NULL ORDER BY product_code LIMIT 50"
+    expected_result: {columns: [product_code, pvfp, pvcoc], row_count: 6, value_check: false}
+
+  - id: G029
+    question: "What are the ANW components by product at baseline?"
+    intent: EXPLORATORY
+    sql: "SELECT product_code, anw, anw_required_capital, anw_free_surplus FROM gold_tev_results WHERE sensitivity_id IS NULL ORDER BY product_code LIMIT 50"
+    expected_result: {columns: [product_code, anw, anw_required_capital, anw_free_surplus], row_count: 6, value_check: false}
+
+  - id: G030
+    question: "Show value of in-force by product at baseline."
+    intent: EXPLORATORY
+    sql: "SELECT product_code, vif FROM gold_tev_results WHERE sensitivity_id IS NULL ORDER BY product_code LIMIT 50"
+    expected_result: {columns: [product_code, vif], row_count: 6, value_check: false}
+
+  - id: G031
+    question: "Report the change in TEV versus prior by product at baseline."
+    intent: EXPLORATORY
+    sql: "SELECT product_code, delta_tev FROM gold_tev_results WHERE sensitivity_id IS NULL ORDER BY product_code LIMIT 50"
+    expected_result: {columns: [product_code, delta_tev], row_count: 6, value_check: false}
+
+  - id: G032
+    question: "Which sensitivities were run for Whole Life and what TEV did each give?"
+    intent: EXPLORATORY
+    sql: "SELECT sensitivity_id, tev FROM gold_tev_results WHERE product_code = 'WL' ORDER BY sensitivity_id LIMIT 50"
+    expected_result: {columns: [sensitivity_id, tev], row_count: 12, value_check: false}
+
+  # ---- Time / run-comparison questions ----
+  - id: G033
+    question: "Total actual deaths by calendar year across every product."
+    intent: EXPLORATORY
+    sql: "SELECT calendar_year, SUM(actual_deaths_count) AS deaths FROM gold_ae_results GROUP BY calendar_year ORDER BY calendar_year LIMIT 50"
+    expected_result: {columns: [calendar_year, deaths], row_count: 8, value_check: false}
+
+  - id: G034
+    question: "Count exposure trend by policy year for Term."
+    intent: EXPLORATORY
+    sql: "SELECT policy_year, SUM(exposure_count) AS exposure FROM gold_ae_results WHERE product_code = 'TERM' GROUP BY policy_year ORDER BY policy_year LIMIT 100"
+    expected_result: {columns: [policy_year, exposure], row_count: 30, value_check: false}
+
+  - id: G035
+    question: "Actual versus expected deaths by calendar year for Universal Life."
+    intent: EXPLORATORY
+    sql: "SELECT calendar_year, SUM(actual_deaths_count) AS actual, SUM(expected_deaths_count) AS expected FROM gold_ae_results WHERE product_code = 'UL' GROUP BY calendar_year ORDER BY calendar_year LIMIT 50"
+    expected_result: {columns: [calendar_year, actual, expected], row_count: 8, value_check: false}
+
+  - id: G036
+    question: "Whole Life actual lapses across calendar years."
+    intent: EXPLORATORY
+    sql: "SELECT calendar_year, SUM(actual_lapses) AS lapses FROM gold_ae_results WHERE product_code = 'WL' GROUP BY calendar_year ORDER BY calendar_year LIMIT 50"
+    expected_result: {columns: [calendar_year, lapses], row_count: 8, value_check: false}

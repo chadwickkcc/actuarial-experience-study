@@ -1,0 +1,34 @@
+# EXAMPLE local governance credentials override.
+#
+# HOW TO USE:
+#   1. Copy this file to `config/governance_config.local.yaml` (same folder).
+#      cp config/governance_config.local.yaml.example config/governance_config.local.yaml
+#   2. Set your own `bootstrap_password` for each user below.
+#   3. Start the app (or run `python -m src.utils.db_init`) — the passwords are
+#      hashed (salted PBKDF2-SHA256) at seed time and the plaintext is discarded.
+#
+# The real `governance_config.local.yaml` is GIT-IGNORED and must never be
+# committed. The committed `governance_config.yaml` ships only the placeholder
+# "<set at first run>", which produces an unusable hash (nobody can log in) until
+# you supply real passwords here.
+#
+# These four seed users map to the four governance roles. CHANGE THE PASSWORDS
+# before any non-prototype use.
+
+users:
+  - username: a.analyst
+    display_name: A. Analyst
+    role: analyst
+    bootstrap_password: "CHANGE_ME_analyst"
+  - username: j.junior
+    display_name: J. Junior
+    role: junior_actuary
+    bootstrap_password: "CHANGE_ME_junior"
+  - username: s.senior
+    display_name: S. Senior
+    role: senior_actuary
+    bootstrap_password: "CHANGE_ME_senior"
+  - username: c.chief
+    display_name: C. Chief
+    role: chief_actuary
+    bootstrap_password: "CHANGE_ME_chief"

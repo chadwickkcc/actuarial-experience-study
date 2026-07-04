@@ -1,0 +1,193 @@
+# YAML mapping config for Deferred Annuity (DA_FIXED, DA_FIA, DA_VA) products.
+# Maps raw CSV column names to canonical silver_annuity_contracts column names.
+# Primary key is contract_id (not policy_id) for annuities.
+# Annuities do not carry CI riders.
+
+source_product: DA
+source_table: bronze_annuity_contracts
+target_table: silver_annuity_contracts
+primary_key: contract_id   # overrides default policy_id
+
+# Surrender-charge penalty schedule (declining %), keyed by schedule length. Used by the
+# synthetic generator to populate surrender_charge_schedule / surrender_charge_remaining.
+# This is the CHARGE schedule (a penalty %), distinct from the behavioural surrender-*rate*
+# curve that drives the surrender simulation. Charge is 0% once the schedule expires.
+# Tunable here without code changes (per the project's "product logic in YAML" rule).
+surrender_charge_schedules:
+  "7yr":
+    - {year: 1, rate: 0.07}
+    - {year: 2, rate: 0.06}
+    - {year: 3, rate: 0.05}
+    - {year: 4, rate: 0.04}
+    - {year: 5, rate: 0.03}
+    - {year: 6, rate: 0.02}
+    - {year: 7, rate: 0.01}
+  "10yr":
+    - {year: 1,  rate: 0.08}
+    - {year: 2,  rate: 0.07}
+    - {year: 3,  rate: 0.06}
+    - {year: 4,  rate: 0.05}
+    - {year: 5,  rate: 0.04}
+    - {year: 6,  rate: 0.03}
+    - {year: 7,  rate: 0.03}
+    - {year: 8,  rate: 0.02}
+    - {year: 9,  rate: 0.01}
+    - {year: 10, rate: 0.01}
+
+field_mappings:
+  - source_field: contract_id
+    target_field: contract_id
+    target_type: VARCHAR
+
+  - source_field: product_code
+    target_field: product_code
+    target_type: VARCHAR
+
+  - source_field: product_type
+    target_field: product_type
+    target_type: VARCHAR
+
+  - source_field: premium_type
+    target_field: premium_type
+    target_type: VARCHAR
+
+  - source_field: issue_date
+    target_field: issue_date
+    target_type: DATE
+    date_format: "%Y-%m-%d"
+
+  - source_field: date_of_birth
+    target_field: date_of_birth
+    target_type: DATE
+    date_format: "%Y-%m-%d"
+
+  - source_field: issue_age_anb
+    target_field: issue_age_anb
+    target_type: INTEGER
+
+  - source_field: gender
+    target_field: gender
+    target_type: VARCHAR
+
+  - source_field: market_type
+    target_field: market_type
+    target_type: VARCHAR
+
+  - source_field: account_value
+    target_field: account_value
+    target_type: DOUBLE
+
+  - source_field: benefit_base
+    target_field: benefit_base
+    target_type: DOUBLE
+    nullable: true
+
+  - source_field: surrender_charge_schedule
+    target_field: surrender_charge_schedule
+    target_type: VARCHAR
+    nullable: true
+
+  - source_field: surrender_charge_remaining
+    target_field: surrender_charge_remaining
+    target_type: DOUBLE
+
+  - source_field: surrender_charge_year
+    target_field: surrender_charge_year
+    target_type: INTEGER
+
+  - source_field: free_withdrawal_allowance_pct
+    target_field: free_withdrawal_allowance_pct
+    target_type: DOUBLE
+
+  - source_field: guaranteed_min_interest_rate
+    target_field: guaranteed_min_interest_rate
+    target_type: DOUBLE
+
+  - source_field: credited_rate_current
+    target_field: credited_rate_current
+    target_type: DOUBLE
+
+  - source_field: market_value_adjustment_flag
+    target_field: market_value_adjustment_flag
+    target_type: BOOLEAN
+
+  - source_field: glwb_elected_flag
+    target_field: glwb_elected_flag
+    target_type: BOOLEAN
+
+  - source_field: gmdb_type
+    target_field: gmdb_type
+    target_type: VARCHAR
+    nullable: true
+
+  - source_field: glwb_withdrawal_rate_pct
+    target_field: glwb_withdrawal_rate_pct
+    target_type: DOUBLE
+    nullable: true
+
+  - source_field: glwb_utilization_status
+    target_field: glwb_utilization_status
+    target_type: VARCHAR
+
+  - source_field: rider_fee_annual_rate
+    target_field: rider_fee_annual_rate
+    target_type: DOUBLE
+
+  - source_field: moneyness_ratio
+    target_field: moneyness_ratio
+    target_type: DOUBLE
+    nullable: true
+
+  - source_field: is_surrender_charge_expired_flag
+    target_field: is_surrender_charge_expired_flag
+    target_type: BOOLEAN
+
+  - source_field: status_code
+    target_field: status_code
+    target_type: VARCHAR
+
+  - source_field: termination_date
+    target_field: termination_date
+    target_type: DATE
+    date_format: "%Y-%m-%d"
+    nullable: true
+
+  - source_field: termination_cause_code
+    target_field: termination_cause_code
+    target_type: VARCHAR
+    nullable: true
+
+  - source_field: distribution_channel
+    target_field: distribution_channel
+    target_type: VARCHAR
+    nullable: true
+
+  - source_field: issue_state
+    target_field: issue_state
+    target_type: VARCHAR
+    nullable: true
+
+code_translations:
+  status_code:
+    "IF": "IF"
+    "SURRENDER": "SURRENDER"
+    "PARTIAL_WITHDRAWAL": "PARTIAL_WITHDRAWAL"
+    "ANNUITIZED": "ANNUITIZED"
+    "DEATH": "DEATH"
+
+  termination_cause_code:
+    "FULL_SURRENDER": "FULL_SURRENDER"
+    "ANNUITIZATION": "ANNUITIZATION"
+    "DEATH_BENEFIT_CLAIM": "DEATH_BENEFIT_CLAIM"
+    "MATURITY": "MATURITY"
+
+  glwb_utilization_status:
+    "WAITING": "WAITING"
+    "ACTIVE": "ACTIVE"
+    "DEPLETED": "DEPLETED"
+
+valid_market_types:
+  - NQ
+  - TRAD_IRA
+  - ROTH_IRA
+  - QUAL

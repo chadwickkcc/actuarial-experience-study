@@ -1,0 +1,189 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>{{ title }} — {{ artifact_id }}</title>
+<style>
+  body { font-family: -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif;
+         margin: 2rem; color: #1a1a1a; }
+  h1 { font-size: 1.5rem; margin-bottom: 0.2rem; }
+  h2 { font-size: 1.1rem; margin-top: 1.6rem; border-bottom: 2px solid #ddd;
+       padding-bottom: 0.2rem; }
+  .meta { color: #555; font-size: 0.9rem; }
+  .attest { background: #f4f7fb; border-left: 4px solid #3b6fb5; padding: 0.6rem 0.9rem;
+            margin: 0.6rem 0; font-style: italic; }
+  table { border-collapse: collapse; width: 100%; margin-top: 0.5rem; font-size: 0.85rem; }
+  th, td { border: 1px solid #ccc; padding: 0.35rem 0.5rem; text-align: left;
+           vertical-align: top; }
+  th { background: #eef1f5; }
+  .current { font-weight: 700; }
+  .none { color: #888; font-style: italic; }
+  code { background: #f2f2f2; padding: 0 0.2rem; }
+  .warn { background: #fdf3e7; border-left: 4px solid #d98c1f; padding: 0.6rem 0.9rem;
+          margin: 0.6rem 0; color: #7a4b06; }
+  .warn strong { color: #7a4b06; }
+</style>
+</head>
+<body>
+
+<h1>{{ title }}</h1>
+<p class="meta">
+  Artifact: <code>{{ artifact_type }}</code> &nbsp;|&nbsp; ID: <code>{{ artifact_id }}</code>
+  &nbsp;|&nbsp; Generated: {{ generated_ts }}
+</p>
+<p class="meta">
+  {% if artifact_type == "ASSUMPTION_SET" %}
+  This governance/compliance pack assembles the version lineage, sign-offs, audit trail,
+  per-change rationale, and reproducibility of an approved assumption set into one
+  defensible document (FR-4-24). It supports ASOP 41 documentation expectations.
+  {% else %}
+  This governance/compliance pack assembles the sign-offs, audit trail, and supporting
+  reports of an approved study run into one defensible document (FR-4-24). It supports
+  ASOP 41 documentation expectations.
+  {% endif %}
+</p>
+
+{% if attestation_statement %}
+<div class="attest">Attestation on file: “{{ attestation_statement }}”</div>
+{% endif %}
+
+{% if not_yet_effective %}
+<div class="warn">
+  <strong>⚠ Not yet effective / not the live set.</strong> This assumption set is APPROVED
+  but has no effective date range, so it is <em>not</em> the currently-live assumption set.
+  Chain approval does not put a set in force — run <em>Publish</em> on the Assumption
+  Lineage page to record its effective range and supersede the prior version.
+</div>
+{% endif %}
+
+{% if source_run_unfit %}
+<div class="warn">
+  <strong>⚠ Source study run not governance-approved.</strong> The source study run
+  {% if source_study_run_id %}<code>{{ source_study_run_id }}</code>{% endif %} behind this
+  assumption set is not yet "fit for assumption-setting" (its sign-off chain is incomplete).
+  This pack documents the assumption set's own approval only; the underlying experience
+  study has not itself been signed off.
+</div>
+{% endif %}
+
+{# Section numbers are assigned sequentially over the sections actually rendered, so a
+   study-run pack (no lineage/rationale/reproducibility) numbers 1-2-3 rather than
+   skipping the assumption-set-only sections. #}
+{% set ns = namespace(n=0) %}
+
+{% if artifact_type == "ASSUMPTION_SET" %}
+{% set ns.n = ns.n + 1 %}
+<h2>{{ ns.n }}. Version Lineage</h2>
+{% if lineage %}
+<table>
+  <tr><th>Version</th><th>Assumption Set ID</th><th>Status</th>
+      <th>Effective From</th><th>Effective To</th></tr>
+  {% for v in lineage %}
+  <tr{% if v.is_current %} class="current"{% endif %}>
+    <td>{{ v.version }}{% if v.is_current %} (this){% endif %}</td>
+    <td><code>{{ v.assumption_set_id }}</code></td>
+    <td>{{ v.status }}</td>
+    <td>{{ v.effective_from or "—" }}</td>
+    <td>{{ v.effective_to or "—" }}</td>
+  </tr>
+  {% endfor %}
+</table>
+{% else %}
+<p class="none">No lineage recorded.</p>
+{% endif %}
+{% endif %}
+
+{% set ns.n = ns.n + 1 %}
+<h2>{{ ns.n }}. Sign-Offs &amp; Attestations</h2>
+{% if signoffs %}
+<table>
+  <tr><th>Level</th><th>Required Role</th><th>Actor</th><th>Actor Role</th>
+      <th>Decision</th><th>ΔTEV</th><th>Timestamp</th><th>Comment</th><th>Attestation</th></tr>
+  {% for s in signoffs %}
+  <tr>
+    <td>{{ s.chain_level }}</td>
+    <td>{{ s.required_role }}</td>
+    <td>{{ s.actor }}</td>
+    <td>{{ s.actor_role }}</td>
+    <td>{{ s.decision }}</td>
+    <td>{{ s.delta_tev }}</td>
+    <td>{{ s.signoff_ts }}</td>
+    <td>{{ s.comment }}</td>
+    <td>{{ s.attestation_text }}</td>
+  </tr>
+  {% endfor %}
+</table>
+{% else %}
+<p class="none">No sign-offs recorded.</p>
+{% endif %}
+
+{% set ns.n = ns.n + 1 %}
+<h2>{{ ns.n }}. Audit Trail Excerpt</h2>
+{% if audit %}
+<table>
+  <tr><th>Timestamp</th><th>Source</th><th>Actor</th><th>Role</th>
+      <th>Action</th><th>Detail</th></tr>
+  {% for e in audit %}
+  <tr>
+    <td>{{ e.ts }}</td>
+    <td>{{ e.source }}</td>
+    <td>{{ e.actor }}</td>
+    <td>{{ e.role }}</td>
+    <td>{{ e.action }}</td>
+    <td>{{ e.detail }}</td>
+  </tr>
+  {% endfor %}
+</table>
+{% else %}
+<p class="none">No audit events recorded for this artifact.</p>
+{% endif %}
+
+{% if artifact_type == "ASSUMPTION_SET" %}
+{% set ns.n = ns.n + 1 %}
+<h2>{{ ns.n }}. Per-Change Rationale (vs. parent version)</h2>
+{% if rationale %}
+<table>
+  <tr><th>Decrement</th><th>Dimension</th><th>Old</th><th>New</th><th>Rationale</th></tr>
+  {% for r in rationale %}
+  <tr>
+    <td>{{ r.decrement }}</td>
+    <td>{{ r.dimension }}</td>
+    <td>{{ r.old }}</td>
+    <td>{{ r.new }}</td>
+    <td>{{ r.rationale }}</td>
+  </tr>
+  {% endfor %}
+</table>
+{% else %}
+<p class="none">No cell-level changes vs. the parent version (or no parent).</p>
+{% endif %}
+
+{% set ns.n = ns.n + 1 %}
+<h2>{{ ns.n }}. Reproducibility Stamp</h2>
+{% if repro %}
+<table>
+  {% for k, v in repro.items() %}
+  <tr><th>{{ k }}</th><td>{{ v if v is not none else "—" }}</td></tr>
+  {% endfor %}
+</table>
+{% else %}
+<p class="none">No reproducibility stamp available.</p>
+{% endif %}
+{% endif %}
+
+{% set ns.n = ns.n + 1 %}
+<h2>{{ ns.n }}. Supporting Reports</h2>
+{% if reports %}
+<ul>
+  {% for rp in reports %}
+  <li>{{ rp.label }} — <code>{{ rp.reference }}</code></li>
+  {% endfor %}
+</ul>
+{% else %}
+<p class="none">No supporting reports linked.</p>
+{% endif %}
+
+<p class="meta">Source study run: <code>{{ source_study_run_id or "—" }}</code></p>
+
+</body>
+</html>

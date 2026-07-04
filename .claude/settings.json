@@ -1,0 +1,21 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(python3 -c ' *)",
+      "Bash(python3 -m py_compile src/aggregation/aggregator.py)",
+      "Bash(python3 -m py_compile ui/pages/04_mortality_ae.py)",
+      "Bash(python3 -m py_compile ui/pages/05_lapse_ae.py)",
+      "Bash(python3 -c \"import src.utils.db_init as m; print\\([x for x in dir\\(m\\) if not x.startswith\\('_'\\)]\\)\")",
+      "mcp__plugin_claude-mem_mcp-search__get_observations",
+      "Bash(python -c ' *)",
+      "Bash(python3 scripts/migrate_envelope_schema.py --confirm)",
+      "mcp__plugin_context-mode_context-mode__ctx_stats",
+      "Bash(python3 -c 'import ast, sys *)",
+      "Bash(python3 -m py_compile src/data_quality/checks/term_checks.py)",
+      "Bash(python3 -m py_compile src/data_quality/checks/vul_checks.py)",
+      "Bash(python3 -m py_compile src/data_quality/checks/annuity_checks.py)",
+      "Bash(python3 -m py_compile ui/pages/02_data_quality.py)",
+      "Bash(python3 -m py_compile ui/pages/01_study_setup.py)"
+    ]
+  }
+}

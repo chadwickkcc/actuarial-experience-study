@@ -1,0 +1,60 @@
+# =============================================================================
+# config/feature_to_assumption.yaml — feature → actuarial-meaning map (FR-3A-39)
+# -----------------------------------------------------------------------------
+# Translates every GBM/GLM model covariate to its actuarial meaning and the
+# assumption dimension it informs. Keyed by decrement, then by the raw covariate
+# name (the gold_ae_results column). generate_shap_artifacts (src/ai/gbm/explain.py)
+# selects the entry for the model's decrement and embeds it in the SHAP-JSON
+# (§D.6) so explanations — and the Session-19 explain_shap_results Skill — speak
+# in actuarial language and NEVER emit raw feature names.
+#
+# The same covariate intentionally carries a different assumption_dimension per
+# decrement (e.g. duration_band informs select-period mortality for MORTALITY but
+# lapse-by-duration for LAPSE).
+# =============================================================================
+feature_to_assumption:
+
+  MORTALITY:
+    product_code:
+      actuarial_term: "product line"
+      assumption_dimension: "product-level mortality basis"
+    gender:
+      actuarial_term: "sex"
+      assumption_dimension: "sex-distinct mortality"
+    smoker_status:
+      actuarial_term: "smoker status"
+      assumption_dimension: "smoker-distinct mortality"
+    risk_class:
+      actuarial_term: "underwriting risk class"
+      assumption_dimension: "preferred-class mortality differentials"
+    attained_age_band:
+      actuarial_term: "attained age"
+      assumption_dimension: "attained-age mortality curve"
+    duration_band:
+      actuarial_term: "policy duration"
+      assumption_dimension: "select-period mortality / wear-off"
+    premium_jump_ratio_band:
+      actuarial_term: "post-level-term premium jump"
+      assumption_dimension: "post-level-term anti-selection mortality"
+
+  LAPSE:
+    product_code:
+      actuarial_term: "product line"
+      assumption_dimension: "product-level lapse basis"
+    duration_band:
+      actuarial_term: "policy duration"
+      assumption_dimension: "lapse-by-duration"
+    premium_jump_ratio_band:
+      actuarial_term: "post-level-term premium jump"
+      assumption_dimension: "shock-lapse at post-level-term"
+
+  CI_INCIDENCE:
+    attained_age_band:
+      actuarial_term: "attained age"
+      assumption_dimension: "age-banded CI incidence"
+    gender:
+      actuarial_term: "sex"
+      assumption_dimension: "sex-distinct CI incidence"
+    smoker_status:
+      actuarial_term: "smoker status"
+      assumption_dimension: "smoker-distinct CI incidence"

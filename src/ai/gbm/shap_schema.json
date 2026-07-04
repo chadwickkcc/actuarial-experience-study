@@ -1,0 +1,93 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "experience-study/shap-json/1.0",
+  "title": "SHAP-JSON contract (Tech Spec v2.0.1 §D.6)",
+  "description": "Authoritative contract between the SHAP producer (src/ai/gbm/explain.py generate_shap_artifacts) and the consumer (the Session-19 explain_shap_results Skill, src/ai/skills/shap_explain.py). One file per fitted GBM under data/ai_models/shap/{model_id}.json. feature_names carry the actuarial-meaningful covariate names, never raw one-hot columns (FR-3A-39). Contributions/prediction are in the model's margin (link) space; additivity holds: base_value + Σ shap_value ≈ prediction.",
+  "supported_schema_versions": ["1.0"],
+  "type": "object",
+  "required": [
+    "schema_version", "model_id", "decrement", "product_code",
+    "feature_names", "feature_to_assumption", "global_summary", "cells", "dependence"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": { "type": "string", "enum": ["1.0"] },
+    "model_id": { "type": "string" },
+    "decrement": { "type": "string", "enum": ["MORTALITY", "LAPSE", "CI_INCIDENCE"] },
+    "product_code": { "type": "string" },
+    "feature_names": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "The model's covariates in their actuarial-meaningful names (e.g. duration_band), never raw one-hot columns."
+    },
+    "feature_to_assumption": {
+      "type": "object",
+      "description": "Per-feature actuarial mapping (FR-3A-39). Every key MUST appear in feature_names.",
+      "additionalProperties": {
+        "type": "object",
+        "required": ["actuarial_term", "assumption_dimension"],
+        "properties": {
+          "actuarial_term": { "type": "string" },
+          "assumption_dimension": { "type": "string" }
+        }
+      }
+    },
+    "global_summary": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["feature", "mean_abs_shap"],
+        "properties": {
+          "feature": { "type": "string" },
+          "mean_abs_shap": { "type": "number" }
+        }
+      }
+    },
+    "cells": {
+      "type": "array",
+      "description": "Per output-grain cell waterfall. base_value + Σ contributions.shap_value ≈ prediction (within 1e-6). grain_key keys equal the configured output grain.",
+      "items": {
+        "type": "object",
+        "required": ["grain_key", "base_value", "prediction", "contributions"],
+        "properties": {
+          "grain_key": { "type": "object", "additionalProperties": { "type": "string" } },
+          "base_value": { "type": "number" },
+          "prediction": { "type": "number" },
+          "contributions": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": ["feature", "shap_value", "feature_value"],
+              "properties": {
+                "feature": { "type": "string" },
+                "shap_value": { "type": "number" },
+                "feature_value": { "type": "string" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "dependence": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["feature", "points"],
+        "properties": {
+          "feature": { "type": "string" },
+          "points": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": ["feature_value", "shap_value"],
+              "properties": {
+                "feature_value": { "type": "string" },
+                "shap_value": { "type": "number" }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

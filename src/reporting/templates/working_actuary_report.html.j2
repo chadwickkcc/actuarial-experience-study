@@ -1,0 +1,288 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Working Actuary Report — {{ run_id[:8] }}</title>
+<style>
+  body { font-family: 'Segoe UI', Arial, sans-serif; margin: 40px; color: #2c3e50; font-size: 14px; }
+  h1 { color: #1a5276; border-bottom: 3px solid #1a5276; padding-bottom: 8px; }
+  h2 { color: #1a5276; border-bottom: 1px solid #d5d8dc; padding-bottom: 4px; margin-top: 32px; }
+  h3 { color: #2471a3; margin-top: 20px; }
+  table { border-collapse: collapse; width: 100%; margin: 12px 0; font-size: 13px; }
+  th { background: #1a5276; color: white; padding: 6px 10px; text-align: left; }
+  td { border: 1px solid #d5d8dc; padding: 5px 10px; }
+  tr:nth-child(even) { background: #f8f9fa; }
+  .badge-pass { background: #1e8449; color: white; padding: 2px 8px; border-radius: 3px; font-size: 11px; }
+  .badge-fail { background: #c0392b; color: white; padding: 2px 8px; border-radius: 3px; font-size: 11px; }
+  .badge-warn { background: #e67e22; color: white; padding: 2px 8px; border-radius: 3px; font-size: 11px; }
+  .metric-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin: 16px 0; }
+  .metric-card { background: #eaf4fb; border-left: 4px solid #2980b9; padding: 10px 14px; border-radius: 4px; }
+  .metric-label { font-size: 11px; color: #666; text-transform: uppercase; letter-spacing: 0.5px; }
+  .metric-value { font-size: 22px; font-weight: bold; color: #1a5276; }
+  .spec-pass { color: #1e8449; font-weight: bold; }
+  .spec-fail { color: #c0392b; font-weight: bold; }
+  .footer { margin-top: 48px; padding-top: 12px; border-top: 1px solid #d5d8dc; font-size: 11px; color: #888; }
+  .section-note { background: #fef9e7; border-left: 4px solid #f0b429; padding: 8px 14px; margin: 8px 0; font-size: 12px; }
+  .ae-high { background: #fadbd8 !important; }
+  .ae-low  { background: #d5e8d4 !important; }
+  .ae-ok   { background: #d5e8d4 !important; }
+</style>
+</head>
+<body>
+
+<h1>Working Actuary Report — Experience Study</h1>
+
+<table style="width:auto; margin-bottom:20px;">
+  <tr><td><strong>Study Run ID</strong></td><td>{{ run_id }}</td></tr>
+  <tr><td><strong>Generated</strong></td><td>{{ generated_ts }}</td></tr>
+  <tr><td><strong>Study Period</strong></td><td>{{ study_start }} — {{ study_end }}</td></tr>
+  <tr><td><strong>Products</strong></td><td>{{ products }}</td></tr>
+  <tr><td><strong>Exposure Method</strong></td><td>{{ exposure_method }}</td></tr>
+  <tr><td><strong>Mortality Reference Table</strong></td><td>{{ mortality_table }}</td></tr>
+  <tr><td><strong>Lapse Reference Table</strong></td><td>{{ lapse_table }}</td></tr>
+  <tr><td><strong>CI Incidence Table</strong></td><td>{{ ci_table }}</td></tr>
+  <tr><td><strong>Credibility Method</strong></td><td>{{ credibility_method }}</td></tr>
+</table>
+
+<!-- HEADLINE METRICS -->
+<h2>1. Headline Results</h2>
+<div class="metric-grid">
+  <div class="metric-card">
+    <div class="metric-label">Exposure Years</div>
+    <div class="metric-value">{{ "{:,.0f}".format(total_exposure) }}</div>
+  </div>
+  <div class="metric-card">
+    <div class="metric-label">Actual Deaths</div>
+    <div class="metric-value">{{ "{:,}".format(total_deaths) }}</div>
+  </div>
+  <div class="metric-card">
+    <div class="metric-label">Mortality A/E (Count)</div>
+    <div class="metric-value {% if 0.85 <= ae_count <= 1.00 %}spec-pass{% else %}spec-fail{% endif %}">
+      {{ "%.3f"|format(ae_count) }}
+    </div>
+  </div>
+  <div class="metric-card">
+    <div class="metric-label">Mortality A/E (Amount)</div>
+    <div class="metric-value {% if 0.80 <= ae_amount <= 0.95 %}spec-pass{% else %}spec-fail{% endif %}">
+      {{ "%.3f"|format(ae_amount) if ae_amount else "N/A" }}
+    </div>
+  </div>
+</div>
+
+<div class="metric-grid">
+  <div class="metric-card">
+    <div class="metric-label">Actual Lapses</div>
+    <div class="metric-value">{{ "{:,}".format(total_lapses) }}</div>
+  </div>
+  <div class="metric-card">
+    <div class="metric-label">Lapse A/E</div>
+    <div class="metric-value {% if 0.95 <= ae_lapse <= 1.05 %}spec-pass{% else %}spec-fail{% endif %}">
+      {{ "%.3f"|format(ae_lapse) if ae_lapse else "N/A" }}
+    </div>
+  </div>
+  <div class="metric-card">
+    <div class="metric-label">Actual CI Claims</div>
+    <div class="metric-value">{{ "{:,}".format(total_ci_claims) }}</div>
+  </div>
+  <div class="metric-card">
+    <div class="metric-label">CI A/E (Aggregate)</div>
+    <div class="metric-value {% if 0.90 <= ae_ci <= 1.10 %}spec-pass{% else %}spec-fail{% endif %}">
+      {{ "%.3f"|format(ae_ci) if ae_ci else "N/A" }}
+    </div>
+  </div>
+</div>
+
+<!-- DQ SUMMARY -->
+<h2>2. Data Quality Summary</h2>
+{% if dq_summary %}
+<table>
+  <tr><th>Product</th><th>Total Records</th><th>Passed</th><th>Quarantined</th><th>DQ Score</th><th>Status</th></tr>
+  {% for row in dq_summary %}
+  <tr>
+    <td>{{ row.product_code }}</td>
+    <td>{{ "{:,}".format(row.total_records) }}</td>
+    <td>{{ "{:,}".format(row.records_passed) }}</td>
+    <td>{{ "{:,}".format(row.records_quarantined) }}</td>
+    <td>{{ "%.2f"|format(row.dq_score_pct) }}%</td>
+    <td>{% if not row.critical_failure %}<span class="badge-pass">PASS</span>{% else %}<span class="badge-fail">FAIL</span>{% endif %}</td>
+  </tr>
+  {% endfor %}
+</table>
+{% else %}
+<p>No DQ summary available for this run.</p>
+{% endif %}
+
+<!-- IN-FORCE RECONCILIATION -->
+<h2>3. In-Force Reconciliation</h2>
+{% if recon_rows %}
+<table>
+  <tr><th>Year</th><th>Beg IF</th><th>New Issues</th><th>Deaths</th><th>Lapses</th><th>End IF</th><th>Diff</th><th>Pass</th></tr>
+  {% for row in recon_rows %}
+  <tr>
+    <td>{{ row.calendar_year }}</td>
+    <td>{{ "{:,}".format(row.beg_if_count) }}</td>
+    <td>{{ "{:,}".format(row.new_issues_count) }}</td>
+    <td>{{ "{:,}".format(row.deaths_count) }}</td>
+    <td>{{ "{:,}".format(row.lapses_count) }}</td>
+    <td>{{ "{:,}".format(row.end_if_count) }}</td>
+    <td>{{ row.recon_diff_count }}</td>
+    <td>{% if row.recon_passes %}<span class="badge-pass">PASS</span>{% else %}<span class="badge-fail">FAIL</span>{% endif %}</td>
+  </tr>
+  {% endfor %}
+</table>
+{% else %}
+<p>No reconciliation data available.</p>
+{% endif %}
+
+<!-- MORTALITY A/E BY GENDER AND RISK CLASS -->
+<h2>4. Mortality A/E Results</h2>
+<h3>4.1 By Gender</h3>
+{% if ae_by_gender %}
+<table>
+  <tr><th>Gender</th><th>Exposure (Yrs)</th><th>Actual Deaths</th><th>Expected Deaths</th><th>A/E (Count)</th><th>95% CI</th><th>Cred Z</th></tr>
+  {% for row in ae_by_gender %}
+  <tr {% if row.ae_count is not none and (row.ae_count < 0.85 or row.ae_count > 1.00) %}class="ae-high"{% endif %}>
+    <td>{{ row.gender }}</td>
+    <td>{{ "{:,.1f}".format(row.exposure_count) }}</td>
+    <td>{{ "{:,}".format(row.actual_deaths_count|int) }}</td>
+    <td>{{ "{:,.1f}".format(row.expected_deaths_count) }}</td>
+    <td>{{ "%.3f"|format(row.ae_count) if row.ae_count else "—" }}</td>
+    <td>{{ "[%.3f, %.3f]"|format(row.ci_lower_count, row.ci_upper_count) if row.ci_lower_count else "—" }}</td>
+    <td>{{ "%.3f"|format(row.credibility_z) if row.credibility_z else "—" }}</td>
+  </tr>
+  {% endfor %}
+</table>
+{% endif %}
+
+<h3>4.2 By Duration Band</h3>
+{% if ae_by_duration %}
+<table>
+  <tr><th>Duration Band</th><th>Exposure (Yrs)</th><th>Actual</th><th>Expected</th><th>A/E (Count)</th><th>Cred Z</th></tr>
+  {% for row in ae_by_duration %}
+  <tr>
+    <td>{{ row.duration_band }}</td>
+    <td>{{ "{:,.1f}".format(row.exposure_count) }}</td>
+    <td>{{ "{:,}".format(row.actual_deaths_count|int) }}</td>
+    <td>{{ "{:,.1f}".format(row.expected_deaths_count) }}</td>
+    <td>{{ "%.3f"|format(row.ae_count) if row.ae_count else "—" }}</td>
+    <td>{{ "%.3f"|format(row.credibility_z) if row.credibility_z else "—" }}</td>
+  </tr>
+  {% endfor %}
+</table>
+{% endif %}
+
+<!-- LAPSE A/E -->
+<h2>5. Lapse A/E Results</h2>
+<h3>5.1 By Policy Year</h3>
+{% if ae_lapse_by_year %}
+<table>
+  <tr><th>Policy Year</th><th>Actual Lapses</th><th>Expected Lapses</th><th>A/E</th><th>Cred Z</th></tr>
+  {% for row in ae_lapse_by_year %}
+  <tr>
+    <td>{{ row.policy_year }}</td>
+    <td>{{ "{:,}".format(row.actual_lapses|int) }}</td>
+    <td>{{ "{:,.1f}".format(row.expected_lapses) }}</td>
+    <td>{{ "%.3f"|format(row.ae_lapse) if row.ae_lapse else "—" }}</td>
+    <td>{{ "%.3f"|format(row.credibility_z_lapse) if row.credibility_z_lapse else "—" }}</td>
+  </tr>
+  {% endfor %}
+</table>
+{% endif %}
+
+<h3>5.2 PLT Shock Lapse by Premium Jump Ratio Band</h3>
+{% if ae_plt %}
+<table>
+  <tr><th>Jump Ratio Band</th><th>Actual Lapses</th><th>Expected Lapses</th><th>A/E</th></tr>
+  {% for row in ae_plt %}
+  <tr>
+    <td>{{ row.premium_jump_ratio_band }}</td>
+    <td>{{ "{:,}".format(row.actual_lapses|int) }}</td>
+    <td>{{ "{:,.1f}".format(row.expected_lapses) }}</td>
+    <td>{{ "%.3f"|format(row.ae_lapse) if row.ae_lapse else "—" }}</td>
+  </tr>
+  {% endfor %}
+</table>
+{% else %}
+<p>No PLT lapse data for this run.</p>
+{% endif %}
+
+<!-- CI INCIDENCE A/E -->
+<h2>6. CI Incidence A/E by Illness Code</h2>
+{% if ae_ci_by_illness %}
+<table>
+  <tr><th>Code</th><th>Illness</th><th>Actual Claims</th><th>Expected Claims</th><th>A/E</th><th>Cred Z</th></tr>
+  {% for row in ae_ci_by_illness %}
+  <tr>
+    <td>{{ row.illness_code }}</td>
+    <td>{{ row.illness_name }}</td>
+    <td>{{ "{:,}".format(row.actual_ci_claims|int) }}</td>
+    <td>{{ "{:,.1f}".format(row.expected_ci_claims) }}</td>
+    <td>{{ "%.3f"|format(row.ae_ci) if row.ae_ci else "—" }}</td>
+    <td>{{ "%.3f"|format(row.credibility_z_ci) if row.credibility_z_ci else "—" }}</td>
+  </tr>
+  {% endfor %}
+</table>
+{% else %}
+<p>No CI incidence data for this run.</p>
+{% endif %}
+
+<!-- CREDIBILITY SUMMARY -->
+<h2>7. Credibility Summary</h2>
+<div class="section-note">
+  {% if credibility_method == "Bühlmann" %}
+  <strong>Bühlmann Credibility (simplified fixed-K):</strong> Credibility constant K = 1,082.
+  Partial credibility Z = √(actual / (actual + 1082)).
+  {% else %}
+  <strong>Limited Fluctuation Credibility:</strong> Full credibility threshold = 1,082 expected claims
+  (5% error margin, 90% confidence). Partial credibility Z = min(1, √(actual/1082)).
+  {% endif %}
+  Credibility-weighted A/E = Z × cell_A/E + (1 − Z) × complement (prior A/E = 1.0).
+</div>
+<p>
+  Aggregate mortality credibility Z = {{ "%.3f"|format(agg_credibility_z) if agg_credibility_z else "N/A" }}.
+  {% if agg_credibility_z and agg_credibility_z >= 1.0 %}
+    <span class="spec-pass">Full credibility achieved.</span>
+  {% elif agg_credibility_z %}
+    <span class="spec-fail">Partial credibility only — supplement with prior assumption.</span>
+  {% endif %}
+</p>
+
+<!-- METHODOLOGY NOTES -->
+<h2>8. Methodology Notes</h2>
+<ul>
+  <li><strong>Exposure basis:</strong> Seriatim, anniversary-to-anniversary, SOA monograph (2016, rev. 2024).</li>
+  <li><strong>Mortality exposure:</strong> Annual/Balducci method — deaths receive full-year exposure in the year of death.</li>
+  <li><strong>Lapse exposure:</strong> SOA initial exposed-to-risk convention — extends to next policy anniversary or calendar year-end.</li>
+  <li><strong>Mortality reference:</strong> 2015 VBT Select &amp; Ultimate (ANB, sex-distinct, smoker-distinct).</li>
+  <li><strong>Lapse reference:</strong> SOA/LIMRA 2015-22 benchmark table.</li>
+  <li><strong>PLT shock lapse reference:</strong> SOA 2021 PLT benchmark by premium jump ratio band.</li>
+  <li><strong>CI incidence reference:</strong> Configurable incidence table keyed by (illness_code, gender, attained_age_band).</li>
+  <li><strong>Confidence intervals:</strong> Poisson — SE(A/E) = A/E / √(actual_claims); 95% CI = A/E ± 1.96 × SE. The lower bound can be <em>negative</em> for low-credibility cells (small actual count): this is a mathematical artifact of the symmetric normal approximation on sparse Poisson data and indicates that the true A/E is statistically indistinguishable from zero at the 95% level — not a data-quality error.</li>
+  <li><strong>Random seed:</strong> 42 (all synthetic data deterministic).</li>
+</ul>
+
+<!-- DQ OVERRIDE LOG -->
+<h2>9. Data Quality Override Log</h2>
+{% if dq_overrides %}
+<table>
+  <tr><th>Policy ID</th><th>Check ID</th><th>Justification</th><th>Actuary</th><th>Override TS</th></tr>
+  {% for row in dq_overrides %}
+  <tr>
+    <td>{{ row.policy_id }}</td>
+    <td>{{ row.check_id }}</td>
+    <td>{{ row.override_justification }}</td>
+    <td>{{ row.override_actuary_id }}</td>
+    <td>{{ row.override_ts }}</td>
+  </tr>
+  {% endfor %}
+</table>
+{% else %}
+<p>No DQ overrides for this run.</p>
+{% endif %}
+
+<div class="footer">
+  AI-Powered Actuarial Experience Study Tool — Phase 1A | Report generated {{ generated_ts }} |
+  Run ID: {{ run_id }}
+</div>
+</body>
+</html>

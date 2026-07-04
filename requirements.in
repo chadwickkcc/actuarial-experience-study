@@ -1,0 +1,35 @@
+# Top-level (loose) dependency declarations. Compile to the pinned lockfile with:
+#   uv pip compile requirements.in -o requirements.lock --generate-hashes --python-version 3.12
+# Builds install from requirements.lock only (FR-3A-04). statsmodels added in
+# Session 15 (GLM Assumption Engine); xgboost + shap added in Session 16 (GBM
+# Overlay + SHAP). The LLM/MCP stack (anthropic, openai, mcp) added in Session 18
+# (LLM Provider Abstraction + MCP Server) — requires Python >=3.10, so the
+# interpreter moved from 3.9 to 3.12 (uv-managed .venv) and the lockfile was
+# regenerated for 3.12 at that point.
+duckdb>=0.10.0
+pandas>=2.0.0
+numpy>=1.26.0
+pyarrow>=14.0.0
+great-expectations>=0.18.0
+streamlit>=1.32.0
+plotly>=5.20.0
+jinja2>=3.1.0
+pyyaml>=6.0.0
+scipy>=1.12.0
+sqlglot>=25.0.0,<26.0.0
+statsmodels>=0.14.0
+xgboost>=2.0.0
+shap>=0.44.0
+pytest>=8.0.0
+pytest-cov>=4.0.0
+pyliferisk>=1.5
+python-dotenv>=1.0.0
+# Phase 3b LLM/MCP stack (Session 18). anthropic + openai are lazy-imported
+# inside the provider modules; mcp provides the FastMCP stdio server.
+anthropic>=0.40.0
+openai>=1.50.0
+mcp>=1.0.0
+# Dev convenience: Streamlit uses watchdog for fast, OS-level file-change
+# auto-reload (falls back to slow polling without it). Does not affect
+# calculations, tests, or output.
+watchdog>=4.0.0
