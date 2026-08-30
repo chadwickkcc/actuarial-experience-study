@@ -19,7 +19,7 @@ One phase per session; gate green before proceeding; commit per phase.
 | P0 | Driver docs + baseline verification | S | ✅ COMPLETE (2026-08-30) |
 | P1 | Groundwork: re-home lifecycle, cut monitors, recon fix | M | ✅ COMPLETE (2026-08-30) |
 | P2 | Assumption workflow v2 + materiality + legacy retirement | L | ✅ COMPLETE (2026-08-30) |
-| P3 | TEV purge | L | — |
+| P3 | TEV purge | L | ✅ COMPLETE (2026-08-30) — eval re-lock pending owner |
 | P4 | Data expansion + regeneration | L | — |
 | P5 | Fraud module | L | — |
 | P6 | Management commentary | L | — |
@@ -32,8 +32,11 @@ One phase per session; gate green before proceeding; commit per phase.
 | Pre-refresh (P0 baseline) | 1368 passed, 6 skipped |
 | After P1 | 1369 passed, 6 skipped (+1 recon-scope test) |
 | After P2 | 1356 passed, 15 skipped, 0 failed (net −13: legacy approvals/envelope-summary tests retired, +9 new materiality/guard tests; +9 skips are TEV tests skipping on the fresh no-TEV-runs DB — deleted in P3 — plus 1 empty-assumption-sets lifecycle-UI skip) |
+| After P3 | 1212 passed, 7 skipped, 0 failed (−~150 TEV tests deleted; +2 TEV-absence standing guards; skips = 6 pre-existing baseline + 1 empty-assumption-sets lifecycle-UI) |
 
-**Owner checkpoints:** P3 eval re-lock (pending) · P8 UAT sign-off (pending).
+**Owner checkpoints:** P3 eval re-lock (**REQUESTED 2026-08-30** — golden 36→30
+[G027–G032 removed], adversarial A007 retargeted to `gold_ai_proposed_factors`;
+headers record "RE-LOCK PENDING") · P8 UAT sign-off (pending).
 
 ---
 
@@ -164,3 +167,60 @@ Full lifecycle now demoable TEV-free: create → edit → submit → 3-level sig
 **Next session: P3** (see `demo_refresh_prompts.md` → P3). Note for P3: the +9 skips
 (envelope ×7, MCP-TEV realdata ×1) disappear with the TEV test deletions; the
 lifecycle-UI skip clears once a demo assumption set exists again (P4/P8 flows).
+
+---
+
+## P3 — TEV purge — COMPLETE (2026-08-30; eval re-lock pending owner)
+
+**Deleted:** `src/tev/` (engine + products); `config/tev_config.yaml`;
+`Reference Materials/tev-methodology-report.md` (RAG source); stale
+`data/assumption_sets/*.yaml`; `scripts/_uat_tev_baseline.py` +
+`migrate_envelope_schema.py`; tests `test_tev_engine`(52)/`test_envelope`(27)/
+`test_model_points`(66)/`test_whatif_tev`(2) + 2 stress scripts; the TEV half of
+`src/reporting/generator.py` (~770 lines, 14 helpers + 2 report generators); the
+5 TEV dataclasses in `src/utils/types.py` (`ModelPointResult`, `TEVProductResult`,
+`TEVRunResult`, `SensitivityGridResult`, `EnvelopeResult`).
+
+**Assumption set slimmed:** the 9 economic scalars (`rdr`, earned rates, tax,
+expense inflation, `rc_pct_reserve`, acquisition/maintenance expenses) removed from
+the `AssumptionSet` dataclass, YAML serialisation, `create_assumption_set_from_ae_run`
+(which no longer takes `tev_config_path`), `deep_copy_assumption_set`, the DB
+INSERT, and the `gold_assumption_sets` DDL (5 columns dropped).
+`lineage.create_version` lost `tev_config_path`.
+
+**DDL:** `gold_model_points`, `gold_tev_run_log`, `gold_tev_results` (+indexes)
+dropped; DDL list renamed `_GOLD_ASSUMPTION_DDL`. 26 tables total.
+
+**AI surface:** allowlist loses `gold_tev_results` (19 cols) + `gold_model_points`;
+MCP tools 6 → 4 (`query_ae_results`, `query_results`, `list_available_dimensions`,
+`get_study_run_summary`), `TOOL_SCHEMA_VERSION` → **"3.0"**; TEV branch out of
+`execute_via_mcp` + digest + refusal text; `ui/skills_logic` fact packs lose
+`tev_baseline`/`delta_tev_vs_prior` (+`_tev_baseline` helper, `whatif_delta_tev`
+param); memo → **7 components** (`memo.md` v2.0, "TEV Impact" removed);
+`sql_generation.md` v2.0 / `synthesis_plan.md` v2.0 / `routing.md` v2.0 /
+`commentary.md` v3.0 (TEV cards/wording out); few-shots 43 → **35**; page-15
+what-if section + `run_whatif_tev`/`_prior_total_tev`/`build_whatif_assumption_set`
+deleted (the last was app-dead after the section went).
+
+**Eval sets (owner re-lock PENDING):** golden 36 → **30** (G027–G032 removed);
+adversarial A007 retargeted (`DELETE FROM gold_ai_proposed_factors`); both headers
+record the change + pending re-lock. Harness untouched; `--help`/smoke wired.
+
+**Compliance pack:** `_supporting_reports` loses the TEV-impact link (A/E reports only).
+
+**Tests:** ~150 TEV tests deleted; ~25 files edited (economic-kwarg fixture sweep,
+MCP 4-tool surface + schema "3.0", StubMCP `tev=` → generic `extra=`/`query_results`,
+digest fixture (digest-only figure now the aggregate credibility Z), retargeted
+single-table-routing/UNION/negative-number tests onto `gold_ai_proposed_factors` /
+`gold_inforce_reconciliation` (layered-defence coverage preserved, not deleted),
+boundary allowlist-shape asserts TEV tables ABSENT, golden-coverage test asserts
+`gold_tev_results` absent). +2 standing guards in `test_ai_architecture.py`
+(`src/tev` stays deleted; no source/config references retired TEV artifacts).
+
+**Live-DB rebuild:** fresh init (26 tables) + `_uat_rerun.py` (run `a79e520b…`,
+COMPLETE, 4.5s) + `_uat_ai_fit.py` (8 models, 146 proposed factors).
+
+**DoD:** gate green **1212 passed, 7 skipped, 0 failed**; eval CLI smoke wired;
+Streamlit boot HTTP 200; AI Analyst on 4 MCP tools.
+
+**Next session: P4** (see `demo_refresh_prompts.md` → P4).

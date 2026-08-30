@@ -113,15 +113,6 @@ def _seed_set(
         author_id=author,
         basis="best-estimate",
         source_study_run_id=source_run,
-        rdr=0.09,
-        earned_rate_ga=0.05,
-        earned_rate_sa=0.06,
-        tax_rate=0.21,
-        expense_inflation=0.025,
-        rc_pct_reserve={"TERM": 0.03},
-        acquisition_per_policy=350.0,
-        maintenance_per_policy=72.0,
-        maintenance_pct_premium=0.02,
         mortality_multipliers=[
             DecrementMultiplier(
                 product="TERM", gender="M", risk_class="STD_NS",

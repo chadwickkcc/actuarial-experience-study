@@ -36,10 +36,9 @@ chatbot:
     reports_dir: reports            # generated A/E + TEV reports (relative to project root)
     methodology_docs:               # shipped methodology documentation (not an external KB)
       - Reference Materials/Life Insurance Experience Studies End-to-End Methodology and Practical Guide.md
-      - Reference Materials/tev-methodology-report.md
     max_grounding_chars: 12000      # cap on assembled grounding text fed to the LLM
   allowlist:                        # FR-3B-32 — shared with MCP server; Gold tables -> permitted columns
-    # Canonical gold_ae_results / gold_tev_results columns (Tech Spec §A.3/§A.4).
+    # Canonical gold_ae_results columns (Tech Spec §A.3).
     # NO PII columns (no names, DOB, policy-holder identifiers) appear anywhere.
     gold_ae_results:
       - study_run_id
@@ -98,29 +97,6 @@ chatbot:
       - ci_lower_ci
       - ci_upper_ci
       - anti_selection_flag
-    gold_tev_results:
-      - tev_run_id
-      - assumption_set_id
-      - sensitivity_id
-      - product_code
-      - anw
-      - anw_required_capital
-      - anw_free_surplus
-      - pvfp
-      - pvcoc
-      - vif
-      - tev
-      - delta_tev
-      # Profit-source margin breakdown (governed-maximum widening, 2026-06-27).
-      - pvfp_mortality_margin
-      - pvfp_lapse_margin
-      - pvfp_ci_margin
-      - pvfp_investment_spread
-      - pvfp_expense_margin
-      - pvfp_other
-      - pvfp_tax
-      - pvfp_reserve_release
-      - pvfp_change
     # ----------------------------------------------------------------------- #
     # Governed-maximum data-surface widening (2026-06-27). These additional
     # Gold *results/summary* tables are exposed read-only through the gated MCP
@@ -162,35 +138,6 @@ chatbot:
       - records_halted
       - dq_score_pct
       - critical_failure
-    gold_model_points:
-      - tev_run_id
-      - product_code
-      - plan_code
-      - gender
-      - smoker_status
-      - risk_class
-      - issue_age_band
-      - attained_age_band
-      - wtd_avg_attained_age
-      - wtd_avg_issue_age
-      - wtd_avg_duration
-      - duration_band
-      - is_plt_flag
-      - premium_jump_ratio_band
-      - is_ulsg_flag
-      - av_band
-      - equity_allocation_band
-      - glwb_elected_flag
-      - surrender_charge_yr_band
-      - participating_flag
-      - policy_count
-      - face_amount_total
-      - reserve_total
-      - account_value_total
-      - premium_total
-      - ci_rider_count
-      - ci_rider_sa_total
-      - required_capital
     gold_ai_model_registry:        # which GLM/GBM models were fit + diagnostics
       - model_id
       - run_id

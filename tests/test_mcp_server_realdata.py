@@ -13,10 +13,8 @@ from src.utils.db_init import init_database
 from src.utils.sql_boundary import load_allowlist
 from src.ai.mcp_server.server import (
     get_study_run_summary_impl,
-    get_tev_run_summary_impl,
     list_available_dimensions_impl,
     query_ae_results_impl,
-    query_tev_results_impl,
 )
 
 
@@ -48,14 +46,6 @@ def test_query_ae_results_real(real_db, allowlist):
     assert out["row_count"] >= 1
 
 
-def test_query_tev_results_real(real_db, allowlist):
-    out = query_tev_results_impl(
-        "SELECT product_code, tev FROM gold_tev_results LIMIT 5",
-        db_path=real_db, allowlist=allowlist)
-    assert "error" not in out
-    assert out["columns"] == ["product_code", "tev"]
-
-
 def test_list_dimensions_real(real_db, allowlist):
     out = list_available_dimensions_impl(db_path=real_db, allowlist=allowlist)
     by_name = {d["name"]: d["values"] for d in out["dimensions"]}
@@ -70,15 +60,6 @@ def test_get_study_run_summary_real(real_db):
     assert out["run_id"] == row[0]
     assert "status" in out
     assert "policy_id" not in out  # metadata only — no PII
-
-
-def test_get_tev_run_summary_real(real_db):
-    row = _first(real_db, "SELECT tev_run_id FROM gold_tev_run_log LIMIT 1")
-    if row is None:
-        pytest.skip("no TEV runs in the production DB")
-    out = get_tev_run_summary_impl(row[0], db_path=real_db)
-    assert out["tev_run_id"] == row[0]
-    assert "assumption_set_id" in out
 
 
 def test_adversarial_rejected_on_real_db(real_db, allowlist):

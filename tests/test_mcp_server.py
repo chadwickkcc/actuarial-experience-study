@@ -19,7 +19,6 @@ from src.ai.mcp_server.server import (
     get_study_run_summary_impl,
     list_available_dimensions_impl,
     query_ae_results_impl,
-    query_tev_results_impl,
 )
 
 _AI_CONFIG = Path("config/ai_config.yaml")
@@ -43,7 +42,7 @@ def allowlist() -> dict:
         ("PRAGMA database_list", "gate_2"),                                    # PRAGMA
         ("SELECT policy_id FROM silver_term_policies LIMIT 5", "gate_3"),      # Silver/PII
         ("SELECT termination_cause_code FROM gold_ae_results LIMIT 5", "gate_3"),  # off-allowlist col
-        ("SELECT tev FROM gold_tev_results LIMIT 5", "gate_3"),                # other Gold table
+        ("SELECT seq FROM gold_governance_signoffs LIMIT 5", "gate_3"),        # off-allowlist Gold table
         ("SELECT product_code FROM gold_ae_results", "gate_4"),               # unbounded scan
     ],
 )
@@ -54,15 +53,12 @@ def test_query_ae_rejects_adversarial_sql(synthetic_db, allowlist, sql, gate_pre
     assert "rows" not in out  # nothing executed
 
 
-def test_ae_tool_rejects_tev_table_and_vice_versa(synthetic_db, allowlist):
+def test_ae_tool_is_single_table_scoped(synthetic_db, allowlist):
+    """The AE tool rejects SQL against any other table (single-table scoping)."""
     ae = query_ae_results_impl(
-        "SELECT tev FROM gold_tev_results LIMIT 5",
-        db_path=synthetic_db.db_path, allowlist=allowlist)
-    tev = query_tev_results_impl(
-        "SELECT ae_count FROM gold_ae_results LIMIT 5",
+        "SELECT proposed_factor FROM gold_ai_proposed_factors LIMIT 5",
         db_path=synthetic_db.db_path, allowlist=allowlist)
     assert ae["error"].startswith("gate_3")
-    assert tev["error"].startswith("gate_3")
 
 
 # --------------------------------------------------------------------------- #
@@ -106,17 +102,16 @@ def test_get_study_run_summary_not_found(synthetic_db):
 # --------------------------------------------------------------------------- #
 
 def test_build_server_exposes_the_governed_tool_surface(synthetic_db, allowlist):
-    """Five original tools + the generic ``query_results`` (FR-3B-09 amended
-    2026-06-27 for the governed-maximum data-surface widening)."""
+    """Four governed tools after the demo-refresh TEV purge (P3): the dedicated
+    A/E tool, the generic single-table ``query_results``, and two metadata
+    tools."""
     server = build_server(synthetic_db.db_path, allowlist, 500)
     names = sorted(t.name for t in server._tool_manager.list_tools())
     assert names == [
         "get_study_run_summary",
-        "get_tev_run_summary",
         "list_available_dimensions",
         "query_ae_results",
         "query_results",
-        "query_tev_results",
     ]
 
 
@@ -136,4 +131,4 @@ def test_serve_uses_stdio_only(synthetic_db, allowlist):
 
 
 def test_tool_schema_version_constant():
-    assert TOOL_SCHEMA_VERSION == "2.0"
+    assert TOOL_SCHEMA_VERSION == "3.0"

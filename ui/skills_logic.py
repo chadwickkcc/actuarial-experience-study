@@ -197,20 +197,6 @@ def _proposed_factors(
     return out
 
 
-def _tev_baseline(con) -> tuple[Optional[float], Optional[float]]:
-    """Latest baseline TEV (sensitivity_id NULL) and its ΔTEV vs prior, if any."""
-    row = con.execute(
-        "SELECT total_tev, delta_tev_vs_prior FROM gold_tev_run_log "
-        "WHERE sensitivity_id IS NULL AND status = 'COMPLETE' "
-        "ORDER BY run_ts DESC NULLS LAST LIMIT 1"
-    ).fetchone()
-    if not row:
-        return None, None
-    base = float(row[0]) if row[0] is not None else None
-    delta = float(row[1]) if row[1] is not None else None
-    return base, delta
-
-
 def assemble_memo_input(
     db_path: Path,
     run_id: str,
@@ -219,7 +205,6 @@ def assemble_memo_input(
     *,
     glm: Optional[GLMFitResult] = None,
     gbm: Optional[GBMFitResult] = None,
-    whatif_delta_tev: Optional[float] = None,
 ) -> dict:
     """Build the memo Skill's structured input from Gold + page context (FR-3B-17).
 
@@ -232,7 +217,6 @@ def assemble_memo_input(
         period = _study_period(con, run_id)
         study_years = _study_years(con, run_id)
         segments = _ae_by_segment(con, run_id, product, decrement)
-        tev_baseline, tev_delta = _tev_baseline(con)
     finally:
         con.close()
 
@@ -266,11 +250,6 @@ def assemble_memo_input(
         "ae_by_segment": segments,
         "prior_assumption": 1.0,
         "proposed_glm_factors": glm_factors,
-        "tev_baseline": round(tev_baseline, 0) if tev_baseline is not None else None,
-        "delta_tev_vs_prior": (
-            round(whatif_delta_tev, 0) if whatif_delta_tev is not None
-            else (round(tev_delta, 0) if tev_delta is not None else None)
-        ),
         "top_drivers": top_drivers,
         "exclusions": [],
         "run_id": run_id,
@@ -337,7 +316,6 @@ def assemble_commentary_facts(db_path: Path, run_id: str) -> Optional[dict]:
                 [run_id],
             ).fetchall()
         ]
-        tev_baseline, tev_delta = _tev_baseline(con)
         by_product = []
         for product in products:
             decrements = {}
@@ -366,8 +344,6 @@ def assemble_commentary_facts(db_path: Path, run_id: str) -> Optional[dict]:
         "study_years": study_years,
         "credibility_method": method,  # so the chatbot recomputes Z with the run's method
         "products": products,
-        "tev_baseline": round(tev_baseline, 0) if tev_baseline is not None else None,
-        "delta_tev_vs_prior": round(tev_delta, 0) if tev_delta is not None else None,
         "by_product": by_product,
     }
 

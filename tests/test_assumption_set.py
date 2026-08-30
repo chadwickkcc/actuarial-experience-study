@@ -36,7 +36,6 @@ from src.utils.types import AssumptionSetStatus
 # ---------------------------------------------------------------------------
 
 DB_PATH = Path("data/experience_study.duckdb")
-TEV_CFG = Path("config/tev_config.yaml")
 YAML_DIR = Path("data/assumption_sets")
 
 
@@ -119,16 +118,6 @@ def _make_minimal_assumption_set(aset_id: Optional[str] = None) -> AssumptionSet
         author_id="test_actuary",
         basis="best-estimate",
         source_study_run_id=STUDY_RUN_ID,
-        rdr=0.09,
-        earned_rate_ga=0.05,
-        earned_rate_sa=0.06,
-        tax_rate=0.21,
-        expense_inflation=0.025,
-        rc_pct_reserve={"TERM": 0.03, "WL": 0.045, "UL": 0.06,
-                         "ULSG": 0.08, "VUL": 0.035, "DA": 0.045},
-        acquisition_per_policy=350.0,
-        maintenance_per_policy=72.0,
-        maintenance_pct_premium=0.02,
         mortality_multipliers=mults,
         lapse_multipliers=[],
         surrender_multipliers=[],
@@ -257,8 +246,7 @@ class TestAssumptionSet:
         assert inner["basis"] == "best-estimate"
         assert "mortality" in inner
         assert "lapse" in inner
-        assert "economic" in inner
-        assert inner["economic"]["rdr"] == 0.09
+        assert "economic" not in inner  # economic params retired (demo refresh P3)
 
     def test_yaml_roundtrip(self, tmp_path):
         aset = _make_minimal_assumption_set()
@@ -268,7 +256,6 @@ class TestAssumptionSet:
             d = yaml.safe_load(fh)
         aset2 = AssumptionSet.from_yaml_dict(d)
         assert aset2.id == aset.id
-        assert aset2.rdr == aset.rdr
         assert len(aset2.mortality_multipliers) == 2
         assert aset2.mortality_multipliers[0].multiplier == 0.92
 
@@ -341,7 +328,6 @@ class TestCreateAssumptionSetFromAERun:
             study_run_id=STUDY_RUN_ID,
             author_id="test",
             db_path=DB_PATH,
-            tev_config_path=TEV_CFG,
             output_yaml_dir=tmp_path,
         )
         assert Path(aset.yaml_file_path).exists()
@@ -351,7 +337,6 @@ class TestCreateAssumptionSetFromAERun:
             study_run_id=STUDY_RUN_ID,
             author_id="test",
             db_path=DB_PATH,
-            tev_config_path=TEV_CFG,
             output_yaml_dir=tmp_path,
         )
         assert aset.status == AssumptionSetStatus.PROPOSED
@@ -361,7 +346,6 @@ class TestCreateAssumptionSetFromAERun:
             study_run_id=STUDY_RUN_ID,
             author_id="test",
             db_path=DB_PATH,
-            tev_config_path=TEV_CFG,
             output_yaml_dir=tmp_path,
         )
         assert len(aset.mortality_multipliers) > 0
@@ -371,7 +355,6 @@ class TestCreateAssumptionSetFromAERun:
             study_run_id=STUDY_RUN_ID,
             author_id="test",
             db_path=DB_PATH,
-            tev_config_path=TEV_CFG,
             output_yaml_dir=tmp_path,
         )
         assert len(aset.lapse_multipliers) > 0
@@ -381,7 +364,6 @@ class TestCreateAssumptionSetFromAERun:
             study_run_id=STUDY_RUN_ID,
             author_id="test",
             db_path=DB_PATH,
-            tev_config_path=TEV_CFG,
             output_yaml_dir=tmp_path,
         )
         all_mults = (
@@ -401,7 +383,6 @@ class TestCreateAssumptionSetFromAERun:
             study_run_id=STUDY_RUN_ID,
             author_id="test",
             db_path=DB_PATH,
-            tev_config_path=TEV_CFG,
             output_yaml_dir=tmp_path,
         )
         # At least some cells must have non-zero credibility bounds
@@ -414,29 +395,15 @@ class TestCreateAssumptionSetFromAERun:
             study_run_id=STUDY_RUN_ID,
             author_id="test",
             db_path=DB_PATH,
-            tev_config_path=TEV_CFG,
             output_yaml_dir=tmp_path,
         )
         assert len(aset.ci_incidence_multipliers) > 0
-
-    def test_economic_params_from_config(self, tmp_path):
-        aset = create_assumption_set_from_ae_run(
-            study_run_id=STUDY_RUN_ID,
-            author_id="test",
-            db_path=DB_PATH,
-            tev_config_path=TEV_CFG,
-            output_yaml_dir=tmp_path,
-        )
-        assert aset.rdr == pytest.approx(0.09)
-        assert aset.tax_rate == pytest.approx(0.21)
-        assert aset.earned_rate_ga == pytest.approx(0.05)
 
     def test_inserted_into_db(self, tmp_path):
         aset = create_assumption_set_from_ae_run(
             study_run_id=STUDY_RUN_ID,
             author_id="test",
             db_path=DB_PATH,
-            tev_config_path=TEV_CFG,
             output_yaml_dir=tmp_path,
         )
         con = duckdb.connect(str(DB_PATH))
@@ -462,7 +429,6 @@ class TestSaveLoadAssumptionSet:
 
         loaded = load_assumption_set(saved_id, DB_PATH)
         assert loaded.id == aset.id
-        assert loaded.rdr == pytest.approx(0.09)
         assert len(loaded.mortality_multipliers) == 2
         assert loaded.mortality_multipliers[0].multiplier == pytest.approx(0.92)
 

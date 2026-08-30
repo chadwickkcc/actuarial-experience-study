@@ -104,7 +104,7 @@ def test_eval_full_row_roundtrips_every_column_in_alignment(tmp_path):
     assert row[0] == rid
     assert row[1] == "MODEL_X"
     assert json.loads(row[2]) == {"routing.md": "abc"}
-    assert row[3] == "2.0"                       # TOOL_SCHEMA_VERSION (widened 2026-06-27)
+    assert row[3] == "3.0"                       # TOOL_SCHEMA_VERSION (demo refresh P3)
     assert (row[4], row[5], row[6], row[7], row[8]) == (0.11, 0.22, 0.33, 0.44, 0.55)
     assert row[9] == 7 and row[10] == 9
     assert row[11] == 1.23 and row[12] == 4.56

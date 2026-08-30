@@ -54,5 +54,3 @@ def test_logic_module_importable_without_streamlit():
 
     mod = importlib.import_module("ui.ai_comparison_logic")
     assert hasattr(mod, "build_comparison_table")
-    assert hasattr(mod, "build_whatif_assumption_set")
-    assert mod.WHAT_IF_SENSITIVITY_ID == "what_if_ai_proposal"

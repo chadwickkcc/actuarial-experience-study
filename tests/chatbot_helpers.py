@@ -91,9 +91,9 @@ class ScriptedProvider:
 class StubMCP:
     """Canned MCP client: returns fixed result dicts; emits an optional hook."""
 
-    def __init__(self, ae=None, tev=None, on_call: Optional[Callable[[dict], None]] = None):
+    def __init__(self, ae=None, extra=None, on_call: Optional[Callable[[dict], None]] = None):
         self._ae = ae
-        self._tev = tev
+        self._extra = extra
         self._on_call = on_call
 
     def _emit(self, tool: str, sql: str) -> None:
@@ -104,9 +104,9 @@ class StubMCP:
         self._emit("query_ae_results", sql)
         return self._ae if self._ae is not None else {"error": "no_data", "message": "none"}
 
-    def query_tev_results(self, sql: str) -> dict:
-        self._emit("query_tev_results", sql)
-        return self._tev if self._tev is not None else {"error": "no_data", "message": "none"}
+    def query_results(self, table: str, sql: str) -> dict:
+        self._emit("query_results", sql)
+        return self._extra if self._extra is not None else {"error": "no_data", "message": "none"}
 
 
 def routing_reply(label: str, reason: str = "test") -> str:

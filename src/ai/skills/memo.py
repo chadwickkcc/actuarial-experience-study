@@ -9,10 +9,10 @@ untraceable number the memo is **blocked, not repaired** (FR-3B-19).
 
 Design notes:
   * The input JSON is **app-assembled** (FR-3B-17), never typed by the user.
-  * The LLM produces only the eight named components; the persistent AI-DRAFT tag
+  * The LLM produces only the seven named components; the persistent AI-DRAFT tag
     and the generation footer (model · date · run_id) are appended by the Skill
     after the traceability check, so the footer's date/run_id never risk a false
-    block (and the eight headers are named, with no leading digits).
+    block (and the seven headers are named, with no leading digits).
 """
 from __future__ import annotations
 
@@ -40,8 +40,8 @@ def interpret_ae_and_draft_memo(
 
     Args:
         memo_input: structured input (FR-3B-17) — product, study period, A/E
-            ratios by segment, prior assumption, credibility, TEV baseline and
-            ΔTEV vs prior, top drivers, envelope output (if run), exclusions,
+            ratios by segment, prior assumption, credibility, top drivers,
+            exclusions,
             run_id.
         cfg: parsed ``llm_config.yaml`` (carries the ``skills.memo`` call params).
         model_key: the configured model id to run on.

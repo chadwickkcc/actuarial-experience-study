@@ -18,11 +18,9 @@ from typing import Callable, Optional, Protocol
 
 from src.ai.mcp_server.server import (
     get_study_run_summary_impl,
-    get_tev_run_summary_impl,
     list_available_dimensions_impl,
     query_ae_results_impl,
     query_results_impl,
-    query_tev_results_impl,
 )
 
 
@@ -30,7 +28,6 @@ class MCPClient(Protocol):
     """The data surface the chatbot pipeline depends on (read-only)."""
 
     def query_ae_results(self, sql: str) -> dict: ...
-    def query_tev_results(self, sql: str) -> dict: ...
     def query_results(self, table: str, sql: str) -> dict: ...
 
 
@@ -60,13 +57,6 @@ class InProcessMCPClient:
             sql, db_path=self._db_path, allowlist=self._allowlist, row_cap=self._row_cap
         )
 
-    def query_tev_results(self, sql: str) -> dict:
-        """Route a read-only SELECT to the gated TEV tool (FR-3B-10)."""
-        self._emit("query_tev_results", sql=sql)
-        return query_tev_results_impl(
-            sql, db_path=self._db_path, allowlist=self._allowlist, row_cap=self._row_cap
-        )
-
     def query_results(self, table: str, sql: str) -> dict:
         """Route a read-only SELECT to the gated generic tool for a widened table.
 
@@ -90,8 +80,3 @@ class InProcessMCPClient:
         """Study run manifest (metadata only)."""
         self._emit("get_study_run_summary", run_id=run_id)
         return get_study_run_summary_impl(run_id, db_path=self._db_path)
-
-    def get_tev_run_summary(self, tev_run_id: str) -> dict:
-        """TEV run manifest (metadata only)."""
-        self._emit("get_tev_run_summary", tev_run_id=tev_run_id)
-        return get_tev_run_summary_impl(tev_run_id, db_path=self._db_path)

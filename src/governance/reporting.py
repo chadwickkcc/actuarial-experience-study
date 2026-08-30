@@ -434,7 +434,7 @@ def _rationale_rows(parent_id: Optional[str], artifact_id: str, db_path: str) ->
 
 def _supporting_reports(db_path: str, study_run_id: Optional[str],
                         assumption_set_id: Optional[str]) -> list:
-    """Reference links to the supporting A/E and TEV reports (by filename stem)."""
+    """Reference links to the supporting A/E reports (by filename stem)."""
     reports = []
     if study_run_id:
         reports.append({
@@ -445,23 +445,6 @@ def _supporting_reports(db_path: str, study_run_id: Optional[str],
             "label": "Chief Actuary Summary (A/E)",
             "reference": f"chief_actuary_{study_run_id[:8]}.html",
         })
-    if assumption_set_id:
-        con = duckdb.connect(str(db_path), read_only=True)
-        try:
-            tev_runs = con.execute(
-                "SELECT tev_run_id FROM gold_tev_run_log WHERE assumption_set_id = ? "
-                "ORDER BY run_ts",
-                [assumption_set_id],
-            ).fetchall()
-        finally:
-            con.close()
-        if tev_runs:
-            # All TEV runs for a set share one impact-report stem — list it once,
-            # noting how many runs it covers (rather than N identical links).
-            reports.append({
-                "label": f"TEV impact report ({len(tev_runs)} run(s))",
-                "reference": f"tev_impact_report_{assumption_set_id[:8]}.html",
-            })
     return reports
 
 
@@ -479,7 +462,7 @@ def export_compliance_pack(
     For an **assumption set** (must be APPROVED): full version lineage, every
     sign-off with its attestation, the per-artifact audit excerpt, the
     per-change rationale vs the parent version, the reproducibility stamp, and
-    links to the supporting TEV/A/E reports. For an **A/E study run** (must be
+    links to the supporting A/E reports. For an **A/E study run** (must be
     "fit for assumption-setting", FR-4-14): sign-offs + attestations + audit
     excerpt + supporting-report links.
 

@@ -137,7 +137,7 @@ def test_memo_sends_template_as_system_and_input_as_user_message():
     cap = _CapturingProvider(_CLEAN_BODY)
     interpret_ae_and_draft_memo(_MEMO_INPUT, _cfg(), "claude-opus-4-8", provider=cap)
     # System prompt is the versioned memo template body.
-    assert "Eight required components" in cap.system
+    assert "Seven required components" in cap.system
     # The app-assembled input JSON is the user message (grounding the draft).
     assert cap.messages[0]["role"] == "user"
     assert '"product": "WL"' in cap.messages[0]["content"]

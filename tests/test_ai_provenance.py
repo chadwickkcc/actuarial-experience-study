@@ -36,13 +36,11 @@ def _insert_assumption_row(db, aset_id):
             """
             INSERT INTO gold_assumption_sets (
                 assumption_set_id, version, status, effective_date, author_id,
-                basis, source_study_run_id, yaml_file_path, created_ts,
-                rdr, earned_rate_ga, earned_rate_sa, tax_rate, expense_inflation
-            ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+                basis, source_study_run_id, yaml_file_path, created_ts
+            ) VALUES (?,?,?,?,?,?,?,?,?)
             """,
             [aset_id, 1, "PROPOSED", "2024-01-01", "tester", "best-estimate",
-             "RUN1", "/tmp/none.yaml", datetime.utcnow(),
-             0.09, 0.05, 0.06, 0.21, 0.025],
+             "RUN1", "/tmp/none.yaml", datetime.utcnow()],
         )
     finally:
         con.close()
@@ -124,10 +122,7 @@ def _minimal_aset(aset_id):
     return AssumptionSet(
         id=aset_id, version=1, status=AssumptionSetStatus.PROPOSED,
         effective_date="2024-01-01", author_id="t", basis="best-estimate",
-        source_study_run_id="RUN1", rdr=0.09, earned_rate_ga=0.05, earned_rate_sa=0.06,
-        tax_rate=0.21, expense_inflation=0.025, rc_pct_reserve={"TERM": 0.03},
-        acquisition_per_policy=350.0, maintenance_per_policy=72.0,
-        maintenance_pct_premium=0.02, mortality_multipliers=[], lapse_multipliers=[],
+        source_study_run_id="RUN1", mortality_multipliers=[], lapse_multipliers=[],
         surrender_multipliers=[], ci_incidence_multipliers=[], premium_persistency=[],
         shock_lapse_plt={}, yaml_file_path="/tmp/none.yaml",
     )

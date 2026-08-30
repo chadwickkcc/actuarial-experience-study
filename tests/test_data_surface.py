@@ -144,8 +144,7 @@ class _RecordingMCP:
     def query_ae_results(self, sql):
         self.calls.append(("ae", sql)); return {"columns": [], "rows": [], "row_count": 0}
 
-    def query_tev_results(self, sql):
-        self.calls.append(("tev", sql)); return {"columns": [], "rows": [], "row_count": 0}
+
 
     def query_results(self, table, sql):
         self.calls.append((table, sql)); return {"columns": [], "rows": [], "row_count": 0}
@@ -160,14 +159,14 @@ def test_execute_via_mcp_routes_widened_table_to_generic_tool():
                           "SELECT product_code FROM gold_inforce_reconciliation LIMIT 5")]
 
 
-def test_execute_via_mcp_still_routes_ae_and_tev_and_rejects_cross_table():
+def test_execute_via_mcp_still_routes_ae_and_rejects_cross_table():
     mcp = _RecordingMCP()
     execute_via_mcp("SELECT ae_count FROM gold_ae_results LIMIT 1", mcp)
-    execute_via_mcp("SELECT tev FROM gold_tev_results LIMIT 1", mcp)
-    assert mcp.calls[0][0] == "ae" and mcp.calls[1][0] == "tev"
+    execute_via_mcp("SELECT factor FROM gold_ai_proposed_factors LIMIT 1", mcp)
+    assert mcp.calls[0][0] == "ae" and mcp.calls[1][0] == "gold_ai_proposed_factors"
     # A cross-table query references two queryable tables -> unroutable, no call.
     out = execute_via_mcp(
-        "SELECT a.ae_count FROM gold_ae_results a, gold_tev_results t LIMIT 1", mcp
+        "SELECT a.ae_count FROM gold_ae_results a, gold_ai_proposed_factors t LIMIT 1", mcp
     )
     assert out.get("error") == "unroutable"
     assert len(mcp.calls) == 2  # no third call made
@@ -273,12 +272,12 @@ def test_query_results_enforces_gates_on_widened_tables(tmp_path):
     db = _fresh_db(tmp_path)
     allow = load_allowlist(_AI_CONFIG)
     not_select = query_results_impl(
-        "gold_model_points", "DELETE FROM gold_model_points",
+        "gold_ai_proposed_factors", "DELETE FROM gold_ai_proposed_factors",
         db_path=db, allowlist=allow, row_cap=500,
     )
     assert not_select.get("error") == "gate_2_select"
     over_cap = query_results_impl(
-        "gold_model_points", "SELECT product_code FROM gold_model_points",  # no LIMIT, not aggregated
+        "gold_ai_proposed_factors", "SELECT product_code FROM gold_ai_proposed_factors",  # no LIMIT, not aggregated
         db_path=db, allowlist=allow, row_cap=500,
     )
     assert over_cap.get("error") == "gate_4_rowcap"

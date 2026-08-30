@@ -361,32 +361,6 @@ def test_ul_lapse_credibility_recomputed_end_to_end_not_blocked():
     assert "0.0015" not in result.response_text
 
 
-def test_pvfp_profit_source_margin_query_flows_end_to_end():
-    """PVFP profit-source-margin columns (newly surfaced) route to the TEV tool,
-    slot-fill, and pass traceability — the Doc-2 question is answerable."""
-    tev = {
-        "columns": ["mortality", "lapse", "ci", "investment_spread", "expense"],
-        "rows": [[1000000.0, 250000.0, 50000.0, 800000.0, -120000.0]],
-        "row_count": 1,
-    }
-    provider = ScriptedProvider(
-        routing_reply("EXPLORATORY"),
-        sqlgen_reply(
-            "SELECT SUM(pvfp_mortality_margin) AS mortality, SUM(pvfp_lapse_margin) AS lapse, "
-            "SUM(pvfp_ci_margin) AS ci, SUM(pvfp_investment_spread) AS investment_spread, "
-            "SUM(pvfp_expense_margin) AS expense FROM gold_tev_results WHERE sensitivity_id IS NULL",
-            "Mortality margin {{col:mortality}}; investment spread {{col:investment_spread}}.",
-        ),
-    )
-    result = handle_turn(
-        "Which decrement contributes the largest profit-source margin to PVFP?",
-        _state(), llm_cfg(), StubMCP(tev=tev), allowlist(),
-        chatbot_cfg=chatbot_cfg(), provider=provider,
-    )
-    assert result.blocked is False
-    assert result.sql_outcome is not None
-
-
 def test_assemble_response_honours_buhlmann_from_digest():
     """The run's credibility method flows from the fact pack into the recompute."""
     res = {"columns": ["ae_count", "actual_deaths_count"], "rows": [[0.57, 232]], "row_count": 1}

@@ -1,4 +1,4 @@
-"""Assumption Set module for TEV Phase 2.
+"""Assumption Set module — the versioned assumption-set artifact.
 
 Implements the versioned assumption set artifact (FR-2-01 to FR-2-04),
 exactly matching the interface contract in Technical Specification Section B.7.
@@ -116,10 +116,9 @@ class DecrementMultiplier:
 
 @dataclass
 class AssumptionSet:
-    """Versioned assumption set artifact linking experience study to TEV projection.
+    """Versioned assumption set artifact derived from an experience study.
 
     Serialisable to YAML; metadata row stored in gold_assumption_sets.
-    Implements FR-2-01 to FR-2-04.
     """
 
     id: str
@@ -129,21 +128,6 @@ class AssumptionSet:
     author_id: str
     basis: str
     source_study_run_id: str
-
-    # Economic parameters
-    rdr: float
-    earned_rate_ga: float
-    earned_rate_sa: float
-    tax_rate: float
-    expense_inflation: float
-
-    # Required capital proxies keyed by product_code
-    rc_pct_reserve: dict[str, float]
-
-    # Expense assumptions
-    acquisition_per_policy: float
-    maintenance_per_policy: float
-    maintenance_pct_premium: float
 
     # Decrement multipliers
     mortality_multipliers: list[DecrementMultiplier]
@@ -197,19 +181,6 @@ class AssumptionSet:
                 "premium_persistency": {
                     "by_duration": [m.to_dict() for m in self.premium_persistency],
                 },
-                "expenses": {
-                    "acquisition_per_policy": self.acquisition_per_policy,
-                    "maintenance_per_policy": self.maintenance_per_policy,
-                    "maintenance_pct_premium": self.maintenance_pct_premium,
-                    "expense_inflation": self.expense_inflation,
-                },
-                "economic": {
-                    "rdr": self.rdr,
-                    "earned_rate_ga": self.earned_rate_ga,
-                    "earned_rate_sa": self.earned_rate_sa,
-                    "tax_rate": self.tax_rate,
-                    "rc_pct_reserve": self.rc_pct_reserve,
-                },
             }
         }
 
@@ -228,8 +199,6 @@ class AssumptionSet:
         def _load_mults(lst: list) -> list[DecrementMultiplier]:
             return [DecrementMultiplier.from_dict(m) for m in (lst or [])]
 
-        economic = data.get("economic", {})
-        expenses = data.get("expenses", {})
         lapse_section = data.get("lapse", {})
 
         return cls(
@@ -240,16 +209,6 @@ class AssumptionSet:
             author_id=data["author"],
             basis=data["basis"],
             source_study_run_id=data["source_experience_study_run"],
-
-            rdr=economic.get("rdr", 0.09),
-            earned_rate_ga=economic.get("earned_rate_ga", 0.05),
-            earned_rate_sa=economic.get("earned_rate_sa", 0.06),
-            tax_rate=economic.get("tax_rate", 0.21),
-            expense_inflation=expenses.get("expense_inflation", 0.025),
-            rc_pct_reserve=economic.get("rc_pct_reserve", {}),
-            acquisition_per_policy=expenses.get("acquisition_per_policy", 350.0),
-            maintenance_per_policy=expenses.get("maintenance_per_policy", 72.0),
-            maintenance_pct_premium=expenses.get("maintenance_pct_premium", 0.02),
 
             mortality_multipliers=_load_mults(
                 data.get("mortality", {}).get("multipliers", [])
@@ -317,7 +276,6 @@ def create_assumption_set_from_ae_run(
     study_run_id: str,
     author_id: str,
     db_path: Path,
-    tev_config_path: Path,
     output_yaml_dir: Path,
 ) -> AssumptionSet:
     """Pre-populate an AssumptionSet from an A/E study run.
@@ -331,15 +289,11 @@ def create_assumption_set_from_ae_run(
         study_run_id:       UUID of the source experience study run.
         author_id:          Identifier of the actuary creating the set.
         db_path:            Path to the DuckDB file.
-        tev_config_path:    Path to tev_config.yaml.
         output_yaml_dir:    Directory to write the assumption set YAML.
 
     Returns:
         Populated AssumptionSet with all multiplier cells pre-filled.
     """
-    with open(tev_config_path) as fh:
-        tev_cfg = yaml.safe_load(fh)
-
     assumption_set_id = str(uuid.uuid4())
     con = duckdb.connect(str(db_path))
     try:
@@ -360,16 +314,6 @@ def create_assumption_set_from_ae_run(
         author_id=author_id,
         basis="best-estimate",
         source_study_run_id=study_run_id,
-
-        rdr=float(tev_cfg.get("rdr", 0.09)),
-        earned_rate_ga=float(tev_cfg.get("earned_rate_ga", 0.05)),
-        earned_rate_sa=float(tev_cfg.get("earned_rate_sa", 0.06)),
-        tax_rate=float(tev_cfg.get("tax_rate", 0.21)),
-        expense_inflation=float(tev_cfg.get("expense_inflation", 0.025)),
-        rc_pct_reserve=dict(tev_cfg.get("rc_pct_reserve", {})),
-        acquisition_per_policy=float(tev_cfg.get("acquisition_per_policy", 350.0)),
-        maintenance_per_policy=float(tev_cfg.get("maintenance_per_policy", 72.0)),
-        maintenance_pct_premium=float(tev_cfg.get("maintenance_pct_premium", 0.02)),
 
         mortality_multipliers=mort_mults,
         lapse_multipliers=lapse_mults,
@@ -689,9 +633,8 @@ def _insert_assumption_set_metadata(db_path: Path, aset: AssumptionSet) -> None:
         con.execute("""
             INSERT INTO gold_assumption_sets (
                 assumption_set_id, version, status, effective_date, author_id,
-                basis, source_study_run_id, yaml_file_path, created_ts,
-                rdr, earned_rate_ga, earned_rate_sa, tax_rate, expense_inflation
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                basis, source_study_run_id, yaml_file_path, created_ts
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
         """, [
             aset.id,
             aset.version,
@@ -702,11 +645,6 @@ def _insert_assumption_set_metadata(db_path: Path, aset: AssumptionSet) -> None:
             aset.source_study_run_id,
             aset.yaml_file_path,
             datetime.utcnow(),
-            aset.rdr,
-            aset.earned_rate_ga,
-            aset.earned_rate_sa,
-            aset.tax_rate,
-            aset.expense_inflation,
         ])
 
         # Re-apply any preserved column values that were previously recorded.
@@ -953,15 +891,6 @@ def deep_copy_assumption_set(aset: AssumptionSet) -> AssumptionSet:
         author_id=aset.author_id,
         basis=aset.basis,
         source_study_run_id=aset.source_study_run_id,
-        rdr=aset.rdr,
-        earned_rate_ga=aset.earned_rate_ga,
-        earned_rate_sa=aset.earned_rate_sa,
-        tax_rate=aset.tax_rate,
-        expense_inflation=aset.expense_inflation,
-        rc_pct_reserve=dict(aset.rc_pct_reserve),
-        acquisition_per_policy=aset.acquisition_per_policy,
-        maintenance_per_policy=aset.maintenance_per_policy,
-        maintenance_pct_premium=aset.maintenance_pct_premium,
         mortality_multipliers=list(aset.mortality_multipliers),
         lapse_multipliers=list(aset.lapse_multipliers),
         surrender_multipliers=list(aset.surrender_multipliers),

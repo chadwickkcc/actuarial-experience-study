@@ -6,13 +6,13 @@ tested without importing Streamlit. It is strictly additive (CLAUDE.md rule #8):
   * It **reuses** the Session 15/16 GLM + GBM functions — it never reimplements
     any modelling.
   * It reads the persisted SHAP-JSON; it never recomputes SHAP at render time.
-  * The TEV what-if (FR-3A-43) substitutes a GLM-proposed factor into an
-    *in-memory* copy of the approved assumption set and runs the existing TEV
-    engine. It creates or modifies **no** assumption set.
+  * The what-if builder substitutes a GLM-proposed factor into an *in-memory*
+    copy of the approved assumption set for side-by-side display. It creates or
+    modifies **no** assumption set.
 
-It is a UI helper (under ``ui/``), not part of ``src/ai/`` — so it may call the
-core TEV engine and read the AI Gold registry. ``src/ai/`` still never imports
-it (FR-3A-07 one-way rule is preserved).
+It is a UI helper (under ``ui/``), not part of ``src/ai/`` — so it may read the
+AI Gold registry. ``src/ai/`` still never imports it (FR-3A-07 one-way rule is
+preserved).
 """
 
 from __future__ import annotations
@@ -28,15 +28,10 @@ import yaml
 
 from src.utils.types import DecrementType, GLMFitResult, GBMFitResult
 from src.assumptions.assumption_set import AssumptionSet, DecrementMultiplier, load_assumption_set
-from src.assumptions.assumption_set import deep_copy_assumption_set as _deep_copy_assumption_set
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 _AI_CONFIG_PATH = PROJECT_ROOT / "config" / "ai_config.yaml"
 _FEATURE_MAP_PATH = PROJECT_ROOT / "config" / "feature_to_assumption.yaml"
-
-#: The sensitivity_id used to flag a what-if TEV run (FR-3A-43). Reusing the
-#: existing sensitivity_id column keeps the run queryable with no schema change.
-WHAT_IF_SENSITIVITY_ID = "what_if_ai_proposal"
 
 #: GLM grain-token -> AssumptionSet dimension. Mirrors glm.fit._GRAIN_TOKEN_TO_COLUMN
 #: but maps onto DecrementMultiplier fields (which use ``gender``, not ``sex``).
@@ -293,118 +288,6 @@ def lookup_approved_factor(
 
 # ---------------------------------------------------------------------------
 # What-if assumption set (FR-3A-43) — in-memory only, never persisted
-# ---------------------------------------------------------------------------
-
-def build_whatif_assumption_set(
-    baseline_aset: AssumptionSet,
-    decrement: DecrementType,
-    product_code: str,
-    glm_result: GLMFitResult,
-) -> AssumptionSet:
-    """Return an in-memory copy of ``baseline_aset`` with the selected
-    decrement-product multipliers moved toward the GLM proposal (FR-3A-43).
-
-    The GLM factors live at the output grain, which is coarser than the
-    multiplier cells, so each affected multiplier takes the GLM factor whose
-    grain key matches on the dims they share (sex), falling back to the
-    product-mean GLM factor. The result is a transparent "what if this product's
-    <decrement> assumption moved to the AI-proposed level" run.
-
-    This deep-copies (fresh UUID, ``yaml_file_path=""``) and **never** calls
-    ``save_assumption_set`` — no assumption set is created or modified on disk
-    or in the DB.
-    """
-    decrement = DecrementType(decrement)
-    perturbed = _deep_copy_assumption_set(baseline_aset)
-    attr = _DECREMENT_TO_MULT_ATTR[decrement]
-
-    factors = glm_result.factors
-    if not factors:
-        return perturbed
-    product_mean = float(sum(f.factor for f in factors) / len(factors))
-    by_gender: dict[str, list[float]] = {}
-    for f in factors:
-        g = f.grain_key.get("sex")
-        if g is not None:
-            by_gender.setdefault(g, []).append(f.factor)
-
-    def _proposed_for(m: DecrementMultiplier) -> float:
-        vals = by_gender.get(m.gender)
-        return float(sum(vals) / len(vals)) if vals else product_mean
-
-    new_mults: list[DecrementMultiplier] = []
-    for m in getattr(perturbed, attr):
-        if m.product == product_code:
-            new_mults.append(DecrementMultiplier(
-                product=m.product, gender=m.gender, risk_class=m.risk_class,
-                duration_band=list(m.duration_band), multiplier=_proposed_for(m),
-                credibility_z=m.credibility_z, credibility_lower=m.credibility_lower,
-                credibility_upper=m.credibility_upper,
-                override_rationale="AI what-if (GLM proposal)",
-            ))
-        else:
-            new_mults.append(m)
-    setattr(perturbed, attr, new_mults)
-    return perturbed
-
-
-def run_whatif_tev(
-    db_path: Path,
-    approved_aset: AssumptionSet,
-    whatif_aset: AssumptionSet,
-    prior_tev_run_id: Optional[str] = None,
-):
-    """Run the TEV what-if and return ``(whatif_result, baseline_total_tev)``.
-
-    Runs a baseline projection on the approved set, then the what-if projection
-    on the in-memory perturbed set flagged ``sensitivity_id='what_if_ai_proposal'``
-    (FR-3A-43), with the baseline as ``prior_tev_run_id`` so the engine fills in
-    ΔTEV vs the approved basis. Both projections use the existing model points
-    (the engine loads the latest build per product); neither creates or modifies
-    any assumption set.
-    """
-    from src.tev.tev_core import run_tev
-
-    if prior_tev_run_id is None:
-        baseline = run_tev(
-            db_path,
-            assumption_set_id=approved_aset.id,
-            assumption_set=approved_aset,
-            tev_run_id=str(uuid.uuid4()),
-        )
-        prior_tev_run_id = baseline.tev_run_id
-        baseline_total = baseline.total_tev
-    else:
-        baseline_total = _prior_total_tev(db_path, prior_tev_run_id)
-
-    whatif = run_tev(
-        db_path,
-        assumption_set_id=approved_aset.id,
-        assumption_set=whatif_aset,
-        sensitivity_id=WHAT_IF_SENSITIVITY_ID,
-        prior_tev_run_id=prior_tev_run_id,
-        tev_run_id=str(uuid.uuid4()),
-    )
-    return whatif, baseline_total
-
-
-def _prior_total_tev(db_path: Path, tev_run_id: str) -> Optional[float]:
-    """Total TEV of a prior run from gold_tev_run_log (read-only)."""
-    import duckdb
-
-    con = duckdb.connect(str(db_path), read_only=True)
-    try:
-        row = con.execute(
-            "SELECT total_tev FROM gold_tev_run_log WHERE tev_run_id = ?",
-            [tev_run_id],
-        ).fetchone()
-    finally:
-        con.close()
-    return float(row[0]) if row and row[0] is not None else None
-
-
-# ---------------------------------------------------------------------------
-# Approved assumption set + SHAP reading (read-only helpers for the page)
 # ---------------------------------------------------------------------------
 
 def latest_approved_assumption_set(db_path: Path) -> Optional[AssumptionSet]:

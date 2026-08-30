@@ -78,11 +78,10 @@ def test_routing_prompt_covers_superlatives_and_margins():
     assert "reconciliation pass" in text  # multi-part status question example
 
 
-def test_few_shots_cover_credibility_ranking_and_pvfp_margins():
+def test_few_shots_cover_credibility_ranking():
     blob = " ".join(
         (p["question"] + " " + p["sql"]).lower() for p in load_few_shots(FEW_SHOTS)
     )
-    assert "pvfp_mortality_margin" in blob          # PVFP profit-source margin example
     assert "most credible" in blob                  # cross-product credibility example
 
 

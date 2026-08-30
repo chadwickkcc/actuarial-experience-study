@@ -1,4 +1,4 @@
-"""Extra Session-20 coverage: TEV path, routing edge cases, plan parsing, cost
+"""Extra Session-20 coverage: widened-table path, routing edge cases, plan parsing, cost
 accounting, model-switch on the data path, empty results, negatives, and the
 no-direct-DB-connection guard. MockProvider/stub only — keys unset.
 """
@@ -36,36 +36,36 @@ def _state(model=_MODEL):
 
 
 # --------------------------------------------------------------------------- #
-# TEV data path end-to-end                                                     #
+# Widened-table data path end-to-end (generic query_results tool)             #
 # --------------------------------------------------------------------------- #
 
-def test_tev_query_routes_to_tev_tool_and_answers():
-    tev = {"columns": ["tev", "vif", "anw"], "rows": [[173400000.0, 53400000.0, 120000000.0]], "row_count": 1}
-    sql = "SELECT tev, vif, anw FROM gold_tev_results WHERE product_code='WL' AND sensitivity_id IS NULL LIMIT 500"
-    provider = ScriptedProvider(routing_reply("FACTUAL_LOOKUP"), sqlgen_reply(sql, "WL TEV is {{col:tev}}."))
+def test_widened_table_query_routes_to_generic_tool_and_answers():
+    extra = {"columns": ["factor"], "rows": [[0.5718]], "row_count": 1}
+    sql = "SELECT factor FROM gold_ai_proposed_factors WHERE product_code='WL' LIMIT 500"
+    provider = ScriptedProvider(routing_reply("FACTUAL_LOOKUP"), sqlgen_reply(sql, "The proposed WL factor is {{col:factor}}."))
     result = handle_turn(
-        "What is WL embedded value?", _state(), llm_cfg(), StubMCP(tev=tev), allowlist(),
+        "What is the proposed WL mortality factor?", _state(), llm_cfg(), StubMCP(extra=extra), allowlist(),
         chatbot_cfg=chatbot_cfg(), provider=provider,
     )
     assert result.blocked is False
     assert result.sql_outcome is SQLGateOutcome.PASS
-    assert "173400000" in result.response_text
+    assert "0.5718" in result.response_text
 
 
 # --------------------------------------------------------------------------- #
 # execute_via_mcp routing                                                      #
 # --------------------------------------------------------------------------- #
 
-def test_execute_routes_ae_tev_and_rejects_unroutable():
+def test_execute_routes_ae_and_widened_and_rejects_unroutable():
     ae = {"columns": ["ae_count"], "rows": [[0.9]], "row_count": 1}
-    tev = {"columns": ["tev"], "rows": [[1.0]], "row_count": 1}
-    mcp = StubMCP(ae=ae, tev=tev)
+    extra = {"columns": ["factor"], "rows": [[1.0]], "row_count": 1}
+    mcp = StubMCP(ae=ae, extra=extra)
     assert execute_via_mcp("SELECT ae_count FROM gold_ae_results LIMIT 500", mcp) == ae
-    assert execute_via_mcp("SELECT tev FROM gold_tev_results LIMIT 500", mcp) == tev
+    assert execute_via_mcp("SELECT factor FROM gold_ai_proposed_factors LIMIT 500", mcp) == extra
     # No table → unroutable.
     assert execute_via_mcp("SELECT 1", mcp)["error"] == "unroutable"
     # Both tables in one query → unroutable (single-table tools only).
-    both = "SELECT a.ae_count FROM gold_ae_results a JOIN gold_tev_results t ON a.product_code=t.product_code LIMIT 500"
+    both = "SELECT a.ae_count FROM gold_ae_results a JOIN gold_ai_proposed_factors t ON a.product_code=t.product_code LIMIT 500"
     assert execute_via_mcp(both, mcp)["error"] == "unroutable"
 
 
@@ -80,7 +80,7 @@ def test_cross_table_union_passes_boundary_but_is_caught_at_routing():
     # execute.
     union = (
         "SELECT ae_count FROM gold_ae_results LIMIT 500 "
-        "UNION SELECT tev FROM gold_tev_results LIMIT 500"
+        "UNION SELECT factor FROM gold_ai_proposed_factors LIMIT 500"
     )
     assert validate_sql(union, allowlist(), 500).outcome is SQLGateOutcome.PASS
     provider = ScriptedProvider(routing_reply("FACTUAL_LOOKUP"), sqlgen_reply(union, "x {{col:ae_count}}"))
@@ -208,10 +208,10 @@ def test_empty_result_blocks_via_slot_fill():
 
 
 def test_negative_number_fills_and_traces():
-    tev = {"columns": ["delta_tev"], "rows": [[-4480000.0]], "row_count": 1}
-    sql = "SELECT delta_tev FROM gold_tev_results WHERE product_code='WL' AND sensitivity_id IS NULL LIMIT 500"
-    provider = ScriptedProvider(routing_reply("FACTUAL_LOOKUP"), sqlgen_reply(sql, "Delta TEV is {{col:delta_tev}}."))
-    result = handle_turn("q", _state(), llm_cfg(), StubMCP(tev=tev), allowlist(),
+    extra = {"columns": ["recon_diff_count"], "rows": [[-4480000.0]], "row_count": 1}
+    sql = "SELECT recon_diff_count FROM gold_inforce_reconciliation WHERE product_code='WL' LIMIT 500"
+    provider = ScriptedProvider(routing_reply("FACTUAL_LOOKUP"), sqlgen_reply(sql, "The reconciliation difference is {{col:recon_diff_count}}."))
+    result = handle_turn("q", _state(), llm_cfg(), StubMCP(extra=extra), allowlist(),
                          chatbot_cfg=chatbot_cfg(), provider=provider)
     assert result.blocked is False
     assert "-4480000" in result.response_text

@@ -65,8 +65,8 @@ def test_golden_covers_all_five_product_families():
     assert ("UL" in sql_blob) or ("ULSG" in sql_blob)
     assert "VUL" in sql_blob
     assert ("DA_FIXED" in sql_blob) or ("DA_VA" in sql_blob)
-    # And the TEV table is exercised (TEV query class).
-    assert "gold_tev_results" in sql_blob
+    # The retired TEV table must not appear anywhere in the locked set.
+    assert "gold_tev_results" not in sql_blob
 
 
 def test_golden_set_disjoint_from_few_shots():

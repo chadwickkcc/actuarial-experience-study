@@ -1,11 +1,11 @@
 """Assumption Comparison — AI Proposals (Phase 3a, Session 17; FR-3A-41..46).
 
 Surfaces the GLM proposal, the GBM challenge, SHAP explainability, and a
-read-only TEV what-if on one page. The page proposes, explains, and audits; the
+factor comparison on one page. The page proposes, explains, and audits; the
 actuary decides. There is **no adopt/apply affordance anywhere on this page**
 (FR-3A-44) — adoption happens only in the Stage 2 assumption-set editor, which
 records the AI provenance (FR-3A-30). All of the page's own DB queries use
-read-only connections (FR-3A-46); the GLM/GBM registration and the TEV what-if
+read-only connections (FR-3A-46); the GLM/GBM registration
 run through the sanctioned engine paths, which manage their own connections.
 """
 import sys
@@ -36,7 +36,7 @@ require_auth()
 st.title("Assumption Comparison — AI Proposals")
 st.markdown(
     "**Read-only.** GLM proposals, the GBM challenge, SHAP explainability, and a "
-    "TEV what-if. The AI proposes, explains, and audits — the actuary decides. "
+    "factor comparison. The AI proposes, explains, and audits — the actuary decides. "
     "No assumption is changed on this page (FR-3A-44); adopt a proposal in "
     "**Stage 2 — Edit Assumptions**, which records the AI provenance."
 )
@@ -162,49 +162,6 @@ st.download_button(
 )
 if approved_aset is None:
     st.caption("No APPROVED assumption set found — 'Currently-approved factor' shows as blank.")
-
-# --------------------------------------------------------------------------
-# TEV impact (what-if) (FR-3A-43)
-# --------------------------------------------------------------------------
-st.subheader("TEV impact (what-if)")
-st.caption(
-    "Substitutes the GLM-proposed factors for this decrement-product into an "
-    "**in-memory** copy of the approved assumption set and runs the TEV engine. "
-    "Logged as a TEV run flagged `what_if_ai_proposal`. **Creates or modifies no "
-    "assumption set.** Only the **GLM** proposal is substituted — the GBM is a "
-    "challenge/explain model (its interaction-signal flags and SHAP), never adopted "
-    "into an assumption set or TEV run (FR-3A-31/43)."
-)
-if approved_aset is None:
-    st.info("A TEV what-if needs an APPROVED assumption set to perturb. None exists yet.")
-else:
-    if st.button("Run TEV what-if"):
-        with st.spinner("Running baseline + what-if TEV projection…"):
-            try:
-                whatif_aset = logic.build_whatif_assumption_set(
-                    approved_aset, sel_decrement, sel_product, glm
-                )
-                whatif, baseline_total = logic.run_whatif_tev(
-                    Path(DB_PATH), approved_aset, whatif_aset
-                )
-                st.session_state[_fit_key + "::whatif"] = (whatif, baseline_total)
-            except Exception as exc:  # noqa: BLE001
-                st.session_state[_fit_key + "::whatif"] = {"error": str(exc)}
-    wf = st.session_state.get(_fit_key + "::whatif")
-    if isinstance(wf, dict) and "error" in wf:
-        st.error(f"What-if failed: {wf['error']}")
-    elif wf is not None:
-        whatif, baseline_total = wf
-        c1, c2, c3 = st.columns(3)
-        c1.metric("Approved-basis TEV", f"{baseline_total:,.0f}" if baseline_total else "—")
-        c2.metric("What-if TEV", f"{whatif.total_tev:,.0f}")
-        c3.metric("ΔTEV vs approved",
-                  f"{whatif.delta_tev:,.0f}" if whatif.delta_tev is not None else "—")
-        per_prod = pd.DataFrame([
-            {"product_code": pr.product_code, "tev": pr.tev}
-            for pr in whatif.product_results
-        ])
-        st.dataframe(per_prod, use_container_width=True)
 
 # --------------------------------------------------------------------------
 # Diagnostics (FR-3A-23 / FR-3A-32)

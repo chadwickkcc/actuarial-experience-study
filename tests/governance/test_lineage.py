@@ -106,15 +106,6 @@ def _seed_aset(
         author_id="a.analyst",
         basis="best-estimate",
         source_study_run_id=source_run,
-        rdr=0.09,
-        earned_rate_ga=0.05,
-        earned_rate_sa=0.06,
-        tax_rate=0.21,
-        expense_inflation=0.025,
-        rc_pct_reserve={"TERM": 0.03},
-        acquisition_per_policy=350.0,
-        maintenance_per_policy=72.0,
-        maintenance_pct_premium=0.02,
         mortality_multipliers=mort if mort is not None else [_mult()],
         lapse_multipliers=lapse if lapse is not None else [],
         surrender_multipliers=[],
@@ -125,24 +116,6 @@ def _seed_aset(
     )
     save_assumption_set(aset, Path(db))
     return set_id
-
-
-def _seed_tev_run(db: str, assumption_set_id: str, total_tev: float) -> None:
-    """Seed a baseline (sensitivity_id NULL) gold_tev_run_log row."""
-    con = duckdb.connect(db)
-    try:
-        con.execute(
-            "INSERT INTO gold_tev_run_log ("
-            "tev_run_id, assumption_set_id, sensitivity_id, run_ts, "
-            "model_point_hash, config_hash, code_version, projection_years, "
-            "status, total_tev) VALUES (?,?,?,?,?,?,?,?,?,?)",
-            [
-                str(uuid.uuid4()), assumption_set_id, None, datetime.utcnow(),
-                "mp-hash", "cfg-hash", "2.0", 60, "COMPLETE", total_tev,
-            ],
-        )
-    finally:
-        con.close()
 
 
 def _seed_study_run(db: str, run_id: str, data_snapshot_hash: str) -> None:
@@ -162,12 +135,6 @@ def _seed_study_run(db: str, run_id: str, data_snapshot_hash: str) -> None:
         )
     finally:
         con.close()
-
-
-def _write_min_tev_config(tmp_path) -> str:
-    p = tmp_path / "tev_config.yaml"
-    p.write_text("rdr: 0.09\nearned_rate_ga: 0.05\n", encoding="utf-8")
-    return str(p)
 
 
 # ---------------------------------------------------------------------------
@@ -223,10 +190,9 @@ def test_lineage_root_walks_to_root(gov_env):
 def test_create_root_version_seeds_draft_with_no_parent(gov_env, tmp_path):
     db = gov_env["db"]
     _seed_study_run(db, "run-root", data_snapshot_hash="snap")
-    tev_cfg = _write_min_tev_config(tmp_path)
     new_id = create_version(
         None, "run-root", _user(),
-        db_path=db, tev_config_path=tev_cfg,
+        db_path=db,
         output_yaml_dir=str(tmp_path / "asets"),
     )
     con = duckdb.connect(db, read_only=True)

@@ -90,10 +90,6 @@ def _seed_set(
         id=set_id, version=version, status=status,
         effective_date=date.today().isoformat(), author_id=author,
         basis="best-estimate", source_study_run_id=source_run,
-        rdr=0.09, earned_rate_ga=0.05, earned_rate_sa=0.06, tax_rate=0.21,
-        expense_inflation=0.025, rc_pct_reserve={"TERM": 0.03},
-        acquisition_per_policy=350.0, maintenance_per_policy=72.0,
-        maintenance_pct_premium=0.02,
         mortality_multipliers=[
             DecrementMultiplier(
                 product="TERM", gender="M", risk_class="STD_NS",
@@ -496,28 +492,6 @@ def test_dashboard_pending_includes_submitted_unsigned_study_run(gov_env, cfg):
     pending = {p["artifact_id"]: p for p in dashboard_data(db_path=db, config_path=cfg)["pending_approvals"]}
     assert "run-submitted" in pending
     assert pending["run-submitted"]["required_role"] == "junior_actuary"
-
-
-def test_supporting_reports_dedupes_tev_links(gov_env, tmp_path):
-    """Multiple TEV runs for one set collapse to a single impact-report reference."""
-    db = gov_env["db"]
-    aset = _seed_set(db)
-    con = duckdb.connect(db)
-    try:
-        for i in range(3):
-            con.execute(
-                "INSERT INTO gold_tev_run_log "
-                "(tev_run_id, assumption_set_id, run_ts, model_point_hash, config_hash, "
-                " code_version, projection_years, status) "
-                "VALUES (?, ?, now(), 'h', 'h', 'v', 60, 'COMPLETE')",
-                [f"tev-{i}", aset],
-            )
-    finally:
-        con.close()
-    reports = _supporting_reports(db, None, aset)
-    tev = [r for r in reports if "TEV" in r["label"]]
-    assert len(tev) == 1
-    assert "3 run(s)" in tev[0]["label"]
 
 
 def test_retention_hard_delete_true_coerced(cfg):

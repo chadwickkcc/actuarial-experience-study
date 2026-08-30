@@ -725,7 +725,7 @@ _GOLD_AE_DDL = [
     """,
 ]
 
-_GOLD_TEV_DDL = [
+_GOLD_ASSUMPTION_DDL = [
     # --------------------------------------------------------
     # GOLD: ASSUMPTION SETS
     # --------------------------------------------------------
@@ -743,119 +743,8 @@ _GOLD_TEV_DDL = [
         approved_by                 VARCHAR(50),
         approved_ts                 TIMESTAMP,
         superseded_by               VARCHAR(36),
-        description                 VARCHAR,
-        rdr                         DOUBLE NOT NULL,
-        earned_rate_ga              DOUBLE NOT NULL,
-        earned_rate_sa              DOUBLE NOT NULL,
-        tax_rate                    DOUBLE NOT NULL,
-        expense_inflation           DOUBLE NOT NULL
+        description                 VARCHAR
     )
-    """,
-
-    # --------------------------------------------------------
-    # GOLD: MODEL POINTS
-    # --------------------------------------------------------
-    """
-    CREATE TABLE IF NOT EXISTS gold_model_points (
-        model_point_id          VARCHAR(36) PRIMARY KEY,
-        tev_run_id              VARCHAR(36) NOT NULL,
-        product_code            VARCHAR(20) NOT NULL,
-        plan_code               VARCHAR(20) NOT NULL,
-        gender                  VARCHAR(1) NOT NULL,
-        smoker_status           VARCHAR(2) NOT NULL DEFAULT 'NS',
-        risk_class              VARCHAR(20) NOT NULL,
-        issue_age_band          VARCHAR(10) NOT NULL,
-        attained_age_band       VARCHAR(10) NOT NULL,
-        wtd_avg_attained_age    DOUBLE NOT NULL,
-        wtd_avg_issue_age       DOUBLE NOT NULL,
-        wtd_avg_duration        DOUBLE NOT NULL,
-        duration_band           VARCHAR(10) NOT NULL,
-        is_plt_flag             BOOLEAN,
-        premium_jump_ratio_band VARCHAR(10),
-        is_ulsg_flag            BOOLEAN,
-        av_band                 VARCHAR(10),
-        equity_allocation_band  VARCHAR(10),
-        glwb_elected_flag       BOOLEAN,
-        surrender_charge_yr_band VARCHAR(10),
-        participating_flag      BOOLEAN,
-        policy_count            INTEGER NOT NULL,
-        face_amount_total       DOUBLE NOT NULL,
-        reserve_total           DOUBLE NOT NULL,
-        account_value_total     DOUBLE,
-        premium_total           DOUBLE NOT NULL,
-        ci_rider_count          INTEGER NOT NULL DEFAULT 0,
-        ci_rider_sa_total       DOUBLE NOT NULL DEFAULT 0,
-        required_capital        DOUBLE NOT NULL,
-        _created_ts             TIMESTAMP NOT NULL
-    )
-    """,
-
-    """
-    CREATE INDEX IF NOT EXISTS idx_mp_run_product
-        ON gold_model_points (tev_run_id, product_code)
-    """,
-
-    # --------------------------------------------------------
-    # GOLD: TEV RUN LOG
-    # --------------------------------------------------------
-    """
-    CREATE TABLE IF NOT EXISTS gold_tev_run_log (
-        tev_run_id              VARCHAR(36) PRIMARY KEY,
-        assumption_set_id       VARCHAR(36) NOT NULL,
-        sensitivity_id          VARCHAR(20),
-        run_ts                  TIMESTAMP NOT NULL,
-        model_point_hash        VARCHAR(64) NOT NULL,
-        config_hash             VARCHAR(64) NOT NULL,
-        code_version            VARCHAR(20) NOT NULL,
-        projection_years        INTEGER NOT NULL,
-        run_duration_sec        DOUBLE,
-        status                  VARCHAR(10) NOT NULL,
-        error_message           VARCHAR,
-        total_anw               DOUBLE,
-        total_pvfp              DOUBLE,
-        total_pvcoc             DOUBLE,
-        total_vif               DOUBLE,
-        total_tev               DOUBLE,
-        delta_tev_vs_prior      DOUBLE,
-        prior_tev_run_id        VARCHAR(36)
-    )
-    """,
-
-    # --------------------------------------------------------
-    # GOLD: TEV RESULTS (per product, per run)
-    # --------------------------------------------------------
-    """
-    CREATE TABLE IF NOT EXISTS gold_tev_results (
-        result_id               VARCHAR(36) PRIMARY KEY,
-        tev_run_id              VARCHAR(36) NOT NULL,
-        assumption_set_id       VARCHAR(36) NOT NULL,
-        sensitivity_id          VARCHAR(20),
-        product_code            VARCHAR(20) NOT NULL,
-        anw                     DOUBLE NOT NULL,
-        anw_required_capital    DOUBLE NOT NULL,
-        anw_free_surplus        DOUBLE NOT NULL,
-        pvfp                    DOUBLE NOT NULL,
-        pvfp_mortality_margin   DOUBLE,
-        pvfp_lapse_margin       DOUBLE,
-        pvfp_ci_margin          DOUBLE,
-        pvfp_investment_spread  DOUBLE,
-        pvfp_expense_margin     DOUBLE,
-        pvfp_other              DOUBLE,
-        pvfp_tax                DOUBLE,
-        pvfp_reserve_release    DOUBLE,
-        pvfp_change             DOUBLE,
-        pvcoc                   DOUBLE NOT NULL,
-        vif                     DOUBLE NOT NULL,
-        tev                     DOUBLE NOT NULL,
-        delta_tev               DOUBLE,
-        _created_ts             TIMESTAMP NOT NULL,
-        UNIQUE (tev_run_id, product_code)
-    )
-    """,
-
-    """
-    CREATE INDEX IF NOT EXISTS idx_tev_results_run
-        ON gold_tev_results (tev_run_id, product_code)
     """,
 
     # --------------------------------------------------------
@@ -1162,7 +1051,7 @@ def init_database(db_path: str = DEFAULT_DB_PATH) -> None:
     con = duckdb.connect(db_path)
     try:
         all_ddl = (
-            _BRONZE_DDL + _SILVER_DDL + _GOLD_AE_DDL + _GOLD_TEV_DDL
+            _BRONZE_DDL + _SILVER_DDL + _GOLD_AE_DDL + _GOLD_ASSUMPTION_DDL
             + _GOLD_AI_DDL + _GOVERNANCE_DDL + _GOVERNANCE_SIGNOFF_DDL
             + _GOVERNANCE_EVENTS_DDL
         )

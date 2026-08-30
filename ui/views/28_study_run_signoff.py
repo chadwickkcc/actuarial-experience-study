@@ -7,7 +7,7 @@ approvers sign it off level by level (proposer ≠ approver enforced), and once 
 the compliance pack can be exported.
 
 It mirrors the assumption sign-off core (ui/views/22_assumption_step3.py) with
-ArtifactType.STUDY_RUN — study runs carry no version / ΔTEV, so the full chain to
+ArtifactType.STUDY_RUN — study runs carry no version / materiality metric, so the full chain to
 chief always applies. The governance engine is unchanged; this is UI wiring.
 """
 import sys
@@ -176,7 +176,7 @@ if next_level is None:
 
 st.caption(
     f"Next required level: **{next_level.level} — {next_level.required_role.value}**. "
-    "Study runs always require the full chain (no ΔTEV shortcut)."
+    "Study runs always require the full chain (no materiality shortcut)."
 )
 
 with st.expander("My pending approvals", expanded=False):

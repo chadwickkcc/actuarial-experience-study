@@ -25,8 +25,6 @@ _DIGEST = {
     "run_id": "abc123",
     "study_period": "2016-01-01 to 2023-12-31",
     "products": ["TERM", "WL"],
-    "tev_baseline": 1234.0,
-    "delta_tev_vs_prior": None,
     "by_product": [
         {
             "product": "WL",
@@ -47,14 +45,13 @@ _DIGEST = {
 }
 
 
-def test_render_digest_includes_products_overall_ae_and_tev():
+def test_render_digest_includes_products_and_overall_ae():
     text = _render_digest(_DIGEST)
     assert "Study at a glance" in text
     assert "TERM, WL" in text          # product coverage
     assert "WL mortality" in text      # per-product per-decrement overall line
     assert "0.5718" in text            # overall A/E
     assert "0.4631" in text            # aggregate credibility Z
-    assert "1234" in text              # baseline TEV
 
 
 def test_render_digest_empty_inputs_are_inert():
@@ -95,8 +92,9 @@ def test_digest_only_figure_is_traceable_on_the_data_path():
         routing_reply("FACTUAL_LOOKUP"),
         sqlgen_reply(
             "SELECT ae_count FROM gold_ae_results WHERE product_code = 'WL' LIMIT 500",
-            # 1234 is the baseline TEV — present in the digest, NOT in this result.
-            "WL mortality A/E is {{col:ae_count}}; the baseline TEV is 1234.",
+            # 0.4631 is the aggregate credibility Z — present in the digest, NOT
+            # in this result set.
+            "WL mortality A/E is {{col:ae_count}}; the aggregate credibility Z is 0.4631.",
         ),
     )
     mcp = StubMCP(ae={"columns": ["ae_count"], "rows": [[0.5718]], "row_count": 1})
@@ -125,8 +123,9 @@ def test_digest_reaches_synthesis_path_and_traces():
         synthesis_plan_text=_synth_plan(
             "SELECT ae_count FROM gold_ae_results WHERE product_code='WL' LIMIT 5"
         ),
-        # 1234 is the baseline TEV — only in the digest, not in the evidence below.
-        synthesis_answer_text="Across products the baseline embedded value is 1234.",
+        # 0.4631 is the aggregate credibility Z — only in the digest, not in the
+        # evidence below.
+        synthesis_answer_text="Across products the aggregate credibility Z is 0.4631.",
     )
     mcp = StubMCP(ae={"columns": ["ae_count"], "rows": [[0.57]], "row_count": 1})
     result = handle_turn(
@@ -135,7 +134,7 @@ def test_digest_reaches_synthesis_path_and_traces():
         study_digest=_DIGEST, multi_query=True, analyst_mode=False,
     )
     assert not result.blocked, f"digest figure should trace on synthesis path; got {result.block_reason}"
-    assert "1234" in result.response_text
+    assert "0.4631" in result.response_text
     synth_calls = [
         c for c in prov.calls
         if "Evidence planner" in (c["system"] or "") or "Evidence synthesis" in (c["system"] or "")
@@ -150,7 +149,7 @@ def test_digest_only_figure_blocks_without_the_digest():
         routing_reply("FACTUAL_LOOKUP"),
         sqlgen_reply(
             "SELECT ae_count FROM gold_ae_results WHERE product_code = 'WL' LIMIT 500",
-            "WL mortality A/E is {{col:ae_count}}; the baseline TEV is 1234.",
+            "WL mortality A/E is {{col:ae_count}}; the aggregate credibility Z is 0.4631.",
         ),
     )
     mcp = StubMCP(ae={"columns": ["ae_count"], "rows": [[0.5718]], "row_count": 1})

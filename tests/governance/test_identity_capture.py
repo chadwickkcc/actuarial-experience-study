@@ -105,12 +105,11 @@ def _seed_min_set(db: str, set_id: str, author: str) -> None:
             """
             INSERT INTO gold_assumption_sets (
                 assumption_set_id, version, status, effective_date, author_id, basis,
-                source_study_run_id, yaml_file_path, rdr, earned_rate_ga, earned_rate_sa,
-                tax_rate, expense_inflation, created_ts
-            ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,CURRENT_TIMESTAMP)
+                source_study_run_id, yaml_file_path, created_ts
+            ) VALUES (?,?,?,?,?,?,?,?,CURRENT_TIMESTAMP)
             """,
             [set_id, 1, "APPROVED", "2024-01-01", author, "best-estimate",
-             str(uuid.uuid4()), "", 0.09, 0.05, 0.06, 0.21, 0.025],
+             str(uuid.uuid4()), ""],
         )
     finally:
         con.close()

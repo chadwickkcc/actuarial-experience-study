@@ -1,7 +1,7 @@
 # config/chatbot_few_shots.yaml — curated Q->SQL few-shot examples (FR-3B-29).
 #
 # 20-30 pairs spanning the five products and the query classes (factual lookup,
-# multi-dimension segmentation, TEV, credibility context, run comparison). These
+# multi-dimension segmentation, credibility context, run comparison). These
 # are inlined into the sql_generation prompt by the chatbot pipeline.
 #
 # DISJOINTNESS (FR-3B-30/49): these must stay disjoint from the Session-22 golden
@@ -44,18 +44,6 @@ few_shots:
     sql: "SELECT distribution_channel, ae_lapse, credibility_z_lapse FROM gold_ae_results WHERE product_code = 'UL' ORDER BY distribution_channel LIMIT 500"
   - question: "Mortality A/E by calendar year for Whole Life."
     sql: "SELECT calendar_year, ae_count, credibility_z FROM gold_ae_results WHERE product_code = 'WL' ORDER BY calendar_year LIMIT 500"
-  - question: "What is the total embedded value for Whole Life at baseline?"
-    sql: "SELECT tev, vif, anw FROM gold_tev_results WHERE product_code = 'WL' AND sensitivity_id IS NULL LIMIT 500"
-  - question: "Show the PVFP and PVCoC for Term at baseline."
-    sql: "SELECT pvfp, pvcoc, vif FROM gold_tev_results WHERE product_code = 'TERM' AND sensitivity_id IS NULL LIMIT 500"
-  - question: "Total TEV across all products at baseline."
-    sql: "SELECT SUM(tev) AS total_tev FROM gold_tev_results WHERE sensitivity_id IS NULL"
-  - question: "What is the ANW required capital for Universal Life?"
-    sql: "SELECT anw_required_capital, anw_free_surplus, anw FROM gold_tev_results WHERE product_code = 'UL' AND sensitivity_id IS NULL LIMIT 500"
-  - question: "How did TEV change versus prior for VUL at baseline?"
-    sql: "SELECT delta_tev, tev FROM gold_tev_results WHERE product_code = 'VUL' AND sensitivity_id IS NULL LIMIT 500"
-  - question: "List the products and their VIF at baseline."
-    sql: "SELECT product_code, vif FROM gold_tev_results WHERE sensitivity_id IS NULL ORDER BY product_code LIMIT 500"
   - question: "Average count-basis mortality A/E across the Term cells."
     sql: "SELECT AVG(ae_count) AS mean_ae_count FROM gold_ae_results WHERE product_code = 'TERM'"
   - question: "Surrender A/E by surrender-charge position for variable annuities."
@@ -92,11 +80,6 @@ few_shots:
   # actual claims orders them from most credible to thinnest.
   - question: "Across the products, where is our mortality experience most credible and where is it thinnest?"
     sql: "SELECT product_code, SUM(actual_deaths_count) AS actual_deaths, SUM(expected_deaths_count) AS expected_deaths FROM gold_ae_results WHERE illness_code IS NULL GROUP BY product_code ORDER BY SUM(actual_deaths_count) DESC LIMIT 500"
-  # ---- TEV profit-source margins (which decrement/source drives PVFP) ---------- #
-  - question: "Which profit source contributes the most to total PVFP across the book?"
-    sql: "SELECT SUM(pvfp_mortality_margin) AS mortality, SUM(pvfp_lapse_margin) AS lapse, SUM(pvfp_ci_margin) AS ci, SUM(pvfp_investment_spread) AS investment_spread, SUM(pvfp_expense_margin) AS expense FROM gold_tev_results WHERE sensitivity_id IS NULL"
-  - question: "Show the PVFP profit-source margin breakdown by product at baseline."
-    sql: "SELECT product_code, pvfp_mortality_margin, pvfp_lapse_margin, pvfp_ci_margin, pvfp_investment_spread, pvfp_expense_margin FROM gold_tev_results WHERE sensitivity_id IS NULL ORDER BY product_code LIMIT 500"
   # ---- widened governed tables (read-only, no PII; one table per query) ----- #
   - question: "What are the AI-proposed Term mortality adjustment factors by attained age band?"
     sql: "SELECT sex, smoker, attained_age_band, factor, ci_low, ci_high, credibility_z FROM gold_ai_proposed_factors WHERE product_code = 'TERM' AND decrement = 'MORTALITY' AND model_type = 'GLM' ORDER BY attained_age_band LIMIT 500"

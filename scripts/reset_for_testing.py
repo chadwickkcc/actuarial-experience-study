@@ -86,9 +86,6 @@ GOLD_TABLES = [
     "gold_ae_results",
     # TEV
     "gold_assumption_sets",
-    "gold_model_points",
-    "gold_tev_run_log",
-    "gold_tev_results",
     "gold_workflow_iterations",
 ]
 

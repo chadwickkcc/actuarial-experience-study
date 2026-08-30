@@ -242,3 +242,37 @@ def test_report_jinja_env_escapes_markup():
     )
     assert "<script>" not in rendered
     assert "&lt;script&gt;" in rendered
+
+
+# ---------------------------------------------------------------------------
+# Demo refresh P3 — TEV stays deleted (standing guard)
+# ---------------------------------------------------------------------------
+
+def test_tev_engine_stays_deleted():
+    """src/tev/ was deleted in the demo refresh (P3) and must not return."""
+    from pathlib import Path
+
+    assert not Path("src/tev").exists(), "src/tev/ must stay deleted (demo refresh P3)"
+
+
+def test_no_source_references_tev_artifacts():
+    """No source/config file may reference the retired TEV tables or config.
+
+    Scans src/, ui/, config/ and scripts/ for the retired identifiers. Tests are
+    excluded (negative fixtures may mention them); comments in this test file
+    are excluded by construction.
+    """
+    import subprocess
+    from pathlib import Path
+
+    result = subprocess.run(
+        ["grep", "-rln",
+         "--include=*.py", "--include=*.yaml", "--include=*.j2", "--include=*.md",
+         "-e", "gold_tev_results", "-e", "gold_tev_run_log",
+         "-e", "gold_model_points", "-e", "tev_config.yaml",
+         "src", "ui", "config", "scripts"],
+        capture_output=True, text=True,
+        cwd=str(Path(__file__).parent.parent),
+    )
+    offenders = [ln for ln in result.stdout.splitlines() if ln.strip()]
+    assert offenders == [], f"retired TEV artifacts referenced by: {offenders}"

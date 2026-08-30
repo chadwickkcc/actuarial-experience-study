@@ -45,10 +45,7 @@ def _minimal_aset(mort_mults):
     return AssumptionSet(
         id="A1", version=1, status=AssumptionSetStatus.APPROVED,
         effective_date="2024-01-01", author_id="tester", basis="best-estimate",
-        source_study_run_id="R1", rdr=0.09, earned_rate_ga=0.05, earned_rate_sa=0.06,
-        tax_rate=0.21, expense_inflation=0.025, rc_pct_reserve={"TERM": 0.03},
-        acquisition_per_policy=350.0, maintenance_per_policy=72.0,
-        maintenance_pct_premium=0.02, mortality_multipliers=mort_mults,
+        source_study_run_id="R1", mortality_multipliers=mort_mults,
         lapse_multipliers=[], surrender_multipliers=[], ci_incidence_multipliers=[],
         premium_persistency=[], shock_lapse_plt={},
     )
@@ -107,23 +104,3 @@ def test_lookup_approved_factor_matches_grain():
     assert logic.lookup_approved_factor(
         aset, DecrementType.MORTALITY, {"product": "WL", "sex": "M"}
     ) is None
-
-
-def test_build_whatif_assumption_set_is_in_memory_and_nonmutating():
-    base_mults = [_mult("TERM", "M", 0.80), _mult("WL", "M", 0.85)]
-    aset = _minimal_aset(base_mults)
-    glm = _glm([_factor({"product": "TERM", "sex": "M"}, 0.92)])
-
-    whatif = logic.build_whatif_assumption_set(aset, DecrementType.MORTALITY, "TERM", glm)
-
-    # Fresh, in-memory only — never persisted.
-    assert whatif.id != aset.id
-    assert whatif.yaml_file_path == ""
-    # Baseline untouched.
-    assert aset.mortality_multipliers[0].multiplier == 0.80
-    # TERM moved toward the GLM proposal; WL unchanged.
-    term = [m for m in whatif.mortality_multipliers if m.product == "TERM"][0]
-    wl = [m for m in whatif.mortality_multipliers if m.product == "WL"][0]
-    assert math.isclose(term.multiplier, 0.92)
-    assert math.isclose(wl.multiplier, 0.85)
-    assert "AI what-if" in term.override_rationale

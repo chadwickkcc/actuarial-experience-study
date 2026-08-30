@@ -15,7 +15,7 @@ import duckdb
 import pandas as pd
 import streamlit as st
 
-from ui.config import DB_PATH, CONFIG_DIR
+from ui.config import DB_PATH
 from ui.stats_helpers import (
     credibility_z,
     poisson_ci,
@@ -289,11 +289,6 @@ if create_clicked:
     except PermissionDenied as exc:
         st.error(str(exc))
         st.stop()
-    tev_config_path = CONFIG_DIR / "tev_config.yaml"
-    if not tev_config_path.exists():
-        st.error(f"Config not found: {tev_config_path}")
-        st.stop()
-
     output_yaml_dir = DB_PATH.parent / "assumption_sets"
     output_yaml_dir.mkdir(parents=True, exist_ok=True)
 
@@ -303,7 +298,6 @@ if create_clicked:
                 study_run_id=selected_run_id,
                 author_id=author_id,
                 db_path=DB_PATH,
-                tev_config_path=tev_config_path,
                 output_yaml_dir=output_yaml_dir,
             )
         except Exception as exc:

@@ -3,7 +3,7 @@
 Implements the Technical Spec v3.0 §H.5 contract, realising FR-4-07 … FR-4-11 and
 NFR-G-05: parent→child version lineage, supersession (≤1 APPROVED-current per
 lineage), effective-dating with a live-set resolver, cross-version comparison
-(changed cells + ΔTEV + rationale), and a reproducibility stamp.
+(changed cells + materiality + rationale), and a reproducibility stamp.
 
 Governance is ordinary application code outside ``src/ai/``: all DB access here
 uses the standard parameterized DuckDB write path (NOT ``src/utils/sql_boundary``,
@@ -55,7 +55,6 @@ def create_version(
     author: User,
     *,
     db_path: str = DEFAULT_DB_PATH,
-    tev_config_path: Optional[str] = None,
     output_yaml_dir: Optional[str] = None,
 ) -> str:
     """Create a new assumption-set version in DRAFT; return its id (FR-4-07).
@@ -68,12 +67,8 @@ def create_version(
     out_dir = Path(output_yaml_dir) if output_yaml_dir else Path(db_path).parent / "assumption_sets"
 
     if parent_set_id is None:
-        cfg_path = (
-            Path(tev_config_path) if tev_config_path
-            else Path(db_path).parent.parent / "config" / "tev_config.yaml"
-        )
         aset = create_assumption_set_from_ae_run(
-            source_study_run_id, author.username, Path(db_path), cfg_path, out_dir,
+            source_study_run_id, author.username, Path(db_path), out_dir,
         )
         new_id = aset.id
         _set_columns(db_path, new_id, {"status": AssumptionSetStatus.DRAFT.value, "parent_set_id": None})

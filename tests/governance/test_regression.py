@@ -26,7 +26,6 @@ _MODULES = [
     "src.governance.audit",
     # Core engine (must be importable independently of governance)
     "src.calculation.ae_engine",
-    "src.tev.tev_core",
     "src.reporting.generator",
     "src.utils.db_init",
 ]
@@ -49,7 +48,7 @@ def test_core_engine_does_not_import_governance():
     from pathlib import Path
 
     core = [
-        Path("src/calculation"), Path("src/tev"), Path("src/exposure"),
+        Path("src/calculation"), Path("src/assumptions"), Path("src/exposure"),
         Path("src/aggregation"), Path("src/data_quality"), Path("src/ingestion"),
     ]
     offenders = []

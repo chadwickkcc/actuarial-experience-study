@@ -48,18 +48,20 @@ def tiny_db(tmp_path_factory) -> Path:
 # --------------------------------------------------------------------------- #
 
 def test_load_allowlist_shape(allowlist):
-    """Returns {table: {columns}} including the core A/E + TEV tables and the
-    widened PII-free Gold surface (2026-06-27 governed-maximum amendment)."""
-    # Core results tables always present.
-    assert {"gold_ae_results", "gold_tev_results"} <= set(allowlist)
+    """Returns {table: {columns}} including the core A/E table and the widened
+    PII-free Gold surface (post-TEV demo refresh)."""
+    # Core results table always present.
+    assert "gold_ae_results" in set(allowlist)
     # Widened PII-free results/summary + governance tables.
     assert {
-        "gold_inforce_reconciliation", "gold_dq_run_summary", "gold_model_points",
+        "gold_inforce_reconciliation", "gold_dq_run_summary",
         "gold_ai_model_registry", "gold_assumption_sets", "gold_ai_proposed_factors",
     } <= set(allowlist)
+    # Retired TEV tables must be gone.
+    assert "gold_tev_results" not in set(allowlist)
+    assert "gold_model_points" not in set(allowlist)
     assert isinstance(allowlist["gold_ae_results"], set)
     assert "ae_count" in allowlist["gold_ae_results"]
-    assert "tev" in allowlist["gold_tev_results"]
     # No PII column anywhere, and no raw / policy-level table is a key.
     flat = set().union(*allowlist.values())
     for pii in ("policy_holder_name", "ssn", "date_of_birth", "policy_id",
@@ -154,8 +156,8 @@ def test_gate3_qualified_star_expands(allowlist):
 
 def test_gate3_join_two_gold_tables_pass(allowlist):
     sql = (
-        "SELECT a.ae_count, t.tev FROM gold_ae_results a "
-        "JOIN gold_tev_results t ON a.assumption_set_id = t.assumption_set_id "
+        "SELECT a.ae_count, t.factor FROM gold_ae_results a "
+        "JOIN gold_ai_proposed_factors t ON a.product_code = t.product_code "
         "LIMIT 5"
     )
     assert validate_select(sql, allowlist).outcome is SQLGateOutcome.PASS

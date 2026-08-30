@@ -4,17 +4,16 @@ A read-only MCP server exposing Gold-layer results to LLM clients — the single
 governed data surface for all AI access (FR-3B-09..16). It enforces its own
 constraints rather than trusting callers:
 
-* the two dedicated ``query_*`` tools plus the generic ``query_results(table,
-  sql)`` tool (the 2026-06-27 governed-maximum widening) route every statement
-  through the §7.2 hardened SQL boundary (``execute_safe_select``), so gates 1–5
-  (parse, SELECT-only, allowlist, row-cap, read-only execution) run **server-side
-  regardless of caller** (FR-3B-10) — each query is scoped to *just one* Gold
-  table so it cannot read any other table (the AE tool cannot read the TEV table;
-  the generic tool reads only the single named widened table). The widened set is
-  PII-free results/summary tables only (reconciliation, DQ summary, model points,
-  AI model registry, assumption sets, proposed factors) — never a table carrying
-  policy_id and never Silver/Bronze;
-* the three metadata tools return manifest/dimension metadata only — never PII
+* the dedicated ``query_ae_results`` tool plus the generic ``query_results(table,
+  sql)`` tool route every statement through the §7.2 hardened SQL boundary
+  (``execute_safe_select``), so gates 1–5 (parse, SELECT-only, allowlist,
+  row-cap, read-only execution) run **server-side regardless of caller**
+  (FR-3B-10) — each query is scoped to *just one* Gold table so it cannot read
+  any other table (the generic tool reads only the single named widened table).
+  The widened set is PII-free results/summary tables only (reconciliation, DQ
+  summary, AI model registry, assumption sets, proposed factors) — never a
+  table carrying policy_id and never Silver/Bronze;
+* the two metadata tools return manifest/dimension metadata only — never PII
   and never policy rows (FR-3B-13);
 * no write-capable connection is ever opened (FR-3B-11);
 * the server runs over **stdio only** and binds no network interface
@@ -22,7 +21,7 @@ constraints rather than trusting callers:
 
 Tools never raise: gate rejections and errors come back as structured objects,
 never stack traces (FR-3B-15). The metadata tools read the manifest tables
-(``gold_study_runs`` / ``gold_tev_run_log``) — which are intentionally *not* on
+(``gold_study_runs``) — which is intentionally *not* on
 the chatbot allowlist — through a read-only, **parameterized** (``?``) query;
 this is the documented, fixed-shape, PII-free metadata read path (no string
 interpolation anywhere, FR-3A-02).
@@ -49,7 +48,7 @@ from src.utils.types import SQLGateOutcome
 # the 2026-06-27 governed-maximum data-surface widening (the generic
 # ``query_results`` tool over the additional PII-free Gold tables; FR-3B-09
 # in-place amendment).
-TOOL_SCHEMA_VERSION = "2.0"
+TOOL_SCHEMA_VERSION = "3.0"
 
 SERVER_NAME = "experience_study_data"
 _STDIO_TRANSPORT = "stdio"
@@ -62,7 +61,6 @@ _DEFAULT_ROW_CAP = 500
 
 # The two original query tools are each pinned to exactly one Gold table.
 _AE_TABLE = "gold_ae_results"
-_TEV_TABLE = "gold_tev_results"
 
 # Additional PII-free Gold results/summary tables reachable through the generic
 # ``query_results(table, sql)`` tool (governed-maximum widening, 2026-06-27).
@@ -73,7 +71,6 @@ _TEV_TABLE = "gold_tev_results"
 _EXTRA_QUERYABLE_TABLES = (
     "gold_inforce_reconciliation",
     "gold_dq_run_summary",
-    "gold_model_points",
     "gold_ai_model_registry",
     "gold_assumption_sets",
     "gold_ai_proposed_factors",
@@ -82,7 +79,7 @@ _EXTRA_QUERYABLE_TABLES = (
 #: Every table the AI may query (the two originals + the widened set). The chatbot
 #: pipeline imports this to route a validated single-table SELECT to its tool, and
 #: a test asserts it equals the configured allowlist keys (no drift).
-QUERYABLE_TABLES = (_AE_TABLE, _TEV_TABLE, *_EXTRA_QUERYABLE_TABLES)
+QUERYABLE_TABLES = (_AE_TABLE, *_EXTRA_QUERYABLE_TABLES)
 
 # Static, no-interpolation dimensions probe: the categorical segmentation
 # columns of the A/E fact table. DISTINCT over a bounded scan (LIMIT keeps it
@@ -103,15 +100,6 @@ _STUDY_SUMMARY_SQL = (
     "data_snapshot_hash, config_hash, code_version, run_duration_sec, status "
     "FROM gold_study_runs WHERE run_id = ?"
 )
-_TEV_SUMMARY_SQL = (
-    "SELECT tev_run_id, assumption_set_id, sensitivity_id, run_ts, model_point_hash, "
-    "config_hash, code_version, projection_years, run_duration_sec, status, "
-    "total_anw, total_pvfp, total_pvcoc, total_vif, total_tev, delta_tev_vs_prior, "
-    "prior_tev_run_id "
-    "FROM gold_tev_run_log WHERE tev_run_id = ?"
-)
-
-
 def _jsonable(value: Any) -> Any:
     """Coerce a DuckDB/pandas scalar to a JSON-serializable Python value."""
     if value is None:
@@ -180,17 +168,6 @@ def query_ae_results_impl(
 ) -> dict:
     """Read-only SELECT against the Gold A/E fact table (FR-3B-09)."""
     return _run_query(sql, table=_AE_TABLE, db_path=db_path, allowlist=allowlist, row_cap=row_cap)
-
-
-def query_tev_results_impl(
-    sql: str,
-    *,
-    db_path: Path,
-    allowlist: dict[str, set[str]],
-    row_cap: int = _DEFAULT_ROW_CAP,
-) -> dict:
-    """Read-only SELECT against the Gold TEV results table (FR-3B-09)."""
-    return _run_query(sql, table=_TEV_TABLE, db_path=db_path, allowlist=allowlist, row_cap=row_cap)
 
 
 def query_results_impl(
@@ -278,18 +255,6 @@ def get_study_run_summary_impl(run_id: str, *, db_path: Path) -> dict:
     return {col: _jsonable(val) for col, val in zip(columns, row)}
 
 
-def get_tev_run_summary_impl(tev_run_id: str, *, db_path: Path) -> dict:
-    """TEV run manifest including assumption set ID (metadata only) (FR-3B-09)."""
-    try:
-        result = _read_manifest(_TEV_SUMMARY_SQL, tev_run_id, db_path)
-    except Exception:  # noqa: BLE001
-        return _error("internal_error", "Could not read the TEV run manifest.")
-    if result is None:
-        return _error("not_found", f"No TEV run with tev_run_id {tev_run_id!r}.")
-    columns, row = result
-    return {col: _jsonable(val) for col, val in zip(columns, row)}
-
-
 def _load_row_cap(config_path: Path) -> int:
     """Read ``chatbot.sql_row_cap`` from ai_config.yaml (default 500)."""
     config_path = Path(config_path)
@@ -325,17 +290,12 @@ def build_server(
         return query_ae_results_impl(sql, db_path=db_path, allowlist=allowlist, row_cap=row_cap)
 
     @server.tool()
-    def query_tev_results(sql: str) -> dict:
-        """Run a read-only SELECT against the Gold TEV results table."""
-        return query_tev_results_impl(sql, db_path=db_path, allowlist=allowlist, row_cap=row_cap)
-
-    @server.tool()
     def query_results(table: str, sql: str) -> dict:
         """Run a read-only SELECT against one widened PII-free Gold table.
 
         ``table`` must be one of the queryable Gold tables (reconciliation, DQ
-        summary, model points, AI model registry, assumption sets, proposed
-        factors); the query is scoped server-side to that single table.
+        summary, AI model registry, assumption sets, proposed factors); the
+        query is scoped server-side to that single table.
         """
         return query_results_impl(
             table, sql, db_path=db_path, allowlist=allowlist, row_cap=row_cap
@@ -350,11 +310,6 @@ def build_server(
     def get_study_run_summary(run_id: str) -> dict:
         """Return the manifest metadata for a study run."""
         return get_study_run_summary_impl(run_id, db_path=db_path)
-
-    @server.tool()
-    def get_tev_run_summary(tev_run_id: str) -> dict:
-        """Return the manifest metadata for a TEV run."""
-        return get_tev_run_summary_impl(tev_run_id, db_path=db_path)
 
     return server
 

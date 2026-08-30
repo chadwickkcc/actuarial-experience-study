@@ -24,7 +24,7 @@ require_auth()
 
 st.title("🧠 AI Analyst")
 st.caption(
-    "Ask about the loaded experience-study and TEV results, or request a "
+    "Ask about the loaded experience-study results, or request a "
     "narrative commentary. Answers are grounded in this tool's own results and "
     "reports — numbers are filled from the database, never invented. Commentary "
     "is AI-drafted and requires actuary review."
@@ -172,7 +172,7 @@ with st.expander("Example questions & commentary prompts", expanded=not state.tu
             st.session_state.analyst_pending = example
 
 # --- New turn ---------------------------------------------------------------
-typed = st.chat_input("Ask about A/E, exposure, credibility, TEV — or request commentary")
+typed = st.chat_input("Ask about A/E, exposure, credibility — or request commentary")
 prompt = typed or st.session_state.pop("analyst_pending", None)
 if prompt:
     with st.chat_message("user"):

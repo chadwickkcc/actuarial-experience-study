@@ -118,7 +118,7 @@ _DEFAULT_ROW_CAP = 500
 # Number-free templated messages (so they never affect numeric traceability).
 _REFUSAL_TEXT = (
     "I can only answer questions about the loaded experience-study results "
-    "(A/E ratios, exposure, credibility, and TEV figures). I can't access personal "
+    "(A/E ratios, exposure, and credibility figures). I can't access personal "
     "data, answer unrelated questions, or change assumptions or any data."
 )
 _BUDGET_STOP_TEXT = (
@@ -386,7 +386,7 @@ def _render_digest(digest: Optional[dict]) -> str:
     """A compact, display-rounded "study at a glance" block for the system prompt.
 
     Built from the same app-assembled fact pack used for commentary (overall A/E
-    per product × decrement, study period, products, baseline TEV). Injecting it
+    per product × decrement, study period, products). Injecting it
     into the routing / SQL-gen / synthesis prompts means the model always knows
     the whole study's shape — it can answer overview, coverage and comparison
     questions directly and write better-grounded SQL — while precise figures are
@@ -421,9 +421,6 @@ def _render_digest(digest: Optional[dict]) -> str:
     if rows:
         lines.append("Overall A/E by product and decrement (A/E = actual ÷ expected):")
         lines.extend(rows)
-    tev = digest.get("tev_baseline")
-    if tev is not None:
-        lines.append(f"Baseline total embedded value (TEV), all products: {tev}.")
     return "\n".join(lines)
 
 
@@ -805,7 +802,6 @@ def _target_tables(sql: str) -> set[str]:
 
 
 _AE_TABLE = "gold_ae_results"
-_TEV_TABLE = "gold_tev_results"
 
 
 def execute_via_mcp(sql: str, mcp_client: MCPClient) -> dict:
@@ -814,7 +810,7 @@ def execute_via_mcp(sql: str, mcp_client: MCPClient) -> dict:
     The chatbot opens no DB connection of its own (FR-3B-25); the server
     re-enforces every gate (FR-3B-10). A query must reference exactly one
     *queryable* Gold table (cross-table reads are unroutable here and would be
-    rejected server-side too). The A/E and TEV tables keep their dedicated tools;
+    rejected server-side too). The A/E table keeps its dedicated tool;
     every other widened PII-free table is routed to the generic gated
     ``query_results`` tool. Returns the tool's ``{columns, rows, row_count}`` on
     success or its structured error object.
@@ -828,8 +824,6 @@ def execute_via_mcp(sql: str, mcp_client: MCPClient) -> dict:
     table = next(iter(tables))
     if table == _AE_TABLE:
         return mcp_client.query_ae_results(sql)
-    if table == _TEV_TABLE:
-        return mcp_client.query_tev_results(sql)
     return mcp_client.query_results(table, sql)
 
 
@@ -1701,7 +1695,7 @@ def handle_turn(
             ``sql_validation`` events during the turn and one final ``turn`` event
             carrying the full §D.3 field set (FR-3B-47); the DB sink writes the row.
         prompts_dir: optional override for the prompts root (tests).
-        rag_run_ids: study/TEV run id(s) the commentary grounds in (FR-3B-36).
+        rag_run_ids: study run id(s) the commentary grounds in (FR-3B-36).
         rag_artifact_paths: resolved grounding artifact paths (from
             ``context.resolve_rag_artifacts``); empty -> ungrounded prose.
         commentary_facts: app-assembled, display-rounded fact pack for the

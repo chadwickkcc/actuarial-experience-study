@@ -67,7 +67,7 @@ def _pick_root(db: str) -> tuple[str, str]:
     finally:
         con.close()
     if not row:
-        raise SystemExit("No root assumption set in DB — create one in TEV Stage 1 first.")
+        raise SystemExit("No root assumption set in DB — create one in Assumption Step 1 first.")
     return row[0], row[1]
 
 
@@ -149,7 +149,7 @@ def run() -> int:
             and isinstance(diff.changed_cells, list)
             and isinstance(diff.rationale_by_cell, dict)
         )
-        record("2.5 (VersionDiff: changed cells + ΔTEV + rationale)", ok_25,
+        record("2.5 (VersionDiff: changed cells + materiality + rationale)", ok_25,
                f"changed_cells={len(diff.changed_cells)} materiality={diff.materiality_value} "
                f"rationale_keys={len(diff.rationale_by_cell)} (empty for a bare clone)")
 

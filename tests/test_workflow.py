@@ -42,13 +42,11 @@ def _insert_assumption_set(db_path: Path, aset_id: str, status: str = "PROPOSED"
             INSERT INTO gold_assumption_sets (
                 assumption_set_id, version, status, effective_date,
                 author_id, basis, source_study_run_id, yaml_file_path,
-                rdr, earned_rate_ga, earned_rate_sa, tax_rate, expense_inflation,
                 created_ts
-            ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,CURRENT_TIMESTAMP)
+            ) VALUES (?,?,?,?,?,?,?,?,CURRENT_TIMESTAMP)
         """, [
             aset_id, 1, status, "2024-01-01", "actuary_1", "best-estimate",
             str(uuid.uuid4()), "",
-            0.09, 0.05, 0.06, 0.21, 0.025,
         ])
     finally:
         con.close()
