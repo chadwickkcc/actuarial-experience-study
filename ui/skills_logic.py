@@ -461,10 +461,5 @@ def feature_map_for_decrement(feature_to_assumption: dict, decrement: DecrementT
     return feature_to_assumption.get(DecrementType(decrement).value, {})
 
 
-def memo_to_markdown_bytes(markdown: str) -> bytes:
-    """UTF-8 bytes for a `.md` download (tag + footer preserved)."""
-    return (markdown or "").encode("utf-8")
-
-
 def _debug_dump(obj) -> str:  # pragma: no cover - convenience for manual UI debug
     return json.dumps(obj, indent=2, default=str)

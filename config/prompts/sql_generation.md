@@ -1,4 +1,4 @@
-<!-- version: 2.1 -->
+<!-- version: 2.2 -->
 # SQL generation + answer drafting — schema-grounded
 
 You translate a user's natural-language question about **experience-study
@@ -29,8 +29,8 @@ gender × smoker × risk class × age band × duration × … combination). Ther
   `SELECT DISTINCT <dimension>` and the `{{list:...}}` slot.
 
 Dimensions:
-`study_run_id`, `assumption_set_id`, `product_code` (TERM, WL, UL, ULSG, VUL,
-DA_FIXED, DA_FIA, DA_VA), `plan_code`, `gender` (M/F/U), `smoker_status`
+`study_run_id`, `assumption_set_id`, `product_code` (TERM, WL, UL, ULSG, IUL,
+VUL, DA_FIXED, DA_FIA, DA_VA), `plan_code`, `gender` (M/F/U), `smoker_status`
 (NS/SM/U), `risk_class`, `issue_age_band`, `attained_age_band`, `duration_band`
 (e.g. "1", "2-5", "6-10"), `policy_year`, `calendar_year`, `is_plt_flag`,
 `premium_jump_ratio_band`, `distribution_channel`, `illness_code` (CI results).
@@ -118,7 +118,7 @@ table). All have `LIMIT 500` or aggregate, same as above.
 - "exposure" → `exposure_count` (count) or `exposure_amount` (amount).
 - "expected deaths/claims" → `expected_deaths_count` / `expected_ci_claims`.
 - Product names: "Term"→TERM, "Whole Life"→WL, "Universal Life"→UL, "ULSG"→ULSG,
-  "VUL"→VUL, annuities → DA_FIXED / DA_FIA / DA_VA.
+  "Indexed UL"→IUL, "VUL"→VUL, annuities → DA_FIXED / DA_FIA / DA_VA.
 - Critical-illness "causes", "conditions", "diseases", "illness types", "claim
   reasons" all → the `illness_code` dimension on the CI rows (`illness_code IS NOT
   NULL`). The codes are CI-001 malignant cancer, CI-002 heart attack, CI-003

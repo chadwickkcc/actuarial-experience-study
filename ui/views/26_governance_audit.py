@@ -24,8 +24,8 @@ from src.governance.audit import (
 from src.utils.types import AuditFilter, ArtifactType, Role
 
 from ui.theme import page_setup
-page_setup("Governance & Audit")
-st.title("🛡️ Governance & Audit")
+page_setup("Audit & Integrity")
+st.title("🛡️ Audit & Integrity")
 st.caption(
     "Unified read layer over the three separate governance logs — sign-offs, "
     "A/E governance events, and the AI audit log. Storage stays "

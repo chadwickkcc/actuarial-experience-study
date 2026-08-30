@@ -175,7 +175,7 @@ Claim-level fraud tables never enter the chatbot allowlist.
 | Add `gold_fraud_run_summary`, `gold_fraud_scores`, `gold_fraud_flags` | P5 |
 
 ### 3.10 Nav target (P7, tunable at build)
-5 groups / 19 pages: **Overview** (Home, Run Study, Data Quality, Run Log) ·
+5 groups / 20 pages (as built; the 19 in the plan was indicative): **Overview** (Home, Run Study, Data Quality, Run Log) ·
 **Experience Results** (Exposure, Mortality, Lapse, CI, Product Comparison, Management
 Commentary) · **Risk & Fraud** (Fraud Monitor) · **Assumptions & AI** (Assumption Comparison,
 AI Analyst, Steps 1–3, Lineage) · **Governance** (Study Run Sign-off, Dashboard, Audit).

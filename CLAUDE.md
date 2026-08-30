@@ -56,7 +56,7 @@ pre-refresh state.
 6. DuckDB file lives at data/experience_study.duckdb.
 7. Do not use SQLAlchemy or any ORM. All DB access uses the duckdb Python package directly.
 8. (Phase 3) The AI layer is strictly additive under src/ai/: the core engine never imports it;
-   it reads only the Gold layer + config, and writes only to data/ai_models/ and the three AI Gold
+   it reads only the Gold layer + config, and writes only to data/ai_models/ and the four AI Gold
    tables. ALL dynamically-built SQL in the AI layer goes through src/utils/sql_boundary.py — no
    string-interpolated SQL anywhere in src/ai/. Every threshold/seed/grain lives in config YAML.
 

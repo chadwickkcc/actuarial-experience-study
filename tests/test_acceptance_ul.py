@@ -251,9 +251,12 @@ class TestAcceptanceMetricsUL:
         assert row[0] >= 0  # column is accessible; count may be 0 or positive
 
     def test_ulsg_shadow_account_dq_fires(self, pipeline_run_ul) -> None:
-        """DQ-UL-03 must fire on the UL test DB (ULSG policies with funding < 1.0 exist)."""
+        """DQ-UL-03 must fire on the UL test DB (ULSG policies with funding < 1.0 exist).
+
+        Family DQ runs are product-sliced, so the ULSG invocation owns these
+        failures (verification sweep, 2026-08-30)."""
         db, run_id = pipeline_run_ul
-        result = run_dq_checks("UL", db, run_id, halt_on_critical=False)
+        result = run_dq_checks("ULSG", db, run_id, halt_on_critical=False)
         ul03 = next(cr for cr in result.check_results if cr.check_id == "DQ-UL-03")
         assert ul03.fail_count > 0, (
             "DQ-UL-03 should fire — ULSG policies are generated with some funding_ratio < 1.0"

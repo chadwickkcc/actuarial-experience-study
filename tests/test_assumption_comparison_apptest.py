@@ -37,7 +37,7 @@ def test_page_renders_initial_state():
     # at.exception is an (empty) ElementList when no error occurred.
     assert not at.exception, f"page raised on render: {list(at.exception)}"
     # Title + the three selectors + the fit action must be present.
-    assert any("Assumption Comparison" in t.value for t in at.title)
+    assert any("AI Assumption Proposals" in t.value for t in at.title)
     labels = {sb.label for sb in at.selectbox}
     assert {"Study run", "Decrement", "Product"} <= labels
     assert any(b.label == "Fit AI models" for b in at.button)

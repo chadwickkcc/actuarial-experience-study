@@ -274,9 +274,9 @@ def build_server(
     allowlist: dict[str, set[str]],
     row_cap: int = _DEFAULT_ROW_CAP,
 ):
-    """Build the FastMCP server, registering the five tools as thin closures.
+    """Build the FastMCP server, registering the four tools as thin closures.
 
-    The five core ``*_impl`` functions hold all logic and are directly testable
+    The four core ``*_impl`` functions hold all logic and are directly testable
     with explicit keywords; the registered tools simply bind ``db_path`` /
     ``allowlist`` / ``row_cap``. (FastMCP registration boilerplate is per the
     FastMCP docs so the spec does not rot against library versions.)

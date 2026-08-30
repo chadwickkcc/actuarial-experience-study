@@ -129,7 +129,9 @@ class TestDQUL02Quarantine:
             )
         conn.close()
 
-        result = run_dq_checks("UL", bad_db, etl_run_id, halt_on_critical=False)
+        # ULSG-flagged rows are ULSG policies — the family DQ runs are
+        # product-sliced, so the ULSG invocation owns these failures.
+        result = run_dq_checks("ULSG", bad_db, etl_run_id, halt_on_critical=False)
         ul02 = next(cr for cr in result.check_results if cr.check_id == "DQ-UL-02")
         assert ul02.fail_count == 2
 
@@ -153,7 +155,7 @@ class TestDQUL02Quarantine:
         )
         conn.close()
 
-        result = run_dq_checks("UL", bad_db, etl_run_id, halt_on_critical=False)
+        result = run_dq_checks("ULSG", bad_db, etl_run_id, halt_on_critical=False)
         assert not result.critical_failure
 
     def test_ul02_quarantine_record_written(self, bad_db: Path) -> None:
@@ -176,7 +178,7 @@ class TestDQUL02Quarantine:
         )
         conn.close()
 
-        run_dq_checks("UL", bad_db, etl_run_id, halt_on_critical=False)
+        run_dq_checks("ULSG", bad_db, etl_run_id, halt_on_critical=False)
 
         conn = duckdb.connect(str(bad_db), read_only=True)
         try:
@@ -225,8 +227,11 @@ class TestDQUL03Warn:
     """Verify DQ-UL-03 fires on underfunded ULSG policies in force."""
 
     def test_ul03_fires_on_underfunded_ulsg(self, prod_db: Path, prod_etl_run_id: str) -> None:
-        """Synthetic ULSG data has some funding < 1.0 — check must fire."""
-        result = run_dq_checks("UL", prod_db, prod_etl_run_id, halt_on_critical=False)
+        """Synthetic ULSG data has some funding < 1.0 — check must fire.
+
+        Family DQ runs are product-sliced, so underfunded ULSG policies are
+        reported by the ULSG invocation."""
+        result = run_dq_checks("ULSG", prod_db, prod_etl_run_id, halt_on_critical=False)
         ul03 = next(cr for cr in result.check_results if cr.check_id == "DQ-UL-03")
         assert ul03.fail_count > 0, (
             "DQ-UL-03 should fire on synthetic data — ULSG policies are generated "
@@ -294,7 +299,7 @@ class TestDQUL04Quarantine:
         ).fetchone()[0]
         pids = conn.execute(
             "SELECT policy_id, guaranteed_coi_rate FROM silver_ul_policies "
-            "WHERE _etl_run_id = ? LIMIT 3",
+            "WHERE _etl_run_id = ? AND product_code = 'UL' LIMIT 3",
             [etl_run_id],
         ).fetchall()
         for pid, gcoi in pids:
@@ -374,7 +379,7 @@ class TestDQUL05Quarantine:
         # Seed 2 policies that are currently passing (credited >= gmir)
         pids = conn.execute(
             "SELECT policy_id, guaranteed_min_interest_rate FROM silver_ul_policies "
-            "WHERE _etl_run_id = ? "
+            "WHERE _etl_run_id = ? AND product_code = 'UL' "
             "AND credited_interest_rate >= guaranteed_min_interest_rate - 0.0001 "
             "LIMIT 2",
             [etl_run_id],
@@ -462,7 +467,8 @@ class TestDQUL06Warn:
         ).fetchone()[0]
         row = conn.execute(
             "SELECT policy_id, seven_pay_premium FROM silver_ul_policies "
-            "WHERE _etl_run_id = ? AND seven_pay_premium IS NOT NULL "
+            "WHERE _etl_run_id = ? AND product_code = 'UL' "
+            "AND seven_pay_premium IS NOT NULL "
             "AND seven_pay_premium > 0 LIMIT 1",
             [etl_run_id],
         ).fetchone()
@@ -518,3 +524,94 @@ class TestDQUL06Warn:
         # Verify the specific policy is not in the failing set
         failing_sample_ids = {s.get("policy_id") for s in ul06.sample_records}
         assert pid not in failing_sample_ids
+
+
+# ---------------------------------------------------------------------------
+# Family sub-run scoping (demo refresh verification sweep, 2026-08-30):
+# the shared UL-family check module scans the whole silver_ul_policies table;
+# the "UL" invocation is the family lead, while ULSG / IUL sub-runs must scope
+# failures + quarantine to their own product slice.
+# ---------------------------------------------------------------------------
+
+
+class TestFamilySubRunScoping:
+    """ULSG / IUL DQ sub-runs report only their own product slice."""
+
+    @staticmethod
+    def _seed_bad_ratio(db: Path, product_code: str) -> tuple[str, str]:
+        """Seed one negative shadow-funding ratio on a policy of product_code."""
+        conn = duckdb.connect(str(db))
+        etl_run_id = conn.execute(
+            "SELECT _etl_run_id FROM silver_ul_policies LIMIT 1"
+        ).fetchone()[0]
+        row = conn.execute(
+            "SELECT policy_id FROM silver_ul_policies "
+            "WHERE _etl_run_id = ? AND product_code = ? LIMIT 1",
+            [etl_run_id, product_code],
+        ).fetchone()
+        if row is None:
+            conn.close()
+            pytest.skip(f"No {product_code} policies found")
+        conn.execute(
+            "UPDATE silver_ul_policies "
+            "SET is_ulsg_flag = TRUE, shadow_account_funding_ratio = -0.5 "
+            "WHERE policy_id = ? AND _etl_run_id = ?",
+            [row[0], etl_run_id],
+        )
+        conn.close()
+        return etl_run_id, row[0]
+
+    def test_ulsg_run_excludes_sibling_product_failures(self, bad_db: Path) -> None:
+        """A UL policy failing a family check must not count in the ULSG run."""
+        etl_run_id, ul_pid = self._seed_bad_ratio(bad_db, "UL")
+        result = run_dq_checks("ULSG", bad_db, etl_run_id, halt_on_critical=False)
+        conn = duckdb.connect(str(bad_db), read_only=True)
+        try:
+            labelled = conn.execute(
+                "SELECT COUNT(*) FROM gold_dq_quarantine "
+                "WHERE dq_run_id = ? AND policy_id = ?",
+                [result.dq_run_id, ul_pid],
+            ).fetchone()[0]
+        finally:
+            conn.close()
+        assert labelled == 0, "ULSG sub-run quarantined a sibling UL policy"
+
+    def test_iul_run_scopes_to_iul_slice(self, bad_db: Path) -> None:
+        """The IUL run counts an IUL failure and writes an IUL summary row."""
+        from synthetic_data.generators.ul import N_IUL
+
+        etl_run_id, iul_pid = self._seed_bad_ratio(bad_db, "IUL")
+        result = run_dq_checks("IUL", bad_db, etl_run_id, halt_on_critical=False)
+        assert result.total_records == N_IUL
+        assert result.records_quarantined >= 1
+        assert result.records_quarantined <= N_IUL
+        conn = duckdb.connect(str(bad_db), read_only=True)
+        try:
+            summary = conn.execute(
+                "SELECT COUNT(*) FROM gold_dq_run_summary "
+                "WHERE dq_run_id = ? AND product_code = 'IUL'",
+                [result.dq_run_id],
+            ).fetchone()[0]
+            labelled = conn.execute(
+                "SELECT COUNT(*) FROM gold_dq_quarantine "
+                "WHERE dq_run_id = ? AND policy_id = ?",
+                [result.dq_run_id, iul_pid],
+            ).fetchone()[0]
+        finally:
+            conn.close()
+        assert summary == 1, "No IUL row written to gold_dq_run_summary"
+        assert labelled >= 1, "Seeded IUL failure not quarantined under the IUL run"
+
+    def test_family_totals_cover_all_25k_products(
+        self, prod_db: Path, prod_etl_run_id: str
+    ) -> None:
+        """UL + ULSG + IUL per-product totals sum to the full family volume."""
+        from synthetic_data.generators.ul import N_POLICIES
+
+        totals = 0
+        for pc in ("UL", "ULSG", "IUL"):
+            result = run_dq_checks(pc, prod_db, prod_etl_run_id, halt_on_critical=False)
+            totals += result.total_records
+        assert totals == N_POLICIES, (
+            f"Family DQ coverage {totals} != generated {N_POLICIES}"
+        )

@@ -131,20 +131,6 @@ def _row_to_user(row) -> User:
     )
 
 
-def get_user(user_id: str, db_path: str = DEFAULT_DB_PATH) -> Optional[User]:
-    """Return the ``User`` with ``user_id``, or None."""
-    con = duckdb.connect(str(db_path), read_only=True)
-    try:
-        row = con.execute(
-            "SELECT user_id, username, display_name, role, active "
-            "FROM gold_users WHERE user_id = ?",
-            [user_id],
-        ).fetchone()
-    finally:
-        con.close()
-    return _row_to_user(row) if row else None
-
-
 def get_user_by_username(username: str, db_path: str = DEFAULT_DB_PATH) -> Optional[User]:
     """Return the ``User`` with ``username``, or None."""
     con = duckdb.connect(str(db_path), read_only=True)

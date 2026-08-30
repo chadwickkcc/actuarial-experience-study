@@ -33,7 +33,7 @@ chatbot:
   max_synthesis_queries: 4          # round 3 Phase D — max SELECTs an EXPLORATORY turn may plan
   sql_row_cap: 500                  # FR-3B-31 gate 4 (boundary default)
   rag:                              # FR-3B-36 — commentary grounds in the tool's OWN artifacts only
-    reports_dir: reports            # generated A/E + TEV reports (relative to project root)
+    reports_dir: reports            # generated A/E reports (relative to project root)
     methodology_docs:               # shipped methodology documentation (not an external KB)
       - Reference Materials/Life Insurance Experience Studies End-to-End Methodology and Practical Guide.md
     max_grounding_chars: 12000      # cap on assembled grounding text fed to the LLM
@@ -165,11 +165,6 @@ chatbot:
       - approved_ts
       - superseded_by
       - description
-      - rdr
-      - earned_rate_ga
-      - earned_rate_sa
-      - tax_rate
-      - expense_inflation
       - ai_proposed_value
       - ai_model_id
     gold_fraud_run_summary:        # fraud-scan AGGREGATES (demo refresh P5).

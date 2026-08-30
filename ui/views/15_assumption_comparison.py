@@ -30,16 +30,16 @@ from src.ai.skills.shap_explain import explain_shap_results
 from src.utils.types import DecrementType
 
 from ui.theme import page_setup
-page_setup("Assumption Comparison — AI Proposals")
+page_setup("AI Assumption Proposals")
 
 from ui.config import require_auth
 require_auth()
-st.title("Assumption Comparison — AI Proposals")
+st.title("AI Assumption Proposals")
 st.markdown(
     "**Read-only.** GLM proposals, the GBM challenge, SHAP explainability, and a "
     "factor comparison. The AI proposes, explains, and audits — the actuary decides. "
     "No assumption is changed on this page; adopt a proposal in "
-    "**Stage 2 — Edit Assumptions**, which records the AI provenance."
+    "**Step 2 · Edit & Submit**, which records the AI provenance."
 )
 
 _DECREMENT_LABELS = {

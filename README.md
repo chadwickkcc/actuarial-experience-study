@@ -67,8 +67,9 @@ See [`src/ai/__init__.py`](src/ai/__init__.py) for the enforced contracts.
 
 ### Enabling the AI features (API keys)
 
-The runtime AI features — the two Skills (A/E memo, SHAP explanation), the AI
-Analyst chatbot, and the Stage-4 memo — call a language-model provider. API keys
+The runtime AI features — the drafting Skills (A/E memo, SHAP explanation, fraud
+narrative, management commentary) and the AI Analyst chatbot — call a
+language-model provider. API keys
 are read from **environment variables only** (FR-3B-04): a key is never stored in
 YAML, on disk, in logs, or in the audit trail. That is why there is intentionally
 **no API-key field in the UI** — set the key in your shell before launching the
@@ -91,8 +92,8 @@ streamlit run ui/app.py
 
 You only need one provider's key to use that provider's models; the other simply
 stays greyed. With a key set, the matching models change from greyed
-("— API key not configured") to selectable and the Skill / AI Analyst / Stage-4
-memo buttons work.
+("— API key not configured") to selectable and the Skill / AI Analyst draft
+buttons work.
 
 Notes:
 

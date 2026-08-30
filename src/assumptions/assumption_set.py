@@ -881,22 +881,3 @@ def find_ai_proposal_for_set(
     }
 
 
-def deep_copy_assumption_set(aset: AssumptionSet) -> AssumptionSet:
-    """Return a deep copy of an AssumptionSet with a fresh ID."""
-    new = AssumptionSet(
-        id=str(uuid.uuid4()),
-        version=aset.version,
-        status=aset.status,
-        effective_date=aset.effective_date,
-        author_id=aset.author_id,
-        basis=aset.basis,
-        source_study_run_id=aset.source_study_run_id,
-        mortality_multipliers=list(aset.mortality_multipliers),
-        lapse_multipliers=list(aset.lapse_multipliers),
-        surrender_multipliers=list(aset.surrender_multipliers),
-        ci_incidence_multipliers=list(aset.ci_incidence_multipliers),
-        premium_persistency=list(aset.premium_persistency),
-        shock_lapse_plt=dict(aset.shock_lapse_plt),
-        yaml_file_path="",
-    )
-    return new

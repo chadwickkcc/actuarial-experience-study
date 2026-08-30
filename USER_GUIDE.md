@@ -10,8 +10,8 @@ project overview and the reproducible-install summary, see
 
 A Python-based, AI-enabled actuarial **experience study** demo for life
 insurance, covering five product families —
-Term Life, Whole Life, Universal Life (UL/ULSG), Variable Universal Life (VUL),
-and Deferred Annuities. It runs a Bronze → Silver → Gold data pipeline, computes
+Term Life, Whole Life, Universal Life (UL/ULSG/IUL), Variable Universal Life
+(VUL), and Deferred Annuities. It runs a Bronze → Silver → Gold data pipeline, computes
 A/E (actual-to-expected) experience, proposes assumptions (with an optional AI
 layer), screens claims for fraud, drafts management commentary, and enforces a
 multi-role governance & sign-off workflow. The
@@ -95,9 +95,8 @@ streamlit run ui/app.py
 ```
 
 A **login gate** appears first — sign in as one of the four users (see §8). After
-signing in, the sidebar groups the workflow into numbered sections (Getting
-Started → Experience Results → Product Monitors → AI Assistance → Assumption
-Setting → Governance).
+signing in, the sidebar groups the workflow into five sections (Overview →
+Experience Results → Risk & Fraud → Assumptions & AI → Governance).
 
 ---
 

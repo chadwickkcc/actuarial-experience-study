@@ -30,12 +30,13 @@ from src.exposure.engine import build_exposure_file
 from src.ingestion.pipeline import run_etl_pipeline
 from src.utils.types import CredibilityMethod, ExposureMethod, StudyConfig
 
-PRODUCTS = ["TERM", "WL", "UL", "ULSG", "VUL", "DA"]
+PRODUCTS = ["TERM", "WL", "UL", "ULSG", "IUL", "VUL", "DA"]
 ETL_CFG = {
     "TERM": (TERM_SOURCE_CSV, TERM_MAPPING_YAML),
     "WL":   (WL_SOURCE_CSV,   WL_MAPPING_YAML),
     "UL":   (UL_SOURCE_CSV,   UL_MAPPING_YAML),
     "ULSG": (UL_SOURCE_CSV,   UL_MAPPING_YAML),
+    "IUL":  (UL_SOURCE_CSV,   UL_MAPPING_YAML),
     "VUL":  (VUL_SOURCE_CSV,  VUL_MAPPING_YAML),
     "DA":   (DA_SOURCE_CSV,   DA_MAPPING_YAML),
 }

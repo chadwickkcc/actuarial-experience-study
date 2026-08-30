@@ -25,6 +25,7 @@ One phase per session; gate green before proceeding; commit per phase.
 | P6 | Management commentary | L | ✅ COMPLETE (2026-08-30) |
 | P7 | Slickness pass | M | ✅ COMPLETE (2026-08-30) |
 | P8 | Docs, demo script, UAT | M | ✅ BUILD COMPLETE (2026-08-30) — owner dry-run + sign-off pending |
+| VS | Verification sweep (post-P8 double audit) | M | ✅ COMPLETE (2026-08-30) |
 
 **Test baseline history:**
 | Point | Suite |
@@ -37,7 +38,8 @@ One phase per session; gate green before proceeding; commit per phase.
 | After P5 | 1234 passed, 7 skipped, 0 failed (+17 fraud tests) |
 | After P6 | 1253 passed, 7 skipped, 0 failed (+19 commentary tests) |
 | After P7 | 1258 passed, 7 skipped, 0 failed (+5 UI guards; +1 home test updated) |
-| After P8 (FINAL) | **1259 passed, 6 skipped, 0 failed** (lifecycle-UI skip cleared by the seeded workflow; the 6 skips are the original pre-refresh baseline skips) |
+| After P8 | 1259 passed, 6 skipped, 0 failed (lifecycle-UI skip cleared by the seeded workflow; the 6 skips are the original pre-refresh baseline skips) |
+| After verification sweep (FINAL) | **1263 passed, 6 skipped, 0 failed** (+3 DQ family-scoping tests, +1 TEV-residue guard) |
 
 **Owner checkpoints:** P3 eval re-lock (**REQUESTED 2026-08-30** — golden 36→30
 [G027–G032 removed], adversarial A007 retargeted to `gold_ai_proposed_factors`;
@@ -467,3 +469,68 @@ alt reference tables ×4).
 1. Eval-set re-lock (golden 30 / adversarial 12 — headers say RE-LOCK PENDING).
 2. Live demo dry-run via `docs/demo_walkthrough.md` + UAT sign-off.
 3. Optional: live eval baseline with API keys; optional fraud/commentary goldens (FU-7).
+
+---
+
+## Verification sweep — post-P8 double audit — COMPLETE (2026-08-30)
+
+Owner asked for reassurance the refresh was fully complete; a fresh verification pass
+(fresh full gate + 5 harnesses + boot smoke, then **two independent audit agents** —
+plan-vs-implementation and a residual-defect hunt across UI copy, prompts, configs,
+docs and the live DB) confirmed every P0–P8 deliverable in place but surfaced
+**3 blockers + 8 major client-visible defects + minor residue**. All fixed with
+regression coverage; the demo DB was rebuilt.
+
+**Blockers fixed:**
+1. **Stale economic columns on the AI surface** — `config/ai_config.yaml` still
+   allowlisted the 5 `gold_assumption_sets` economic columns dropped in P3, and a
+   few-shot taught `SELECT … rdr …` (passed the SQL boundary, failed in DuckDB →
+   "couldn't answer safely"). Columns removed; few-shot retargeted to
+   status/basis/effective_date/ai_model_id; **new standing guard**
+   `test_no_client_surface_references_tev_columns_or_terms` (config/ + ui/, word-
+   bounded) locks the class. All 37 few-shots now execute clean on the live DB.
+2. **Walkthrough §3.2/§3.3 pointed at pages that don't render those figures** —
+   repointed at Mortality A/E / Lapse A/E (Product filter + calendar_year row
+   dimension); trend-badge beat stays on Management Commentary. Figures verified
+   exact.
+3. **IUL absent from the study product lists** — `01_study_setup.py` +
+   `_uat_rerun.py` gained IUL (ETL/DQ/exposure invocation; A/E dedups); Run-Study
+   multiselect now defaults to ALL products (walkthrough says "keep defaults →
+   25,000"). Root-cause bonus: the shared UL-family DQ checks scan the whole
+   silver table, so the same 176 family failures were double-quarantined under
+   both UL and ULSG labels (and IUL had no summary row; DQ page total 24,500).
+   `run_dq_checks` now **slices failures per family product** — UL 41 (98.0%) ·
+   ULSG 128 (93.6%) · IUL 7 (98.6%), summary total 25,000, each policy quarantined
+   once under its true product. Quarantine **union unchanged** (same 176), so all
+   A/E figures are identical. +3 tests (`TestFamilySubRunScoping`); 5 existing
+   family-behaviour tests re-targeted to the sliced semantics.
+
+**Major fixes:** routing.md → v2.1 (TEV/PVFP wording out; superlative example now
+CI-based); sql_generation.md → v2.2 (IUL in the product enumeration + name map);
+stale "Stage 4"/"Stage 2" prose on pages 29/15 → Step 3/Step 2 wording; page titles
+aligned to nav labels (Run Study / AI Assumption Proposals / Audit & Integrity);
+USER_GUIDE nav groups → the 5 current ones (+IUL in the product list); README
+Stage-4-memo references removed; `reset_for_testing.py` clears the 3 fraud tables
+(+ stale "# TEV" comment retitled).
+
+**Minor:** compliance-pack report links now emitted only when the file exists (and
+both A/E reports are generated for the shipped run); iteration-history `stage`
+column dropped from the two step-page displays; "expected STAGE3_APPROVED" reworded;
+CLAUDE.md rule 8 three→four AI Gold tables; scope §3.10 19→20 pages; stale TEV
+mentions in `src/ai/__init__.py` / `ai_config.yaml` comment / server.py "five
+tools"→four; dead code deleted (`memo_to_markdown_bytes`,
+`deep_copy_assumption_set`, `users.get_user` — zero callers) + empty legacy dirs
+(`data/{tev_results,model_points,optimiser_suggestions}/`) + stray 0-byte
+`study.db` + orphan report removed.
+
+**Live-DB rebuild (run `d5f56adb…`):** reset → rerun (7 products incl. IUL, 10.4 s)
+→ AI fit (16 registry rows / 332 factors) → seeded workflow (APPROVED set,
+3 hash-chained sign-offs) → fraud scan (1,808 / 32 / max 1.20) → both A/E reports.
+**Every walkthrough figure re-verified exact** (deaths 1,206 · 0.6852; lapses
+5,142 · 0.8753; CI 589 · 1.2325 · 10 codes; mortality story .6031/.6123/.7541/.8801;
+lapse story 1.194/1.881; WL 611/931.26 = 0.6561; ring OFF-013/HOSP-066/CLM-424242;
+exposure 249,881; ~10 s runtime — walkthrough/UAT updated, incl. DQ figures + run id).
+
+**DoD:** gate **1263 passed, 6 skipped, 0 failed** (no keys); all five harnesses
+PASS (6/6, 7/7, 5/5, 4/4, 8/8); boot smoke HTTP 200, 0 tracebacks. Owner items
+unchanged: eval re-lock (RE-LOCK PENDING headers) + live dry-run/UAT sign-off.

@@ -74,7 +74,7 @@ def test_parseable_routing_makes_no_retry():
 def test_routing_prompt_covers_superlatives_and_margins():
     text = (CONFIG_DIR / "prompts" / "routing.md").read_text(encoding="utf-8").lower()
     assert "most credible" in text
-    assert "profit-source margin" in text
+    assert "accounts for the most ci" in text  # superlative/ranking example (TEV-free)
     assert "reconciliation pass" in text  # multi-part status question example
 
 

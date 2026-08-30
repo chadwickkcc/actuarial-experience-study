@@ -11,6 +11,7 @@ from __future__ import annotations
 import json
 import re
 import uuid
+from dataclasses import replace
 from datetime import datetime
 from pathlib import Path
 
@@ -287,6 +288,21 @@ def run_dq_checks(
                 [study_run_id],
             ).fetchone()[0]
 
+        # The shared UL-family check module scans the whole silver_ul_policies
+        # table, so each family invocation (UL / ULSG / IUL) scopes failures and
+        # quarantine to its own product slice — per-product summary rows then
+        # attribute correctly and no policy is quarantined under a sibling label.
+        slice_ids: set[str] | None = None
+        if product_code in ("UL", "ULSG", "IUL"):
+            slice_ids = {
+                r[0]
+                for r in conn.execute(
+                    f"SELECT {pk_col} FROM {silver_table}"
+                    " WHERE _etl_run_id = ? AND product_code = ?",
+                    [study_run_id, product_code],
+                ).fetchall()
+            }
+
         all_results: list[DQCheckResult] = []
         quarantine_ids: set[str] = set()
         halt_ids: set[str] = set()
@@ -294,6 +310,13 @@ def run_dq_checks(
         first_halt: DQCheckResult | None = None
 
         for check_result, failing_ids in run_all_checks(conn, context):
+            if slice_ids is not None:
+                failing_ids = [pid for pid in failing_ids if pid in slice_ids]
+                check_result = replace(
+                    check_result,
+                    fail_count=len(failing_ids),
+                    passed=len(failing_ids) == 0,
+                )
             all_results.append(check_result)
 
             if not check_result.passed:

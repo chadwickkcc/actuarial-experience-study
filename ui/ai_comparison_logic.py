@@ -6,9 +6,6 @@ tested without importing Streamlit. It is strictly additive (CLAUDE.md rule #8):
   * It **reuses** the Session 15/16 GLM + GBM functions — it never reimplements
     any modelling.
   * It reads the persisted SHAP-JSON; it never recomputes SHAP at render time.
-  * The what-if builder substitutes a GLM-proposed factor into an *in-memory*
-    copy of the approved assumption set for side-by-side display. It creates or
-    modifies **no** assumption set.
 
 It is a UI helper (under ``ui/``), not part of ``src/ai/`` — so it may read the
 AI Gold registry. ``src/ai/`` still never imports it (FR-3A-07 one-way rule is
@@ -287,7 +284,7 @@ def lookup_approved_factor(
 
 
 # ---------------------------------------------------------------------------
-# What-if assumption set (FR-3A-43) — in-memory only, never persisted
+# Approved assumption set lookup
 # ---------------------------------------------------------------------------
 
 def latest_approved_assumption_set(db_path: Path) -> Optional[AssumptionSet]:

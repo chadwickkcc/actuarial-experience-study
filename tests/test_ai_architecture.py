@@ -276,3 +276,29 @@ def test_no_source_references_tev_artifacts():
     )
     offenders = [ln for ln in result.stdout.splitlines() if ln.strip()]
     assert offenders == [], f"retired TEV artifacts referenced by: {offenders}"
+
+
+def test_no_client_surface_references_tev_columns_or_terms():
+    """The rendered/LLM-facing surface must not mention retired TEV columns/terms.
+
+    Scans config/ (prompts, few-shots, allowlist) and ui/ for the five economic
+    columns dropped from gold_assumption_sets in P3 and for embedded-value
+    wording. Scoped to config/ + ui/ so engine docstrings never self-flag.
+    Locks the round-6 defect class: an allowlisted-but-dropped column lets a
+    generated query pass the SQL boundary and then fail in DuckDB.
+    """
+    import subprocess
+    from pathlib import Path
+
+    result = subprocess.run(
+        ["grep", "-rlnE",
+         "--include=*.py", "--include=*.yaml", "--include=*.md",
+         "-e", r"(^|[^a-zA-Z_])rdr([^a-zA-Z_]|$)",  # word-bounded: 'guardrail' is fine
+         "-e", "earned_rate_", "-e", "expense_inflation",
+         "-e", "PVFP", "-e", "Traditional Embedded Value",
+         "config", "ui"],
+        capture_output=True, text=True,
+        cwd=str(Path(__file__).parent.parent),
+    )
+    offenders = [ln for ln in result.stdout.splitlines() if ln.strip()]
+    assert offenders == [], f"retired TEV columns/terms referenced by: {offenders}"

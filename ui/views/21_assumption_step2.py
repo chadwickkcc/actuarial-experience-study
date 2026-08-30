@@ -548,7 +548,7 @@ with st.expander("Iteration history for this workflow session", expanded=False):
         if history:
             hist_df = pd.DataFrame(history)
             display_cols = [
-                "iteration_number", "stage", "action", "actuary_id",
+                "iteration_number", "action", "actuary_id",
                 "actuary_comment", "iteration_ts",
             ]
             hist_df = hist_df[[c for c in display_cols if c in hist_df.columns]]

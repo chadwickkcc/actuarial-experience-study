@@ -3,7 +3,7 @@
 **Audience:** actuaries evaluating "the art of the possible" for an AI-enabled
 experience-study platform.
 **Setup before the session:** `streamlit run ui/app.py` on the shipped demo DB
-(seed-42 dataset, run `b23edb78…`). Optionally `export ANTHROPIC_API_KEY=…`
+(seed-42 dataset, run `d5f56adb…`). Optionally `export ANTHROPIC_API_KEY=…`
 (and/or `DEEPSEEK_API_KEY`) to run the live AI drafting beats; without a key
 the AI pages still render and the buttons explain what they would do.
 **Sign-ins used:** `a.analyst` (proposer) and the three approvers `j.junior`,
@@ -25,21 +25,24 @@ If you regenerate the data, refresh them from `docs/demo_refresh_progress.md`.
 
 1. **Run Study** → keep defaults → **Run Study**.
 2. Talking point: **25,000 policies**, full ETL → data-quality → exposure →
-   A/E pipeline in **~9 seconds**; ~250k exposure segments.
-3. **Data Quality**: overall clean; **UL and ULSG each quarantine 176 records
-   (DQ score 91.2%)** — show the quarantine drill-down and the governed
-   override trail (nothing enters the study silently).
+   A/E pipeline in **~10 seconds**; ~250k exposure segments.
+3. **Data Quality**: all 25,000 records pass through per-product checks;
+   the UL family quarantines **UL 41 (98.0%) · ULSG 128 (93.6%) · IUL 7
+   (98.6%)** — show the quarantine drill-down and the governed override
+   trail (nothing enters the study silently).
 
 ## 3 · The experience results (4 min)
 
 1. **Mortality A/E** — headline: **1,206 deaths, portfolio A/E 0.6852**.
    Pivot by product / age band; note credibility flags on thin cells.
-2. **The mortality story** — on **Management Commentary** (or Product
-   Comparison → trend chart): Term+WL mortality A/E climbs
-   **0.60 → 0.61 → 0.75 → 0.88** across 2020→2023. Three-year trend badge:
-   **🔴 Worsening** (slope +0.08/yr).
-3. **The lapse story** — lapse A/E for Term + UL-family: **1.19 in 2022 and
-   1.88 in 2023** against ~0.9 before — a rate-environment shock lapse spike.
+2. **The mortality story** — still on **Mortality A/E**: set the Product
+   filter to **TERM + WL** and the Row dimension to **calendar_year** — A/E
+   climbs **0.60 → 0.61 → 0.75 → 0.88** across 2020→2023. Then on
+   **Management Commentary** (decrement Mortality) show the three-year trend
+   badge: **🔴 Worsening** (slope +0.08/yr).
+3. **The lapse story** — on **Lapse A/E**: Product filter **TERM + UL + ULSG
+   + IUL**, Row dimension **calendar_year** — **1.19 in 2022 and 1.88 in
+   2023** against ~0.9 before — a rate-environment shock lapse spike.
 4. **Critical Illness A/E** — **589 CI claims across all 10 illness codes**,
    aggregate CI A/E **1.2325**; heat map by age × illness.
 
@@ -119,15 +122,15 @@ If you regenerate the data, refresh them from `docs/demo_refresh_progress.md`.
 
 ---
 
-### Expected-figure quick reference (seed-42 demo DB, run `b23edb78…`)
+### Expected-figure quick reference (seed-42 demo DB, run `d5f56adb…`)
 
 | Beat | Figure |
 |---|---|
-| Policies / runtime | 25,000 / ~9 s |
+| Policies / runtime | 25,000 / ~10 s |
 | Deaths, portfolio mortality A/E | 1,206 · 0.6852 |
 | Lapses, portfolio lapse A/E | 5,142 · 0.8753 |
 | CI claims, CI A/E | 589 (10 codes) · 1.2325 |
-| DQ quarantine | UL & ULSG: 176 each (91.2%) |
+| DQ quarantine | UL 41 (98.0%) · ULSG 128 (93.6%) · IUL 7 (98.6%) |
 | Mortality story (Term+WL, 2020→23) | 0.603 → 0.612 → 0.754 → 0.880 |
 | Lapse story (Term+UL fam, 2022/23) | 1.194 / 1.881 |
 | WL mortality (AI Analyst answer) | 0.6561 = 611 / 931.26 |

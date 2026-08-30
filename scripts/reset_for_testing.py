@@ -84,7 +84,11 @@ GOLD_TABLES = [
     "gold_exposure_segments",
     "gold_inforce_reconciliation",
     "gold_ae_results",
-    # TEV
+    # Fraud screening (demo refresh P5)
+    "gold_fraud_run_summary",
+    "gold_fraud_scores",
+    "gold_fraud_flags",
+    # Assumptions
     "gold_assumption_sets",
     "gold_workflow_iterations",
 ]

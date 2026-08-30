@@ -37,11 +37,12 @@ _PRODUCT_ETL_CONFIG: dict[str, tuple[str, str]] = {
     "WL":   (WL_SOURCE_CSV,   WL_MAPPING_YAML),
     "UL":   (UL_SOURCE_CSV,   UL_MAPPING_YAML),
     "ULSG": (UL_SOURCE_CSV,   UL_MAPPING_YAML),
+    "IUL":  (UL_SOURCE_CSV,   UL_MAPPING_YAML),
     "VUL":  (VUL_SOURCE_CSV,  VUL_MAPPING_YAML),
     "DA":   (DA_SOURCE_CSV,   DA_MAPPING_YAML),
 }
 
-_ALL_PRODUCTS = ["TERM", "WL", "UL", "ULSG", "VUL", "DA"]
+_ALL_PRODUCTS = ["TERM", "WL", "UL", "ULSG", "IUL", "VUL", "DA"]
 from src.calculation.ae_engine import calculate_ae
 from src.data_quality.runner import DQCriticalFailure, run_dq_checks
 from src.exposure.engine import build_exposure_file
@@ -54,11 +55,11 @@ from src.utils.types import (
 )
 
 from ui.theme import page_setup
-page_setup("Study Setup")
+page_setup("Run Study")
 
 from ui.config import require_auth
 require_auth()
-st.title("Study Setup")
+st.title("Run Study")
 st.caption("Configure study parameters and run the full pipeline.")
 
 
@@ -150,8 +151,9 @@ with _col_products:
     products = st.multiselect(
         "Products to include",
         options=_ALL_PRODUCTS,
-        default=["TERM"],
-        help="Select one or more products. Run Term Life first for a quick smoke-test.",
+        default=_ALL_PRODUCTS,
+        help="All products selected by default (the full 25,000-policy demo study). "
+             "Deselect down to TERM for a quick smoke-test.",
     )
 
 _col_exp, _col_cred = st.columns(2)
@@ -377,15 +379,16 @@ _SILVER_TABLES = {
     "WL": "silver_wl_policies",
     "UL": "silver_ul_policies",
     "ULSG": "silver_ul_policies",  # shares table with UL; filtered by product_code below
+    "IUL": "silver_ul_policies",   # shares table with UL; filtered by product_code below
     "VUL": "silver_vul_policies",
     "DA": "silver_annuity_contracts",
 }
 _PK_COL = {
     "TERM": "policy_id", "WL": "policy_id", "UL": "policy_id",
-    "ULSG": "policy_id", "VUL": "policy_id", "DA": "contract_id",
+    "ULSG": "policy_id", "IUL": "policy_id", "VUL": "policy_id", "DA": "contract_id",
 }
 # Products whose silver table is shared — must filter by product_code when counting
-_PRODUCT_CODE_FILTER = {"UL", "ULSG"}
+_PRODUCT_CODE_FILTER = {"UL", "ULSG", "IUL"}
 
 try:
     conn = duckdb.connect(str(DB_PATH), read_only=True)

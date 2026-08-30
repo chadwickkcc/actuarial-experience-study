@@ -121,8 +121,8 @@ aset = _load_aset(aset_id)
 # Only sets submitted for sign-off (or already locked) belong on this page.
 if aset.status not in ("STAGE3_APPROVED", "APPROVED"):
     st.warning(
-        f"Assumption set status is **{aset.status}** — expected STAGE3_APPROVED. "
-        "Return to Step 2 and submit it for sign-off first."
+        f"Assumption set status is **{aset.status}** — expected a set submitted "
+        "for sign-off. Return to Step 2 and submit it first."
     )
     st.stop()
 
@@ -187,7 +187,7 @@ total_iterations = len([h for h in history if h.get("stage") in (2, 3)])
 if history:
     hist_df = pd.DataFrame(history)
     display_cols = [
-        "iteration_number", "stage", "action", "actuary_id",
+        "iteration_number", "action", "actuary_id",
         "actuary_comment", "iteration_ts",
     ]
     hist_df = hist_df[[c for c in display_cols if c in hist_df.columns]]

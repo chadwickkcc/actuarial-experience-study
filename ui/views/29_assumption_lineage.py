@@ -45,8 +45,8 @@ st.markdown(
     "Manage the assumption-set version lifecycle: browse a lineage, **re-open** an "
     "approved set into a new draft version, **publish** an approved version with an "
     "effective date range (superseding the prior live version), and **compare** "
-    "versions. Approval itself happens in **Stage 4**; this page manages versions "
-    "around it."
+    "versions. Approval itself happens in **Step 3 · Sign Off & Lock**; this page "
+    "manages versions around it."
 )
 
 DB = str(DB_PATH)
@@ -156,7 +156,8 @@ st.divider()
 st.subheader("Publish (set effective range + supersede prior)")
 st.caption(
     "Makes an APPROVED version the live set for a date range and supersedes the "
-    "prior live version in the lineage. Approval must already be complete (Stage 4)."
+    "prior live version in the lineage. Approval must already be complete "
+    "(Step 3 · Sign Off & Lock)."
 )
 if selected["status"] != "APPROVED":
     st.caption(f"Selected set is **{selected['status']}** — only an APPROVED set can be published.")

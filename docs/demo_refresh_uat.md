@@ -1,8 +1,8 @@
 # Demo Refresh — UAT Script & Sign-Off
 
-**Scope:** owner acceptance of the 2026-08-30 demo refresh (P0–P8; see
-`demo_refresh_progress.md`). Run against the shipped seed-42 demo DB
-(run `b23edb78…`) with `streamlit run ui/app.py`. Sections 1–8 mirror the
+**Scope:** owner acceptance of the 2026-08-30 demo refresh (P0–P8 + the
+verification sweep; see `demo_refresh_progress.md`). Run against the shipped
+seed-42 demo DB (run `d5f56adb…`) with `streamlit run ui/app.py`. Sections 1–8 mirror the
 scripted demo (`docs/demo_walkthrough.md`) — run it beat-by-beat and tick.
 Expected figures are the walkthrough's quick-reference table.
 
@@ -11,7 +11,7 @@ Expected figures are the walkthrough's quick-reference table.
 - [ ] `uv pip sync requirements.lock` clean; `.venv` Python 3.12.
 - [ ] Offline gate green:
       `unset ANTHROPIC_API_KEY DEEPSEEK_API_KEY OPENAI_API_KEY && .venv/bin/python -m pytest tests/ -v --tb=short`
-      (expected at P8 close: **1259 passed, 6 skipped, 0 failed**).
+      (expected after the verification sweep: **1263 passed, 6 skipped, 0 failed**).
 - [ ] App boots; login gate shows; all four seeded roles can sign in.
 - [ ] Nav shows the 5 groups / 20 pages; no page errors on first open.
 
@@ -19,8 +19,8 @@ Expected figures are the walkthrough's quick-reference table.
 
 | # | Step | Expect | ✓ |
 |---|------|--------|---|
-| 1.1 | Run Study with defaults | COMPLETE in ~9 s; 25,000 policies | |
-| 1.2 | Data Quality | UL & ULSG: 176 quarantined each (91.2%); others 100% | |
+| 1.1 | Run Study with defaults (all 7 products pre-selected) | COMPLETE in ~10 s; 25,000 policies | |
+| 1.2 | Data Quality | UL 41 (98.0%) · ULSG 128 (93.6%) · IUL 7 (98.6%) quarantined; others 100%; total records 25,000 | |
 | 1.3 | Override one quarantined record with a justification | governed event recorded (Audit stream shows DQ_OVERRIDE) | |
 
 ## 2 · Experience results & stories
@@ -80,7 +80,10 @@ Expected figures are the walkthrough's quick-reference table.
 
 | # | Section | Description | Fix commit | Regression test |
 |---|---------|-------------|------------|-----------------|
-|   |         |             |            |                 |
+| D1 | 4 (AI) | Allowlist + a few-shot still carried the 5 economic columns dropped from `gold_assumption_sets` in P3 — generated SQL passed the boundary, then failed in DuckDB | verification sweep (2026-08-30) | `test_no_client_surface_references_tev_columns_or_terms` |
+| D2 | 1 (DQ) | IUL missing from the study product lists (no DQ summary row; page total 24,500) + family DQ failures double-counted under UL/ULSG labels | verification sweep (2026-08-30) | `TestFamilySubRunScoping` (×3) |
+| D3 | 2 (docs) | Walkthrough §3.2/§3.3 pointed the story figures at pages that don't render them; Run-Study default was TERM-only vs "keep defaults → 25,000" | verification sweep (2026-08-30) | figures re-verified on run `d5f56adb…` |
+| D4 | misc | Stale TEV/Stage-4/Stage-2 wording in routing.md, pages 15/29, README/USER_GUIDE/CLAUDE.md; nav-label↔title mismatches (01/15/26); reset script missing fraud tables; dead code + orphan files | verification sweep (2026-08-30) | residue guard + existing suites |
 
 ## Sign-off
 

@@ -434,17 +434,17 @@ def _rationale_rows(parent_id: Optional[str], artifact_id: str, db_path: str) ->
 
 def _supporting_reports(db_path: str, study_run_id: Optional[str],
                         assumption_set_id: Optional[str]) -> list:
-    """Reference links to the supporting A/E reports (by filename stem)."""
+    """Reference links to the supporting A/E reports (generated files only)."""
     reports = []
     if study_run_id:
-        reports.append({
-            "label": "Working Actuary Report (A/E)",
-            "reference": f"working_actuary_{study_run_id[:8]}.html",
-        })
-        reports.append({
-            "label": "Chief Actuary Summary (A/E)",
-            "reference": f"chief_actuary_{study_run_id[:8]}.html",
-        })
+        candidates = [
+            ("Working Actuary Report (A/E)", f"working_actuary_{study_run_id[:8]}.html"),
+            ("Chief Actuary Summary (A/E)", f"chief_actuary_{study_run_id[:8]}.html"),
+        ]
+        reports_dir = Path("reports")
+        for label, fname in candidates:
+            if (reports_dir / fname).exists():
+                reports.append({"label": label, "reference": fname})
     return reports
 
 
