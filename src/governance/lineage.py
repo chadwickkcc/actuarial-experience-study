@@ -21,7 +21,7 @@ from typing import Optional
 
 import duckdb
 
-from src.tev.assumption_set import (
+from src.assumptions.assumption_set import (
     AssumptionSet,
     create_assumption_set_from_ae_run,
     load_assumption_set,

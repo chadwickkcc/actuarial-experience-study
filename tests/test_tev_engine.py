@@ -27,7 +27,7 @@ from src.tev.sensitivities import (
     apply_sensitivity_shock,
     run_sensitivity_grid,
 )
-from src.tev.assumption_set import AssumptionSet, DecrementMultiplier
+from src.assumptions.assumption_set import AssumptionSet, DecrementMultiplier
 from src.utils.types import AssumptionSetStatus
 
 
@@ -77,7 +77,7 @@ def tev_baseline(tmp_path_factory):
     import json
     import shutil
     import duckdb
-    from src.tev.assumption_set import create_assumption_set_from_ae_run
+    from src.assumptions.assumption_set import create_assumption_set_from_ae_run
     from src.tev.model_points import build_model_points
     from src.tev.tev_core import run_tev
 

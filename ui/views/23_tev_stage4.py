@@ -24,8 +24,8 @@ from src.ai.skills.memo import interpret_ae_and_draft_memo
 import yaml
 
 from src.utils.types import ArtifactType, Decision, DecrementType
-from src.tev.assumption_set import load_assumption_set
-from src.tev.workflow import (
+from src.assumptions.assumption_set import load_assumption_set
+from src.assumptions.workflow import (
     get_workflow_iterations,
 )
 from src.reporting.generator import generate_tev_impact_report

@@ -19,7 +19,7 @@ import pandas as pd
 import streamlit as st
 
 from ui.config import DB_PATH, CONFIG_DIR
-from src.tev.assumption_set import (
+from src.assumptions.assumption_set import (
     AssumptionSet,
     DecrementMultiplier,
     load_assumption_set,
@@ -29,7 +29,7 @@ from src.tev.assumption_set import (
     record_ai_provenance,
 )
 from src.utils.types import AssumptionSetStatus
-from src.tev.workflow import (
+from src.assumptions.workflow import (
     log_workflow_iteration,
     get_next_iteration_number,
 )

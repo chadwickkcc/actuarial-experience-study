@@ -25,7 +25,7 @@ import pandas as pd
 import yaml
 
 from src.utils.types import TEVRunResult, TEVProductResult
-from src.tev.assumption_set import AssumptionSet, DecrementMultiplier, load_assumption_set
+from src.assumptions.assumption_set import AssumptionSet, DecrementMultiplier, load_assumption_set
 
 from src.tev.products import term as _term_mod
 from src.tev.products import whole_life as _wl_mod

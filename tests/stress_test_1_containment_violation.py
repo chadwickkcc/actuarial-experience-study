@@ -21,7 +21,7 @@ import pandas as pd
 # Ensure src/ is on the path when run as a script
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from src.tev.assumption_set import AssumptionSet, DecrementMultiplier
+from src.assumptions.assumption_set import AssumptionSet, DecrementMultiplier
 from src.tev.envelope import run_envelope_analysis
 from src.utils.types import AssumptionSetStatus
 

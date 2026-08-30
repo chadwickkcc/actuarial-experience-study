@@ -1,4 +1,4 @@
-"""Tests for src/tev/assumption_set.py.
+"""Tests for src/assumptions/assumption_set.py.
 
 Covers: DecrementMultiplier, AssumptionSet serialisation, create_from_ae_run,
 load/save round-trips, get_multiplier lookup, and multiplier sanity checks.
@@ -15,7 +15,7 @@ import duckdb
 import pytest
 import yaml
 
-from src.tev.assumption_set import (
+from src.assumptions.assumption_set import (
     AssumptionSet,
     DecrementMultiplier,
     _compute_ci_bounds,

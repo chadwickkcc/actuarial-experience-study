@@ -591,8 +591,9 @@ def _run_reconciliation(
 
     recon_df = pd.DataFrame(recon_rows)
     con.execute(
-        "DELETE FROM gold_inforce_reconciliation WHERE study_run_id = ?",
-        [study_run_id],
+        "DELETE FROM gold_inforce_reconciliation "
+        "WHERE study_run_id = ? AND product_code = ?",
+        [study_run_id, product_code],
     )
     con.execute("INSERT INTO gold_inforce_reconciliation SELECT * FROM recon_df")
 

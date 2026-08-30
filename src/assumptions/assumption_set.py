@@ -661,7 +661,7 @@ def _insert_assumption_set_metadata(db_path: Path, aset: AssumptionSet) -> None:
         # never silently revert it to a non-terminal status (the Stage-2 editor forces
         # status=PROPOSED before saving), which would unlock it while leaving the stale
         # approved_by/approved_ts on the row. This mirrors the guard in
-        # src/tev/workflow.py::transition_assumption_set_status and closes the same
+        # src/assumptions/workflow.py::transition_assumption_set_status and closes the same
         # "silently unlock an APPROVED set" hole via the save path (governance audit
         # 2026-07-04). Re-saving as APPROVED (idempotent) or SUPERSEDED is permitted.
         existing_status = con.execute(
@@ -673,7 +673,7 @@ def _insert_assumption_set_metadata(db_path: Path, aset: AssumptionSet) -> None:
             and existing_status[0] == "APPROVED"
             and aset.status.value not in ("APPROVED", "SUPERSEDED")
         ):
-            from src.tev.workflow import LockedStatusTransition
+            from src.assumptions.workflow import LockedStatusTransition
 
             raise LockedStatusTransition(
                 f"assumption set {aset.id!r} is APPROVED (locked) and cannot be "
@@ -854,7 +854,7 @@ def get_multiplier(
 # ---------------------------------------------------------------------------
 # AI-proposal provenance (Phase 3a, Session 17; FR-3A-30 / Tech Spec §D.4)
 # ---------------------------------------------------------------------------
-# These helpers live in src/tev/ (NOT src/ai/) on purpose: recording the
+# These helpers live in src/assumptions/ (NOT src/ai/) on purpose: recording the
 # adopted-AI provenance is part of the existing *human* assumption-set edit
 # path, which is permitted to write the Phase 2 gold_assumption_sets table.
 # The AI layer never writes here (FR-3A-09). Provenance is captured at the
@@ -941,3 +941,33 @@ def find_ai_proposal_for_set(
         "product_code": row[2],
         "fit_ts": row[3],
     }
+
+
+def deep_copy_assumption_set(aset: AssumptionSet) -> AssumptionSet:
+    """Return a deep copy of an AssumptionSet with a fresh ID."""
+    new = AssumptionSet(
+        id=str(uuid.uuid4()),
+        version=aset.version,
+        status=aset.status,
+        effective_date=aset.effective_date,
+        author_id=aset.author_id,
+        basis=aset.basis,
+        source_study_run_id=aset.source_study_run_id,
+        rdr=aset.rdr,
+        earned_rate_ga=aset.earned_rate_ga,
+        earned_rate_sa=aset.earned_rate_sa,
+        tax_rate=aset.tax_rate,
+        expense_inflation=aset.expense_inflation,
+        rc_pct_reserve=dict(aset.rc_pct_reserve),
+        acquisition_per_policy=aset.acquisition_per_policy,
+        maintenance_per_policy=aset.maintenance_per_policy,
+        maintenance_pct_premium=aset.maintenance_pct_premium,
+        mortality_multipliers=list(aset.mortality_multipliers),
+        lapse_multipliers=list(aset.lapse_multipliers),
+        surrender_multipliers=list(aset.surrender_multipliers),
+        ci_incidence_multipliers=list(aset.ci_incidence_multipliers),
+        premium_persistency=list(aset.premium_persistency),
+        shock_lapse_plt=dict(aset.shock_lapse_plt),
+        yaml_file_path="",
+    )
+    return new

@@ -17,7 +17,7 @@ sys.path.insert(0, str(ROOT))
 import duckdb
 
 from ui.config import DB_PATH
-from src.tev.assumption_set import create_assumption_set_from_ae_run
+from src.assumptions.assumption_set import create_assumption_set_from_ae_run
 from src.tev.model_points import build_model_points
 from src.tev.tev_core import run_tev
 from src.tev.sensitivities import run_sensitivity_grid, SENSITIVITY_DEFINITIONS

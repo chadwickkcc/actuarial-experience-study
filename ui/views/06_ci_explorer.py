@@ -247,7 +247,7 @@ selected_run = col_run.selectbox(
     index=run_id_list.index(default_run),
     format_func=lambda r: run_labels.get(r, r),
 )
-product_filter = col_product.multiselect("Product", options=["TERM", "WL", "UL", "ULSG", "IUL"])
+product_filter = col_product.multiselect("Product", options=["TERM", "WL", "UL", "ULSG", "IUL", "VUL"])
 gender_filter = col_gender.multiselect("Gender", options=["M", "F"])
 
 # ── Summary metrics ───────────────────────────────────────────────────────────
@@ -280,6 +280,88 @@ st.caption(
     "IUL or VUL policies processed under the UL/VUL product code appear in exposure but may "
     "be excluded if their sub-product was not selected."
 )
+
+# ── Cross-product summary (merged from the former CI Incidence Summary page) ──
+
+st.subheader("CI A/E by Product")
+
+
+def _query_ci_by_product(run_id: str) -> pd.DataFrame:
+    """Product-level CI totals across all life products with CI riders."""
+    conn = duckdb.connect(str(DB_PATH), read_only=True)
+    try:
+        return conn.execute(
+            """
+            SELECT product_code,
+                   SUM(ci_exposure_count)  AS ci_exposure,
+                   SUM(actual_ci_claims)   AS actual_ci,
+                   SUM(expected_ci_claims) AS expected_ci
+            FROM gold_ae_results
+            WHERE study_run_id = ?
+              AND product_code IN ('TERM','WL','UL','ULSG','IUL','VUL')
+              AND illness_code IS NOT NULL
+            GROUP BY 1
+            ORDER BY 1
+            """,
+            [run_id],
+        ).df()
+    finally:
+        conn.close()
+
+
+ci_by_product = _query_ci_by_product(selected_run)
+if ci_by_product.empty or ci_by_product["actual_ci"].sum() == 0:
+    st.info("No cross-product CI data for this run.")
+else:
+    _pconn = duckdb.connect(str(DB_PATH), read_only=True)
+    try:
+        _prod_method = get_run_method(_pconn, selected_run)
+    finally:
+        _pconn.close()
+    ci_by_product["ae_ci"] = (
+        ci_by_product["actual_ci"] / ci_by_product["expected_ci"].replace(0, float("nan"))
+    )
+    _n = ci_by_product["actual_ci"].clip(lower=1)
+    _se = ci_by_product["ae_ci"] / _n.pow(0.5)
+    _ci_lo = (ci_by_product["ae_ci"] - 1.96 * _se).clip(lower=0)
+    _ci_hi = ci_by_product["ae_ci"] + 1.96 * _se
+    _cred = credibility_z(_n, method=_prod_method)
+    _vals = ci_by_product["ae_ci"].tolist()
+    _colors = [
+        "lightgrey" if z < 0.5 else ("red" if v > 1.0 else "steelblue")
+        for z, v in zip(_cred.tolist(), _vals)
+    ]
+    fig_prod = go.Figure()
+    fig_prod.add_bar(
+        x=ci_by_product["product_code"],
+        y=_vals,
+        marker_color=_colors,
+        text=[f"{v:.2%}" if not pd.isna(v) else "N/A" for v in _vals],
+        textposition="outside",
+        error_y=dict(
+            type="data",
+            array=[hi - v for hi, v in zip(_ci_hi.tolist(), _vals)],
+            arrayminus=[v - lo for lo, v in zip(_ci_lo.tolist(), _vals)],
+            visible=True,
+            color="rgba(128,128,128,0.5)",
+        ),
+    )
+    fig_prod.add_hline(y=1.0, line_dash="dot", line_color="grey", annotation_text="A/E = 1.0")
+    fig_prod.update_traces(cliponaxis=False)
+    fig_prod.update_layout(
+        yaxis=dict(title="CI A/E ratio", tickformat=".0%"),
+        xaxis=dict(title="Product"),
+        title="CI Incidence A/E by Product",
+        height=400,
+    )
+    st.plotly_chart(fig_prod, use_container_width=True)
+    st.caption(
+        "The 0.90–1.10 target applies to the aggregate, not individual products. "
+        "Grey bars: credibility Z < 0.5 — driven by small claim volumes. "
+        "Error bars show the 95% Poisson interval."
+    )
+
+st.divider()
 
 # ── A/E by illness code (horizontal bar chart) ────────────────────────────────
 

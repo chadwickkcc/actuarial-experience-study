@@ -12,7 +12,7 @@ import pandas as pd
 
 from ui import ai_comparison_logic as logic
 from src.utils.types import DecrementType, FactorCell, GLMFitResult, GBMFitResult
-from src.tev.assumption_set import AssumptionSet, DecrementMultiplier
+from src.assumptions.assumption_set import AssumptionSet, DecrementMultiplier
 from src.utils.types import AssumptionSetStatus
 
 

@@ -26,7 +26,7 @@ import yaml
 from scipy.optimize import minimize, Bounds
 
 from src.utils.types import EnvelopeResult, AssumptionSetStatus
-from src.tev.assumption_set import (
+from src.assumptions.assumption_set import (
     AssumptionSet,
     DecrementMultiplier,
     load_assumption_set,

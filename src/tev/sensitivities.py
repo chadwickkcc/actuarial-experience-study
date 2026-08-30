@@ -19,7 +19,12 @@ import numpy as np
 import pandas as pd
 
 from src.utils.types import SensitivityGridResult, TEVRunResult
-from src.tev.assumption_set import AssumptionSet, DecrementMultiplier, load_assumption_set
+from src.assumptions.assumption_set import (
+    AssumptionSet,
+    DecrementMultiplier,
+    deep_copy_assumption_set as _deep_copy_assumption_set,
+    load_assumption_set,
+)
 from src.tev.tev_core import run_tev
 
 
@@ -270,33 +275,3 @@ def _scale_single(m: DecrementMultiplier, shock: float) -> DecrementMultiplier:
         override_rationale=m.override_rationale,
     )
 
-
-def _deep_copy_assumption_set(aset: AssumptionSet) -> AssumptionSet:
-    """Return a deep copy of an AssumptionSet with a fresh ID."""
-    # Copy all multiplier lists
-    new = AssumptionSet(
-        id=str(uuid.uuid4()),
-        version=aset.version,
-        status=aset.status,
-        effective_date=aset.effective_date,
-        author_id=aset.author_id,
-        basis=aset.basis,
-        source_study_run_id=aset.source_study_run_id,
-        rdr=aset.rdr,
-        earned_rate_ga=aset.earned_rate_ga,
-        earned_rate_sa=aset.earned_rate_sa,
-        tax_rate=aset.tax_rate,
-        expense_inflation=aset.expense_inflation,
-        rc_pct_reserve=dict(aset.rc_pct_reserve),
-        acquisition_per_policy=aset.acquisition_per_policy,
-        maintenance_per_policy=aset.maintenance_per_policy,
-        maintenance_pct_premium=aset.maintenance_pct_premium,
-        mortality_multipliers=list(aset.mortality_multipliers),
-        lapse_multipliers=list(aset.lapse_multipliers),
-        surrender_multipliers=list(aset.surrender_multipliers),
-        ci_incidence_multipliers=list(aset.ci_incidence_multipliers),
-        premium_persistency=list(aset.premium_persistency),
-        shock_lapse_plt=dict(aset.shock_lapse_plt),
-        yaml_file_path="",
-    )
-    return new

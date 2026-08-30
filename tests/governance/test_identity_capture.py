@@ -21,7 +21,7 @@ import duckdb
 import pytest
 
 from src.governance.audit import unified_audit_query
-from src.tev.workflow import log_workflow_iteration, record_governance_approval
+from src.assumptions.workflow import log_workflow_iteration, record_governance_approval
 
 
 _VIEWS = pathlib.Path("ui/views")

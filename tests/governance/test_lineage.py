@@ -29,7 +29,7 @@ from src.governance.lineage import (
     reproducibility_stamp,
     resolve_live_set,
 )
-from src.tev.assumption_set import (
+from src.assumptions.assumption_set import (
     AssumptionSet,
     DecrementMultiplier,
     load_assumption_set,

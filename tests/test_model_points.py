@@ -56,7 +56,7 @@ def _isolate_db_path(tmp_path_factory):
 
 def _make_assumption_set():
     """Return a minimal AssumptionSet stub sufficient for build_model_points."""
-    from src.tev.assumption_set import AssumptionSet
+    from src.assumptions.assumption_set import AssumptionSet
     from src.utils.types import AssumptionSetStatus
 
     return AssumptionSet(

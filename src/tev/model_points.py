@@ -24,7 +24,7 @@ from src.utils.types import ModelPointResult
 from src.exposure.engine import compute_age_band, compute_duration_band
 
 if TYPE_CHECKING:
-    from src.tev.assumption_set import AssumptionSet
+    from src.assumptions.assumption_set import AssumptionSet
 
 
 # ---------------------------------------------------------------------------

@@ -53,8 +53,7 @@ def _page(filename: str, title: str, icon: str) -> st.Page:
 
 
 # Sidebar navigation — grouped and ordered to follow the end-to-end workflow:
-# set up & run → review experience → drill into product mechanics → get AI help →
-# set assumptions & measure TEV → govern. (Page files/titles/icons unchanged.)
+# set up & run → review experience → get AI help → set assumptions → govern.
 pg = st.navigation(
     {
         "1 · Getting Started": [
@@ -68,15 +67,7 @@ pg = st.navigation(
             _page("04_mortality_ae.py",         "Mortality A vs E",       "💀"),
             _page("05_lapse_ae.py",             "Lapse A vs E",           "📉"),
             _page("06_ci_explorer.py",          "CI Incidence Explorer",  "🏥"),
-            _page("14_ci_incidence_summary.py", "CI Incidence Summary",   "🩺"),
             _page("13_product_comparison.py",   "Product Comparison",     "⚖️"),
-        ],
-        "3 · Product Monitors": [
-            _page("08_ul_account_value.py",    "UL Account Value Monitor",    "💰"),
-            _page("09_ulsg_shadow_account.py", "ULSG Shadow Account Monitor", "🔐"),
-            _page("12_vul_fund_value.py",      "VUL Fund Value Monitor",      "📈"),
-            _page("10_annuity_surrender.py",   "Annuity Surrender Explorer",  "🔄"),
-            _page("11_glb_utilisation.py",     "GLB Utilisation Monitor",     "📊"),
         ],
         "4 · AI Assistance": [
             _page("15_assumption_comparison.py", "Assumption Comparison", "🤖"),

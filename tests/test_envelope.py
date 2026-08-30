@@ -18,7 +18,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from src.tev.assumption_set import AssumptionSet, DecrementMultiplier
+from src.assumptions.assumption_set import AssumptionSet, DecrementMultiplier
 from src.tev.envelope import (
     identify_top5_decrements,
     run_envelope_analysis,

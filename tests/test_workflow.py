@@ -1,4 +1,4 @@
-"""Tests for src/tev/workflow.py — envelope-aware workflow logging.
+"""Tests for src/assumptions/workflow.py — envelope-aware workflow logging.
 
 Covers:
 - log_workflow_iteration() writes envelope_run_flag correctly
@@ -18,7 +18,7 @@ from pathlib import Path
 import duckdb
 import pytest
 
-from src.tev.workflow import (
+from src.assumptions.workflow import (
     get_next_iteration_number,
     get_workflow_iterations,
     log_workflow_iteration,
@@ -390,7 +390,7 @@ class TestTransitionAssumptionSetStatus:
 
     def test_approved_set_cannot_be_unlocked_to_stage3(self, tmp_db):
         """Re-submitting a locked (APPROVED) set must not silently unlock it (audit 2026-07-04)."""
-        from src.tev.workflow import LockedStatusTransition
+        from src.assumptions.workflow import LockedStatusTransition
 
         aset_id = str(uuid.uuid4())
         _insert_assumption_set(tmp_db, aset_id, status="STAGE3_APPROVED")
@@ -430,7 +430,7 @@ class TestTransitionAssumptionSetStatus:
 class TestWorkflowNoAdoptionPath:
     def test_workflow_module_has_no_envelope_result_param(self):
         """workflow.py must not import or use EnvelopeResult as a function parameter."""
-        workflow_src = Path("src/tev/workflow.py").read_text(encoding="utf-8")
+        workflow_src = Path("src/assumptions/workflow.py").read_text(encoding="utf-8")
         tree = ast.parse(workflow_src)
         violations: list[str] = []
         for node in ast.walk(tree):
@@ -444,7 +444,7 @@ class TestWorkflowNoAdoptionPath:
 
     def test_workflow_module_has_no_assumption_set_return(self):
         """workflow.py must not return AssumptionSet from any function."""
-        workflow_src = Path("src/tev/workflow.py").read_text(encoding="utf-8")
+        workflow_src = Path("src/assumptions/workflow.py").read_text(encoding="utf-8")
         tree = ast.parse(workflow_src)
         violations: list[str] = []
         for node in ast.walk(tree):

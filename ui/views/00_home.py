@@ -45,13 +45,11 @@ digraph workflow {
 
     setup [label="1 · Setup & Data\\nrun study · data quality" fillcolor="#e8f0fe"];
     exp   [label="2 · Experience Results\\nmortality · lapse · CI A/E" fillcolor="#e6f4ea"];
-    prod  [label="Product Monitors\\nUL · ULSG · VUL · DA" fillcolor="#e6f4ea"];
     ai    [label="AI Assistance\\nproposals · analyst" fillcolor="#fef7e0" style="rounded,filled,dashed"];
     tev   [label="3 · Assumption Setting (TEV)\\nStages 1–4" fillcolor="#fce8e6"];
     gov   [label="4 · Governance\\nsign-off · audit · versioning" fillcolor="#f3e8fd"];
 
     setup -> exp;
-    exp -> prod [label="drill in" style=dashed];
     exp -> ai [style=dashed];
     exp -> tev;
     ai -> tev [label="advisory" style=dashed];
@@ -149,16 +147,9 @@ with st.expander("All pages — quick reference", expanded=False):
         _link("04_mortality_ae.py", "Mortality A vs E", "💀")
         _link("05_lapse_ae.py", "Lapse A vs E", "📉")
         _link("06_ci_explorer.py", "CI Incidence Explorer", "🏥")
-        _link("14_ci_incidence_summary.py", "CI Incidence Summary", "🩺")
         _link("13_product_comparison.py", "Product Comparison", "⚖️")
 
     with ref_cols[1]:
-        st.markdown("**Product Monitors**")
-        _link("08_ul_account_value.py", "UL Account Value Monitor", "💰")
-        _link("09_ulsg_shadow_account.py", "ULSG Shadow Account Monitor", "🔐")
-        _link("12_vul_fund_value.py", "VUL Fund Value Monitor", "📈")
-        _link("10_annuity_surrender.py", "Annuity Surrender Explorer", "🔄")
-        _link("11_glb_utilisation.py", "GLB Utilisation Monitor", "📊")
 
         st.markdown("**AI Assistance**")
         _link("15_assumption_comparison.py", "Assumption Comparison", "🤖")

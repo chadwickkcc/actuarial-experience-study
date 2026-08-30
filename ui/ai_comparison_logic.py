@@ -27,8 +27,8 @@ import pandas as pd
 import yaml
 
 from src.utils.types import DecrementType, GLMFitResult, GBMFitResult
-from src.tev.assumption_set import AssumptionSet, DecrementMultiplier, load_assumption_set
-from src.tev.sensitivities import _deep_copy_assumption_set
+from src.assumptions.assumption_set import AssumptionSet, DecrementMultiplier, load_assumption_set
+from src.assumptions.assumption_set import deep_copy_assumption_set as _deep_copy_assumption_set
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 _AI_CONFIG_PATH = PROJECT_ROOT / "config" / "ai_config.yaml"

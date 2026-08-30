@@ -24,7 +24,7 @@ from ui.stats_helpers import (
     credibility_weighted_ae,
     get_run_method,
 )
-from src.tev.assumption_set import create_assumption_set_from_ae_run
+from src.assumptions.assumption_set import create_assumption_set_from_ae_run
 
 st.set_page_config(page_title="TEV Stage 1 — Experience Study", layout="wide")
 

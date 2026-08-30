@@ -40,7 +40,7 @@ from src.governance.audit import append_event, record_ae_event
 from src.governance.lineage import create_version
 from src.governance.rbac import Action, PermissionDenied
 from src.governance.users import DEFAULT_CONFIG_PATH
-from src.tev.workflow import (
+from src.assumptions.workflow import (
     get_workflow_iterations,
     record_governance_approval,
     transition_assumption_set_status,
@@ -403,7 +403,7 @@ def _write_legacy_summary(
 ) -> None:
     """Write the Phase-2 ``gold_assumption_approvals`` summary on a completing APPROVE.
 
-    Reuses ``src.tev.workflow.record_governance_approval`` so Phase-2 reporting/UI
+    Reuses ``src.assumptions.workflow.record_governance_approval`` so Phase-2 reporting/UI
     keep working (§G.2 note). Fields not supplied in ``legacy_context`` are read from
     the DB (source run, author/proposer, latest baseline TEV run, workflow session)
     and otherwise defaulted, so the engine-level path works without full UI context.

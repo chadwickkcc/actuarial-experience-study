@@ -1,6 +1,6 @@
 """Tests for AI-provenance helpers (Session 17; FR-3A-30 / §D.4).
 
-record_ai_provenance and find_ai_proposal_for_set live in src/tev/ (not src/ai/)
+record_ai_provenance and find_ai_proposal_for_set live in src/assumptions/ (not src/ai/)
 because they are part of the sanctioned human edit path that writes the Phase 2
 gold_assumption_sets table.
 """
@@ -12,7 +12,7 @@ import duckdb
 import pytest
 
 from src.utils.db_init import init_database
-from src.tev.assumption_set import (
+from src.assumptions.assumption_set import (
     record_ai_provenance,
     find_ai_proposal_for_set,
     _insert_assumption_set_metadata,

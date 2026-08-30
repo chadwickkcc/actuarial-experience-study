@@ -22,12 +22,12 @@ import streamlit as st
 
 from ui.config import DB_PATH, CONFIG_DIR, REPORTS_DIR
 from src.reporting.generator import generate_tev_working_actuary_report
-from src.tev.assumption_set import load_assumption_set, save_assumption_set
+from src.assumptions.assumption_set import load_assumption_set, save_assumption_set
 from src.tev.tev_core import run_tev
 from src.tev.sensitivities import run_sensitivity_grid
 from src.tev.envelope import run_envelope_analysis
 from src.tev.model_points import build_model_points, ModelPointReconciliationError
-from src.tev.workflow import (
+from src.assumptions.workflow import (
     log_workflow_iteration,
     transition_assumption_set_status,
     get_workflow_iterations,

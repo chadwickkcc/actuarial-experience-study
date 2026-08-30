@@ -15,8 +15,8 @@ from pathlib import Path
 import pytest
 
 from src.governance.workflow import record_signoff
-from src.tev.assumption_set import load_assumption_set, save_assumption_set
-from src.tev.workflow import (
+from src.assumptions.assumption_set import load_assumption_set, save_assumption_set
+from src.assumptions.workflow import (
     LockedStatusTransition,
     transition_assumption_set_status,
 )
