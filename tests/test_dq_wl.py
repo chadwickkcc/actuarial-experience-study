@@ -19,6 +19,7 @@ from pathlib import Path
 
 import duckdb
 import pytest
+from synthetic_data.generators.whole_life import N_POLICIES as _N_WL
 
 from src.data_quality.runner import DQCriticalFailure, run_dq_checks
 
@@ -88,8 +89,8 @@ class TestCleanDataWL:
 
     def test_wl_total_records_count(self, prod_db: Path, prod_etl_run_id: str) -> None:
         result = run_dq_checks("WL", prod_db, prod_etl_run_id, halt_on_critical=False)
-        assert result.total_records == 2800, (
-            f"Expected 2800 WL records, got {result.total_records}"
+        assert result.total_records == _N_WL, (
+            f"Expected {_N_WL} WL records, got {result.total_records}"
         )
 
     def test_wl_all_4_checks_present(self, prod_db: Path, prod_etl_run_id: str) -> None:

@@ -21,6 +21,7 @@ from pathlib import Path
 
 import duckdb
 import pytest
+from synthetic_data.generators.vul import N_VUL as _N_VUL
 
 from src.data_quality.runner import DQCriticalFailure, run_dq_checks
 
@@ -90,7 +91,7 @@ class TestCleanDataVUL:
 
     def test_vul_total_records_count(self, prod_db: Path, prod_etl_run_id: str) -> None:
         result = run_dq_checks("VUL", prod_db, prod_etl_run_id, halt_on_critical=False)
-        assert result.total_records == 800, (
+        assert result.total_records == _N_VUL, (
             f"Expected 800 VUL records, got {result.total_records}"
         )
 

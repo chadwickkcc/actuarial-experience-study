@@ -25,6 +25,12 @@ import pandas as pd
 
 from synthetic_data.generators.common import (
     MACRO_SCENARIO,
+    ci_incidence_rate,
+    ci_penetration,
+    gen_volume,
+    lapse_story_multiplier,
+    mortality_story_multiplier,
+    sample_offices_and_agents,
     STUDY_START,
     STUDY_END,
     CI_ILLNESS_CODES,
@@ -44,7 +50,7 @@ from synthetic_data.generators.common import (
 # Constants
 # ---------------------------------------------------------------------------
 
-N_POLICIES = 3_200
+N_POLICIES = gen_volume("TERM", 3_200)
 
 RISK_CLASS_NAMES  = ["SUPER_PREF", "PREF_NS", "STD_NS", "PREF_SM", "STD_SM"]
 RISK_CLASS_PROBS  = [0.22,          0.28,      0.33,     0.09,      0.08]
@@ -198,25 +204,27 @@ def _simulate_policy_life(
         # Attained age at segment midpoint
         mid     = seg_start + timedelta(days=(seg_end - seg_start).days // 2)
         att_age = attained_age_float(dob, mid)
+        cal_year = min(max(seg_start.year, 2016), 2023)
 
-        # --- Mortality ---
+        # --- Mortality (draw-side story multiplier — surfaces as A/E signal) ---
         q = vbt_q_x(issue_age, policy_year, gender, smoker, risk_class)
+        q = min(q * mortality_story_multiplier(cal_year, "TERM"), 1.0)
         if rng.random() < q:
             death_date = random_date_between(rng, seg_start, seg_end)
             return ("DEATH", death_date, "DEATH_BENEFIT_CLAIM", None)
 
         # --- CI claim ---
         if ci_flag:
-            ci_rate = min(CI_BASE_INCIDENCE_PER_1000 * ci_age_factor(att_age) / 1_000.0, 0.05)
+            ci_rate = ci_incidence_rate(att_age)
             if rng.random() < ci_rate:
                 illness   = rng.choice(CI_ILLNESS_CODES, p=CI_ILLNESS_WEIGHTS)
                 ci_date   = random_date_between(rng, seg_start, seg_end)
                 return ("CI_CLAIM", ci_date, "CI_ACCELERATED_BENEFIT", illness)
 
         # --- Lapse ---
-        cal_year   = min(max(seg_start.year, 2016), 2023)
         macro      = MACRO_SCENARIO[cal_year]
         lapse_mult = get_lapse_multiplier(cal_year, macro["credited_rate"], "TERM")
+        lapse_mult *= lapse_story_multiplier(cal_year, "TERM")
 
         if in_plt:
             if plt_dur == 1:
@@ -273,13 +281,14 @@ def generate_term_policies(rng: np.random.Generator) -> pd.DataFrame:
     issue_offsets    = rng.integers(0, (issue_end - issue_start).days + 1, size=N_POLICIES)
     issue_dates      = [issue_start + timedelta(days=int(d)) for d in issue_offsets]
 
-    ci_flags         = rng.random(size=N_POLICIES) < 0.25
+    ci_flags         = rng.random(size=N_POLICIES) < ci_penetration("TERM", 0.25)
     reins_flags      = (rng.random(size=N_POLICIES) < 0.15) & (face_amounts > 500_000)
     conv_flags       = rng.random(size=N_POLICIES) < 0.03
 
     # Pre-sample PLT jump ratios (Jump-to-ART ~5x, Graded ~2.5x lognormal)
     jump_ratios_jta  = np.clip(rng.lognormal(math.log(5.0),  0.4, size=N_POLICIES), 1.05, 30.0)
     jump_ratios_grd  = np.clip(rng.lognormal(math.log(2.5),  0.3, size=N_POLICIES), 1.05, 10.0)
+    offices, agents  = sample_offices_and_agents(rng, N_POLICIES)
 
     records: list[dict] = []
 
@@ -359,6 +368,8 @@ def generate_term_policies(rng: np.random.Generator) -> pd.DataFrame:
             "plt_structure_code":     plt_structure_code,
             "premium_jump_ratio":     premium_jump_ratio,
             "distribution_channel":   channel,
+            "agency_office_id":       offices[i],
+            "agent_id":               agents[i],
             "issue_state":            state,
             "conversion_flag":        conv_flag,
             "reinsurance_flag":       reins_flag,

@@ -98,7 +98,9 @@ Rules (ids FR-RULE-01..06), thresholds/weights in `config/fraud_config.yaml`:
 2. `claim_exceeds_premiums` — claim amount > cumulative premiums paid (≈ annual_premium ×
    policy_year; UL uses `cumulative_premiums_paid` where present).
 3. `claim_above_materiality` — claim amount > per-product threshold.
-4. `agency_office_concentration` — office share of claims ≥ configured multiple of expected.
+4. `agency_office_concentration` — office count of **first-policy-year** claims ≥
+   configured multiple of the office median (early-claim clustering — the sharp
+   fraud signal; total-claim share dilutes under organic volume).
 5. `similar_claims_same_claimant` — same `claimant_id` + same illness_code + amounts within
    configured tolerance.
 6. `high_risk_region_or_hospital` — claim `hospital_id`/`claim_region` in configured lists.
@@ -123,10 +125,13 @@ Claim-level fraud tables never enter the chatbot allowlist.
 ### 3.7 Synthetic data expansion (P4)
 - New `config/synthetic_data.yaml` (volumes move out of module constants): TERM 8000, WL 7000,
   UL 2000 + ULSG 2000 + IUL 500, VUL 2000, DA 3500 = **25,000 policies**. Seed 42 unchanged.
-- CI: rider penetration 0.45 (Term/WL), incidence ×3.5, **non-terminal** (drawn independently;
-  never ends the policy; max one CI claim per policy, carried as `ci_claim_date`,
-  `ci_illness_code`, `ci_claim_amount`, `ci_hospital_id`, `ci_claim_region`, `ci_claimant_id`
-  on the policy row; emitted as a non-terminal `CI_CLAIM` event).
+- CI: rider penetration 0.45 (Term/WL), incidence ×3.5. **P4 build note (amends this
+  section):** CI claims stayed **terminal** (as in the original generator) — the
+  incidence/penetration boost alone delivers ~590 claims, and "similar claims from the
+  same claimant" spans *policies* via the shared `claimant_id`, so the non-terminal
+  rework (which would have rippled into exposure/A/E CI counting) was dropped as
+  unnecessary. The `ci_*` claim columns were therefore not added; claim identity fields
+  live on the policy row (single terminal claim).
 - New fields — policy grain: `agency_office_id` (~40, `OFF-###`), `agent_id` (~8/office,
   `AGT-####`); claim grain: `claimant_id` (`CLM-######`), `hospital_id` (~60, `HOSP-###`),
   `claim_region` (small region list from state groupings). Flow: generators → CSV →
@@ -135,9 +140,10 @@ Claim-level fraud tables never enter the chatbot allowlist.
 - **Planted stories (draw-side only — NEVER in reference tables, or they cancel out of A/E):**
   - Mortality deterioration: draw ×1.08 / ×1.16 / ×1.25 for calendar 2021/2022/2023, Term + WL.
   - Lapse spike: draw ×1.4 for calendar 2022–2023, Term + UL family.
-  - Fraud ring: rogue office `OFF-013`, hospital `HOSP-066`, repeat claimant `CLM-424242`
-    (4 similar claims: same illness code, amounts within 10%), 12–15 ring policies issued
-    2021–23, first-policy-year claims, amounts just above premiums, high-risk region.
+  - Fraud ring (as built): rogue office `OFF-013`, ghost hospital `HOSP-066` (outside
+    the 60-facility roster), repeat claimant `CLM-424242` (4 similar CI-001 claims,
+    faces within ±5%), 14 Term ring policies issued 2021–23 in NV/SOUTHWEST, all with
+    first-policy-year CI claims. OFF-013 first-year claim count ≈ 15 vs office median 1.
   - All magnitudes YAML-tunable; tuned in-phase until the story-lock tests pass.
 - Story-lock tests (permanent): Term+WL mortality A/E strictly increasing 2021→2023 with
   2023 ≥ 2021 + 0.10; lapse A/E 2022–23 ≥ 115% of 2016–21 mean; total CI claims ≥ 250 across

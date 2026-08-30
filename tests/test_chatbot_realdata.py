@@ -55,6 +55,25 @@ def test_factual_turn_end_to_end_against_prod(prod_db):
     assert kinds.index("intent") < kinds.index("data_access")
 
 
+def _wl_mortality_aggregate(prod_db):
+    """Live WL mortality aggregate (actual, expected, ae) from the prod copy.
+
+    Queried rather than pinned so the tests survive dataset regenerations
+    (the demo data is config-driven; P4 owns the seed-42 stream).
+    """
+    import duckdb
+
+    con = duckdb.connect(str(prod_db), read_only=True)
+    try:
+        a, e = con.execute(
+            "SELECT SUM(actual_deaths_count), SUM(expected_deaths_count) "
+            "FROM gold_ae_results WHERE product_code='WL' AND illness_code IS NULL"
+        ).fetchone()
+    finally:
+        con.close()
+    return int(a), float(e), round(float(a) / float(e), 4)
+
+
 def test_overall_ae_aggregates_not_zero_against_prod(prod_db):
     """The WL "all 0" UAT bug: an aggregate (ratio-of-sums) A/E reads ~0.57, not 0.
 
@@ -83,9 +102,11 @@ def test_overall_ae_aggregates_not_zero_against_prod(prod_db):
     )
     assert result.blocked is False
     assert result.traceability is not None and result.traceability.passed
-    # Real WL aggregate A/E is ~0.57 (232 / 405.76), emphatically not zero.
-    assert "0.57" in result.response_text
-    assert "232" in result.response_text
+    # The live aggregate A/E is a healthy ratio-of-sums — emphatically not zero.
+    _a, _e, _ae = _wl_mortality_aggregate(prod_db)
+    assert _ae > 0.1
+    assert f"{_ae:.4f}".rstrip("0").rstrip(".") in result.response_text or str(_ae) in result.response_text
+    assert str(_a) in result.response_text
 
 
 def test_products_covered_lists_all_via_list_slot_against_prod(prod_db):
@@ -123,10 +144,13 @@ def test_multi_query_synthesis_against_prod(prod_db):
                 "AS ae_lapse FROM gold_ae_results WHERE product_code='WL' AND illness_code IS NULL "
                 "GROUP BY duration_band ORDER BY duration_band LIMIT 500"},
     ]})
+    _a, _e, _ae = _wl_mortality_aggregate(prod_db)
     provider = ScriptedProvider(
         routing_reply("EXPLORATORY"),
         synthesis_plan_text=plan,
-        synthesis_answer_text="Whole Life mortality A/E is 0.5718 overall; lapse A/E varies by duration.",
+        synthesis_answer_text=(
+            f"Whole Life mortality A/E is {_ae} overall; lapse A/E varies by duration."
+        ),
     )
     result = handle_turn(
         "Compare WL mortality and lapse experience by duration.",
@@ -138,7 +162,7 @@ def test_multi_query_synthesis_against_prod(prod_db):
     assert result.sql.count("SELECT") == 2
     assert result.result_row_count >= 2  # 1 overall + several duration bands
     assert result.traceability is not None and result.traceability.passed
-    assert "0.5718" in result.response_text
+    assert str(_ae) in result.response_text
 
 
 def test_commentary_facts_cover_all_decrements_against_prod(prod_db, prod_run_id):
@@ -230,11 +254,17 @@ def test_commentary_turn_end_to_end_against_prod(prod_db, prod_run_id):
     init_database(str(prod_db))
     facts = assemble_commentary_facts(prod_db, prod_run_id)
     # The real WL mortality figures the prose will quote (from the fact pack).
+    _wl_overall = next(
+        p for p in facts["by_product"] if p["product"] == "WL"
+    )["decrements"]["MORTALITY"]["overall"]
+    _fact_ae = _wl_overall["ae_ratio"]
+    _fact_a = _wl_overall["actual"]
+    _fact_e = _wl_overall["expected"]
     provider = ScriptedProvider(
         routing_reply("COMMENTARY_GENERATION", "asks for a narrative"),
         commentary_text=(
-            "Whole Life mortality A/E was 0.5718 (232 actual deaths against "
-            "405.7611 expected), a credibility-weighted result."
+            f"Whole Life mortality A/E was {_fact_ae} ({_fact_a} actual deaths against "
+            f"{_fact_e} expected), a credibility-weighted result."
         ),
     )
     state = SessionState(session_id="rd3", model_key=_MODEL)
@@ -250,7 +280,7 @@ def test_commentary_turn_end_to_end_against_prod(prod_db, prod_run_id):
     assert result.blocked is False
     assert "AI-drafted — pending actuary review" in result.response_text
     assert result.traceability is not None and result.traceability.passed
-    assert "0.5718" in result.response_text
+    assert str(_fact_ae) in result.response_text
     # The turn was audited.
     con = duckdb.connect(str(prod_db), read_only=True)
     try:

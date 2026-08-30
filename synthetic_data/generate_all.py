@@ -50,8 +50,11 @@ from synthetic_data.generators.common import (
     CI_ILLNESS_CODES,
     CI_ILLNESS_WEIGHTS,
     CI_BASE_INCIDENCE_PER_1000,
+    assign_claim_fields,
     ci_age_factor,
+    ci_incidence_multiplier,
     attained_age_band,
+    plant_fraud_ring,
     MACRO_SCENARIO,
 )
 from synthetic_data.generators.term import (
@@ -295,7 +298,8 @@ def build_ci_incidence_table() -> pd.DataFrame:
             gender_factor = 1.0 if gender == "M" else 0.85
             for band, mid in band_mids_5yr.items():
                 age_mult  = ci_age_factor(mid)
-                base_rate = CI_BASE_INCIDENCE_PER_1000 * age_mult * weight * gender_factor
+                base_rate = (CI_BASE_INCIDENCE_PER_1000 * ci_incidence_multiplier()
+                             * age_mult * weight * gender_factor)
                 rows.append({
                     "illness_code":            illness_code,
                     "gender":                  gender,
@@ -470,40 +474,46 @@ def main() -> None:
     rng = np.random.default_rng(RANDOM_SEED)
 
     # --- Term Life policies ---
-    print("Generating Term Life policies (n=3,200)…", end=" ", flush=True)
+    print("Generating Term Life policies…", end=" ", flush=True)
     term_df = generate_term_policies(rng)
+    term_df = assign_claim_fields(term_df, rng, "TRM")
+    term_df = plant_fraud_ring(term_df, rng)
     out_path = OUTPUT_DIR / "term_policies.csv"
     term_df.to_csv(out_path, index=False)
     print(f"done → {out_path}")
     _print_term_summary(term_df)
 
     # --- Whole Life policies ---
-    print("Generating Whole Life policies (n=2,800)…", end=" ", flush=True)
+    print("Generating Whole Life policies…", end=" ", flush=True)
     wl_df = generate_wl_policies(rng)
+    wl_df = assign_claim_fields(wl_df, rng, "WL")
     wl_path = OUTPUT_DIR / "wl_policies.csv"
     wl_df.to_csv(wl_path, index=False)
     print(f"done → {wl_path}")
     _print_wl_summary(wl_df)
 
     # --- Universal Life policies ---
-    print("Generating Universal Life policies (n=1,800)…", end=" ", flush=True)
+    print("Generating Universal Life policies…", end=" ", flush=True)
     ul_df = generate_ul_policies(rng)
+    ul_df = assign_claim_fields(ul_df, rng, "UL")
     ul_path = OUTPUT_DIR / "ul_policies.csv"
     ul_df.to_csv(ul_path, index=False)
     print(f"done → {ul_path}")
     _print_ul_summary(ul_df)
 
     # --- VUL policies ---
-    print("Generating Variable Universal Life policies (n=800)…", end=" ", flush=True)
+    print("Generating Variable Universal Life policies…", end=" ", flush=True)
     vul_df = generate_vul_policies(rng)
+    vul_df = assign_claim_fields(vul_df, rng, "VUL")
     vul_path = OUTPUT_DIR / "vul_policies.csv"
     vul_df.to_csv(vul_path, index=False)
     print(f"done → {vul_path}")
     _print_vul_summary(vul_df)
 
     # --- Deferred Annuity contracts ---
-    print("Generating Deferred Annuity contracts (n=1,400)…", end=" ", flush=True)
+    print("Generating Deferred Annuity contracts…", end=" ", flush=True)
     ann_df = generate_annuity_contracts(rng)
+    ann_df = assign_claim_fields(ann_df, rng, "DA")
     ann_path = OUTPUT_DIR / "annuity_contracts.csv"
     ann_df.to_csv(ann_path, index=False)
     print(f"done → {ann_path}")
@@ -541,7 +551,8 @@ def main() -> None:
     print("\nValidation checks:")
 
     # Term Life
-    assert len(term_df) == 3_200, f"Expected 3200 TERM rows, got {len(term_df)}"
+    from synthetic_data.generators.term import N_POLICIES as _N_TERM
+    assert len(term_df) == _N_TERM, f"Expected {_N_TERM} TERM rows, got {len(term_df)}"
     print(f"  ✓ TERM row count: {len(term_df)}")
 
     required_non_null = ["policy_id", "product_code", "issue_date", "gender",
@@ -564,7 +575,8 @@ def main() -> None:
         print(f"  ✓ TERM all termination dates within study window")
 
     # Whole Life
-    assert len(wl_df) == 2_800, f"Expected 2800 WL rows, got {len(wl_df)}"
+    from synthetic_data.generators.whole_life import N_POLICIES as _N_WL
+    assert len(wl_df) == _N_WL, f"Expected {_N_WL} WL rows, got {len(wl_df)}"
     print(f"  ✓ WL row count: {len(wl_df)}")
 
     wl_required = ["policy_id", "product_code", "issue_date", "gender",
@@ -578,15 +590,19 @@ def main() -> None:
     print(f"  ✓ WL CI rider count: {wl_ci_count} ({wl_ci_count/len(wl_df)*100:.1f}%)  [target ~20% non-small-face]")
 
     # Universal Life
-    assert len(ul_df) == 1_800, f"Expected 1800 UL rows, got {len(ul_df)}"
+    from synthetic_data.generators.ul import (
+        N_POLICIES as _N_UL_ALL, N_TRAD_UL as _N_TRAD, N_ULSG as _N_ULSG_C
+    )
+    assert len(ul_df) == _N_UL_ALL, f"Expected {_N_UL_ALL} UL rows, got {len(ul_df)}"
     print(f"  ✓ UL row count: {len(ul_df)}")
 
     trad_ul = (ul_df["product_code"] == "UL").sum()
     ulsg = (ul_df["product_code"] == "ULSG").sum()
     iul = (ul_df["product_code"] == "IUL").sum()
-    assert trad_ul == 800, f"Expected 800 Trad UL, got {trad_ul}"
-    assert ulsg == 800, f"Expected 800 ULSG, got {ulsg}"
-    assert iul == 200, f"Expected 200 IUL, got {iul}"
+    assert trad_ul == _N_TRAD, f"Expected {_N_TRAD} Trad UL, got {trad_ul}"
+    assert ulsg == _N_ULSG_C, f"Expected {_N_ULSG_C} ULSG, got {ulsg}"
+    from synthetic_data.generators.ul import N_IUL as _N_IUL_C
+    assert iul == _N_IUL_C, f"Expected {_N_IUL_C} IUL, got {iul}"
     print(f"  ✓ UL product mix: {trad_ul} Trad UL, {ulsg} ULSG, {iul} IUL")
 
     ul_required = ["policy_id", "product_code", "issue_date", "gender",
@@ -600,7 +616,8 @@ def main() -> None:
     print(f"  ✓ UL CI rider count: {ul_ci_count} ({ul_ci_count/len(ul_df)*100:.1f}%)  [target ~15% of UL/IUL]")
 
     # VUL
-    assert len(vul_df) == 800, f"Expected 800 VUL rows, got {len(vul_df)}"
+    from synthetic_data.generators.vul import N_VUL as _N_VUL
+    assert len(vul_df) == _N_VUL, f"Expected {_N_VUL} VUL rows, got {len(vul_df)}"
     print(f"  ✓ VUL row count: {len(vul_df)}")
 
     vul_required = ["policy_id", "product_code", "issue_date", "gender",
@@ -626,7 +643,8 @@ def main() -> None:
     print(f"  ✓ VUL CI rider count: {vul_ci} ({vul_ci/len(vul_df)*100:.1f}%)  [target ~15%]")
 
     # Deferred Annuity
-    assert len(ann_df) == 1_400, f"Expected 1400 DA rows, got {len(ann_df)}"
+    from synthetic_data.generators.annuity import N_TOTAL as _N_DA
+    assert len(ann_df) == _N_DA, f"Expected {_N_DA} DA rows, got {len(ann_df)}"
     print(f"  ✓ DA row count: {len(ann_df)}")
 
     da_required = ["contract_id", "product_code", "issue_date", "gender",

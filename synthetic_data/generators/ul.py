@@ -13,6 +13,11 @@ import numpy as np
 import pandas as pd
 
 from .common import (
+    ci_incidence_rate,
+    ci_penetration,
+    gen_volume,
+    lapse_story_multiplier,
+    sample_offices_and_agents,
     MACRO_SCENARIO,
     US_STATES,
     _STATE_WEIGHTS,
@@ -31,9 +36,9 @@ def _advance_year(d: date) -> date:
         return date(d.year + 1, 3, 1)
 
 
-N_TRAD_UL = 800
-N_ULSG    = 800
-N_IUL     = 200
+N_TRAD_UL = gen_volume("UL", 800)
+N_ULSG    = gen_volume("ULSG", 800)
+N_IUL     = gen_volume("IUL", 200)
 N_POLICIES = N_TRAD_UL + N_ULSG + N_IUL
 
 RISK_CLASSES = ["SUPER_PREF", "PREF_NS", "STD_NS", "PREF_SM", "STD_SM"]
@@ -142,6 +147,7 @@ def generate_ul_policies(rng: np.random.Generator) -> pd.DataFrame:
 
     global_idx = 0
     for product_code, n, ages, offsets, risk_arr, ch_arr, st_arr, pm_arr, prod_type in batches:
+        offices_blk, agents_blk = sample_offices_and_agents(rng, n)
         for j in range(n):
             issue_age  = int(ages[j])
             issue_date = issue_start + timedelta(days=int(offsets[j]))
@@ -214,7 +220,7 @@ def generate_ul_policies(rng: np.random.Generator) -> pd.DataFrame:
             mec_flag  = cumul_prem > seven_pay * 7
 
             # CI rider: 15% of Trad UL and IUL; none for ULSG
-            ci_flag = (not is_ulsg) and (rng.random() < 0.15)
+            ci_flag = (not is_ulsg) and (rng.random() < ci_penetration("UL", 0.15))
             ci_sa   = round(spec_amount * 0.40, 2) if ci_flag else None
             ci_prem = round(0.00030 * ci_sa, 2) if ci_flag else None
 
@@ -248,9 +254,8 @@ def generate_ul_policies(rng: np.random.Generator) -> pd.DataFrame:
 
                 # CI claim
                 if ci_flag and ci_sa:
-                    from .common import CI_BASE_INCIDENCE_PER_1000, ci_age_factor, CI_ILLNESS_CODES, CI_ILLNESS_WEIGHTS
-                    age_factor = ci_age_factor(att_age)
-                    ci_rate = CI_BASE_INCIDENCE_PER_1000 * age_factor / 1000.0
+                    from .common import CI_ILLNESS_CODES, CI_ILLNESS_WEIGHTS
+                    ci_rate = ci_incidence_rate(att_age)
                     if rng.random() < ci_rate:
                         status_code  = "CI_CLAIM"
                         term_cause   = "CI_ACCELERATED_BENEFIT"
@@ -266,6 +271,7 @@ def generate_ul_policies(rng: np.random.Generator) -> pd.DataFrame:
                     dyn_mult = get_lapse_multiplier(macro_yr, MACRO_SCENARIO[macro_yr]["credited_rate"], "UL")
                 else:
                     dyn_mult = 1.0
+                dyn_mult *= lapse_story_multiplier(macro_yr, product_code)
                 eff_lapse = min(base_lapse * dyn_mult, 0.99)
 
                 if rng.random() < eff_lapse:
@@ -332,6 +338,8 @@ def generate_ul_policies(rng: np.random.Generator) -> pd.DataFrame:
                 "ci_rider_premium":           ci_prem,
                 "illness_code":               illness_code,
                 "distribution_channel":       channel,
+                "agency_office_id":           offices_blk[j],
+                "agent_id":                   agents_blk[j],
                 "issue_state":                state,
             })
             global_idx += 1

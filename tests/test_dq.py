@@ -16,6 +16,7 @@ from pathlib import Path
 
 import duckdb
 import pytest
+from synthetic_data.generators.term import N_POLICIES as _N_TERM
 
 from src.data_quality.runner import (
     DQCriticalFailure,
@@ -161,7 +162,7 @@ class TestCleanData:
 
     def test_total_records_count(self, prod_db: Path, prod_etl_run_id: str) -> None:
         result = run_dq_checks("TERM", prod_db, prod_etl_run_id, halt_on_critical=False)
-        assert result.total_records == 3200
+        assert result.total_records == _N_TERM
 
     def test_all_16_checks_present(self, prod_db: Path) -> None:
         result = run_dq_checks("TERM", prod_db, str(uuid.uuid4()), halt_on_critical=False)
@@ -206,7 +207,7 @@ class TestCleanData:
 
         assert row is not None, "No row written to gold_dq_run_summary"
         assert row[0] == result.dq_run_id
-        assert row[1] == 3200
+        assert row[1] == _N_TERM
         assert abs(row[2] - result.dq_score_pct) < 0.001
         assert row[3] == result.critical_failure
 

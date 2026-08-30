@@ -165,6 +165,26 @@ field_mappings:
   - source_field: issue_state
     target_field: issue_state
     target_type: VARCHAR
+
+  - source_field: agency_office_id
+    target_field: agency_office_id
+    target_type: VARCHAR
+
+  - source_field: agent_id
+    target_field: agent_id
+    target_type: VARCHAR
+
+  - source_field: claimant_id
+    target_field: claimant_id
+    target_type: VARCHAR
+
+  - source_field: hospital_id
+    target_field: hospital_id
+    target_type: VARCHAR
+
+  - source_field: claim_region
+    target_field: claim_region
+    target_type: VARCHAR
     nullable: true
 
 code_translations:

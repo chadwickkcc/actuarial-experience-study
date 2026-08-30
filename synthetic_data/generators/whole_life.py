@@ -13,6 +13,11 @@ import numpy as np
 import pandas as pd
 
 from .common import (
+    ci_incidence_rate,
+    ci_penetration,
+    gen_volume,
+    mortality_story_multiplier,
+    sample_offices_and_agents,
     MACRO_SCENARIO,
     US_STATES,
     _STATE_WEIGHTS,
@@ -24,7 +29,7 @@ from .common import (
     random_date_between,
 )
 
-N_POLICIES = 2_800
+N_POLICIES = gen_volume("WL", 2_800)
 
 PLAN_CODES = ["WL_LIFE_PAY", "WL_20_PAY", "WL_10_PAY"]
 PLAN_PROBS = [0.55, 0.30, 0.15]
@@ -137,6 +142,7 @@ def generate_wl_policies(rng: np.random.Generator) -> pd.DataFrame:
     div_opts       = rng.choice(DIVIDEND_OPTIONS, p=DIVIDEND_PROBS, size=N_POLICIES)
     apl_flags      = rng.random(size=N_POLICIES) < 0.10
     reins_flags    = (rng.random(size=N_POLICIES) < 0.10) & (face_amounts > 250_000)
+    offices, agents = sample_offices_and_agents(rng, N_POLICIES)
 
     issue_start = date(2008, 1, 1)
     issue_end   = date(2023, 6, 30)
@@ -167,7 +173,7 @@ def generate_wl_policies(rng: np.random.Generator) -> pd.DataFrame:
         annual_premium = _calc_wl_premium(face, issue_age, plan_code, smoker)
 
         # CI rider: 20% of non-small-face policies
-        ci_flag = (not is_final) and (rng.random() < 0.20)
+        ci_flag = (not is_final) and (rng.random() < ci_penetration("WL", 0.20))
         ci_sum_assured = round(face * 0.50, 2) if ci_flag else None
         ci_premium     = round(0.00025 * ci_sum_assured, 2) if ci_flag else None
 
@@ -198,8 +204,9 @@ def generate_wl_policies(rng: np.random.Generator) -> pd.DataFrame:
                 cur_date = _advance_year(cur_date)
                 continue
 
-            # Mortality check
+            # Mortality check (draw-side story multiplier — A/E signal)
             q = _mortality_rate(issue_age, policy_year, smoker, risk_class)
+            q = min(q * mortality_story_multiplier(min(yr, 2023), "WL"), 1.0)
             if rng.random() < q:
                 status_code = "DEATH"
                 term_cause  = "DEATH_BENEFIT_CLAIM"
@@ -212,9 +219,8 @@ def generate_wl_policies(rng: np.random.Generator) -> pd.DataFrame:
                 att_age = issue_age + policy_year - 1
                 band_lo = (att_age // 5) * 5
                 ci_age_band = f"{band_lo}-{band_lo + 4}"
-                from .common import CI_BASE_INCIDENCE_PER_1000, ci_age_factor, CI_ILLNESS_CODES, CI_ILLNESS_WEIGHTS
-                age_factor = ci_age_factor(att_age)
-                ci_rate = CI_BASE_INCIDENCE_PER_1000 * age_factor / 1000.0
+                from .common import CI_ILLNESS_CODES, CI_ILLNESS_WEIGHTS
+                ci_rate = ci_incidence_rate(att_age)
                 if rng.random() < ci_rate:
                     status_code  = "CI_CLAIM"
                     term_cause   = "CI_ACCELERATED_BENEFIT"
@@ -293,6 +299,8 @@ def generate_wl_policies(rng: np.random.Generator) -> pd.DataFrame:
             "ci_rider_premium":       ci_premium,
             "illness_code":           illness_code,
             "distribution_channel":   channel,
+            "agency_office_id":       offices[i],
+            "agent_id":               agents[i],
             "issue_state":            state,
         })
 

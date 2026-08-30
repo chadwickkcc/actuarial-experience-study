@@ -15,6 +15,8 @@ from pathlib import Path
 
 import duckdb
 import pytest
+from synthetic_data.generators.annuity import N_TOTAL as _N_DA
+from synthetic_data.generators.vul import N_VUL as _N_VUL
 
 from src.calculation.ae_engine import calculate_ae
 from src.data_quality.runner import run_dq_checks
@@ -100,7 +102,7 @@ class TestVULETL:
             "SELECT COUNT(*) FROM silver_vul_policies WHERE _etl_run_id = ?", [run_id]
         ).fetchone()[0]
         conn.close()
-        assert n == 800, f"Expected 800 VUL policies, got {n}"
+        assert n == _N_VUL, f"Expected {_N_VUL} VUL policies, got {n}"
 
     def test_separate_account_non_negative(self, pipeline_run_vul):
         db_path, run_id = pipeline_run_vul
@@ -121,7 +123,11 @@ class TestVULETL:
         ).fetchone()
         conn.close()
         pct = with_ci / total if total > 0 else 0
-        assert 0.10 <= pct <= 0.20, f"VUL CI rider penetration {pct:.1%} outside [10%, 20%]"
+        from synthetic_data.generators.common import ci_penetration
+        target = ci_penetration("VUL", 0.15)
+        assert abs(pct - target) <= 0.05, (
+            f"VUL CI rider penetration {pct:.1%} not within 5pp of configured {target:.0%}"
+        )
 
     def test_equity_allocation_bounds(self, pipeline_run_vul):
         db_path, run_id = pipeline_run_vul
@@ -264,7 +270,7 @@ class TestDAETL:
             "SELECT COUNT(*) FROM silver_annuity_contracts WHERE _etl_run_id = ?", [run_id]
         ).fetchone()[0]
         conn.close()
-        assert n == 1400, f"Expected 1400 DA contracts, got {n}"
+        assert n == _N_DA, f"Expected {_N_DA} DA contracts, got {n}"
 
     def test_no_ci_rider_columns_populated(self, pipeline_run_da):
         """Annuities do not have CI riders — verify silver table has no ci_rider_flag column."""

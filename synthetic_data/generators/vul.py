@@ -20,6 +20,10 @@ import numpy as np
 import pandas as pd
 
 from .common import (
+    ci_incidence_rate,
+    ci_penetration,
+    gen_volume,
+    sample_offices_and_agents,
     CI_BASE_INCIDENCE_PER_1000,
     CI_ILLNESS_CODES,
     CI_ILLNESS_WEIGHTS,
@@ -34,7 +38,7 @@ from .common import (
     random_date_between,
 )
 
-N_VUL = 800
+N_VUL = gen_volume("VUL", 800)
 
 RISK_CLASSES = ["SUPER_PREF", "PREF_NS", "STD_NS", "PREF_SM", "STD_SM"]
 RISK_PROBS   = [0.12, 0.28, 0.45, 0.07, 0.08]
@@ -166,6 +170,7 @@ def generate_vul_policies(rng: np.random.Generator) -> pd.DataFrame:
 
     records: list[dict] = []
 
+    offices, agents = sample_offices_and_agents(rng, N_VUL)
     for j in range(N_VUL):
         issue_age  = int(ages[j])
         issue_date = issue_start + timedelta(days=int(offsets[j]))
@@ -272,7 +277,7 @@ def generate_vul_policies(rng: np.random.Generator) -> pd.DataFrame:
         av_eom = round(sa_total + fixed_av, 2)
 
         # CI rider: 15% of policies
-        ci_flag = rng.random() < 0.15
+        ci_flag = rng.random() < ci_penetration("VUL", 0.15)
         ci_sa   = round(spec_amount * 0.30, 2) if ci_flag else None
         ci_prem = round(0.00035 * ci_sa, 2) if ci_flag else None
 
@@ -309,8 +314,7 @@ def generate_vul_policies(rng: np.random.Generator) -> pd.DataFrame:
 
             # CI claim
             if ci_flag and ci_sa:
-                age_factor = ci_age_factor(att_age)
-                ci_rate = CI_BASE_INCIDENCE_PER_1000 * age_factor / 1000.0
+                ci_rate = ci_incidence_rate(att_age)
                 if rng.random() < ci_rate:
                     status_code  = "CI_CLAIM"
                     term_cause   = "CI_ACCELERATED_BENEFIT"
@@ -376,6 +380,8 @@ def generate_vul_policies(rng: np.random.Generator) -> pd.DataFrame:
             "ci_rider_premium":           ci_prem,
             "illness_code":               illness_code,
             "distribution_channel":       channel,
+            "agency_office_id":           offices[j],
+            "agent_id":                   agents[j],
             "issue_state":                state,
         })
 

@@ -20,7 +20,7 @@ One phase per session; gate green before proceeding; commit per phase.
 | P1 | Groundwork: re-home lifecycle, cut monitors, recon fix | M | ✅ COMPLETE (2026-08-30) |
 | P2 | Assumption workflow v2 + materiality + legacy retirement | L | ✅ COMPLETE (2026-08-30) |
 | P3 | TEV purge | L | ✅ COMPLETE (2026-08-30) — eval re-lock pending owner |
-| P4 | Data expansion + regeneration | L | — |
+| P4 | Data expansion + regeneration | L | ✅ COMPLETE (2026-08-30) |
 | P5 | Fraud module | L | — |
 | P6 | Management commentary | L | — |
 | P7 | Slickness pass | M | — |
@@ -33,6 +33,7 @@ One phase per session; gate green before proceeding; commit per phase.
 | After P1 | 1369 passed, 6 skipped (+1 recon-scope test) |
 | After P2 | 1356 passed, 15 skipped, 0 failed (net −13: legacy approvals/envelope-summary tests retired, +9 new materiality/guard tests; +9 skips are TEV tests skipping on the fresh no-TEV-runs DB — deleted in P3 — plus 1 empty-assumption-sets lifecycle-UI skip) |
 | After P3 | 1212 passed, 7 skipped, 0 failed (−~150 TEV tests deleted; +2 TEV-absence standing guards; skips = 6 pre-existing baseline + 1 empty-assumption-sets lifecycle-UI) |
+| After P4 | 1217 passed, 7 skipped, 0 failed (+5 story-lock tests; ~30 volume/band/pinned-value tests made config-/live-driven) |
 
 **Owner checkpoints:** P3 eval re-lock (**REQUESTED 2026-08-30** — golden 36→30
 [G027–G032 removed], adversarial A007 retargeted to `gold_ai_proposed_factors`;
@@ -224,3 +225,55 @@ COMPLETE, 4.5s) + `_uat_ai_fit.py` (8 models, 146 proposed factors).
 Streamlit boot HTTP 200; AI Analyst on 4 MCP tools.
 
 **Next session: P4** (see `demo_refresh_prompts.md` → P4).
+
+---
+
+## P4 — Data expansion + regeneration — COMPLETE (2026-08-30)
+
+**Config-driven generation:** new `config/synthetic_data.yaml` (volumes, CI penetration +
+incidence multiplier, story multipliers, entities, fraud-ring parameters) read by
+`generators/common.py::GEN_CONFIG` at import. Volumes → **25,000 policies**
+(TERM 8000, WL 7000, UL 2000 + ULSG 2000 + IUL 500, VUL 2000, DA 2200+1300). Seed 42
+unchanged; `generate_all.py` validation asserts made config-driven.
+
+**New identity fields (all 5 generators → CSV → bronze DDL → `field_mappings` → silver
+DDL):** `agency_office_id` (OFF-001…040), `agent_id` (AGT-<office><1-8>), and on claim rows
+(DEATH / CI_CLAIM): `claimant_id`, `hospital_id` (HOSP-001…060), `claim_region`
+(state → 8-region map in `common.py`). `assign_claim_fields` stamps them post-generation.
+
+**Planted stories (draw-side only, via `common.mortality_story_multiplier` /
+`lapse_story_multiplier`):** verified in gold on run `b23edb78…`:
+- Term+WL mortality A/E by year: 2020 0.603 → 2021 0.612 → 2022 0.754 → **2023 0.880**
+  (strict rise, +0.27 over the window).
+- Term+UL-family lapse A/E: 2016–21 ≈ 0.85–1.31, **2022 1.19, 2023 1.88** (spike).
+- CI: **589 claims across all 10 illness codes**, aggregate CI A/E 1.23 (the ×3.5
+  incidence multiplier applies to BOTH draws and the `ci_incidence` reference table, so
+  it raises volume, not the ratio).
+
+**Fraud ring (planted via `common.plant_fraud_ring`, parameters in config):** 14 Term
+policies, issued 2021–23, office **OFF-013**, ghost hospital **HOSP-066** (outside the
+60-facility roster), all CI-001 claims in policy year 1 (55–283 days), NV/SOUTHWEST,
+faces 115–126k; 4 share claimant **CLM-424242**. Office first-policy-year claim counts:
+OFF-013 = 15 vs median 1 (the P5 rule-4 signal).
+
+**Design deviations from the scope doc (recorded there in-place):** CI claims stayed
+**terminal** — the boost alone hits the volume target and same-claimant similarity spans
+policies, so the non-terminal rework (exposure/A-E ripple) was dropped. Fraud rule 4 is
+defined on **first-policy-year** claim concentration (total-claim share dilutes).
+
+**Tests:** +5 permanent story-lock tests (`tests/test_planted_stories.py`: strict
+mortality rise, lapse spike ≥115% of the 2016–21 mean, CI ≥250/≥8 codes, ring
+present incl. the ≥3×-median office check, identity fields in all 5 silver tables).
+~30 reshuffle-broken tests fixed: volume asserts now import generator constants,
+acceptance A/E bands widened for the planted-story data (documented), the UL
+dynamic-lapse acceptance test pinned to `policy_year = 3` (holds the duration mix
+constant), the 3 chatbot realdata tests now query live WL aggregates instead of
+pinned 0.5718/232 values, VUL CI penetration asserts vs the configured target.
+
+**Live DB:** fresh rebuild — run `b23edb78…` (COMPLETE, 8.9s, deaths 1206, recon PASS ×6
+products), AI fit: 8 models fitted, 332 proposed factors.
+
+**DoD:** gate green **1217 passed, 7 skipped, 0 failed**; story asserts green; boot smoke
+HTTP 200.
+
+**Next session: P5** (see `demo_refresh_prompts.md` → P5).

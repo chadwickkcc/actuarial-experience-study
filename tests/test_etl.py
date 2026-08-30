@@ -7,6 +7,7 @@ from pathlib import Path
 import duckdb
 import pandas as pd
 import pytest
+from synthetic_data.generators.term import N_POLICIES as _N_TERM
 
 from src.ingestion.pipeline import load_mapping_config, run_etl_pipeline
 from src.utils.db_init import init_database
@@ -614,20 +615,20 @@ class TestFullSyntheticData:
         result, _ = full_etl
         assert result.success is True
 
-    def test_bronze_3200_rows(self, full_etl):
+    def test_bronze_full_rows(self, full_etl):
         _, db = full_etl
         rows = _query(db, "SELECT COUNT(*) FROM bronze_term_policies")
-        assert rows[0][0] == 3200
+        assert rows[0][0] == _N_TERM
 
-    def test_silver_3200_rows(self, full_etl):
+    def test_silver_full_rows(self, full_etl):
         _, db = full_etl
         rows = _query(db, "SELECT COUNT(*) FROM silver_term_policies")
-        assert rows[0][0] == 3200
+        assert rows[0][0] == _N_TERM
 
     def test_events_at_least_3200(self, full_etl):
         _, db = full_etl
         rows = _query(db, "SELECT COUNT(*) FROM silver_policy_events")
-        assert rows[0][0] >= 3200
+        assert rows[0][0] >= _N_TERM
 
     def test_no_conversion_in_status_code(self, full_etl):
         """The raw 'CONVERSION' value must have been translated to 'CONV'."""

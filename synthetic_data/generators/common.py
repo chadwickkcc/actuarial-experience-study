@@ -266,3 +266,199 @@ _STATE_POP_WEIGHTS: list[float] = [
 ]
 _STATE_WEIGHTS = np.array(_STATE_POP_WEIGHTS, dtype=float)
 _STATE_WEIGHTS /= _STATE_WEIGHTS.sum()
+
+
+# ---------------------------------------------------------------------------
+# Generation config (demo refresh P4) — config/synthetic_data.yaml
+# ---------------------------------------------------------------------------
+
+def _load_gen_config() -> dict:
+    """Load config/synthetic_data.yaml (empty dict when absent)."""
+    import yaml
+
+    cfg_path = (
+        __import__("pathlib").Path(__file__).resolve().parent.parent.parent
+        / "config" / "synthetic_data.yaml"
+    )
+    if not cfg_path.exists():
+        return {}
+    with cfg_path.open("r", encoding="utf-8") as fh:
+        return yaml.safe_load(fh) or {}
+
+
+GEN_CONFIG: dict = _load_gen_config()
+
+
+def gen_volume(product_key: str, default: int) -> int:
+    """Policy volume for a product from config (falls back to the legacy count)."""
+    return int((GEN_CONFIG.get("volumes") or {}).get(product_key, default))
+
+
+def ci_penetration(product_key: str, default: float) -> float:
+    """CI-rider penetration probability for a product from config."""
+    return float(((GEN_CONFIG.get("ci") or {}).get("penetration") or {}).get(product_key, default))
+
+
+def ci_incidence_multiplier() -> float:
+    """Multiplier applied to BOTH CI draws and the CI reference table (volume, not signal)."""
+    return float((GEN_CONFIG.get("ci") or {}).get("incidence_multiplier", 1.0))
+
+
+def ci_incidence_rate(attained_age: float) -> float:
+    """Annual CI claim probability for one policy-year (draw side).
+
+    base × age factor × the configured incidence multiplier, capped so the
+    per-year probability stays sane even at extreme ages.
+    """
+    mult = ci_incidence_multiplier()
+    rate = CI_BASE_INCIDENCE_PER_1000 * ci_age_factor(attained_age) * mult / 1_000.0
+    return min(rate, 0.05 * max(mult, 1.0))
+
+
+def _story_multiplier(story_key: str, cal_year: int, product_code: str) -> float:
+    """Draw-side story multiplier from config ``stories.<story_key>`` (1.0 default)."""
+    story = (GEN_CONFIG.get("stories") or {}).get(story_key) or {}
+    products = story.get("products") or []
+    if product_code not in products:
+        return 1.0
+    factors = story.get("factors") or {}
+    return float(factors.get(cal_year, factors.get(str(cal_year), 1.0)))
+
+
+def mortality_story_multiplier(cal_year: int, product_code: str) -> float:
+    """Planted mortality-deterioration multiplier (draw side only)."""
+    return _story_multiplier("mortality_deterioration", cal_year, product_code)
+
+
+def lapse_story_multiplier(cal_year: int, product_code: str) -> float:
+    """Planted lapse-spike multiplier (draw side only)."""
+    return _story_multiplier("lapse_spike", cal_year, product_code)
+
+
+# ---------------------------------------------------------------------------
+# Institutional entities + claim-level identity fields (demo refresh P4)
+# ---------------------------------------------------------------------------
+
+# US census-style region map for claim_region (reference geography, not config).
+_REGION_STATES: dict[str, tuple[str, ...]] = {
+    "NORTHEAST":  ("CT", "ME", "MA", "NH", "NJ", "NY", "PA", "RI", "VT"),
+    "MIDWEST":    ("IL", "IN", "IA", "KS", "MI", "MN", "MO", "NE", "ND", "OH", "SD", "WI"),
+    "SOUTH_ATL":  ("DE", "FL", "GA", "MD", "NC", "SC", "VA", "WV", "DC"),
+    "SOUTH_CENT": ("AL", "AR", "KY", "LA", "MS", "OK", "TN", "TX"),
+    "MOUNTAIN":   ("AZ", "CO", "ID", "MT", "NM", "UT", "WY"),
+    "SOUTHWEST":  ("NV",),
+    "PACIFIC":    ("AK", "CA", "HI", "OR", "WA"),
+}
+STATE_TO_REGION: dict[str, str] = {
+    st: region for region, states in _REGION_STATES.items() for st in states
+}
+
+
+def sample_offices_and_agents(rng: np.random.Generator, n: int) -> tuple[list[str], list[str]]:
+    """Sample an agency office + agent for ``n`` policies.
+
+    Offices are OFF-001…OFF-<n_offices> (uniform); each office has
+    ``agents_per_office`` agents AGT-<office#><agent#> so agent → office is fixed.
+    """
+    ent = GEN_CONFIG.get("entities") or {}
+    n_offices = int(ent.get("n_offices", 40))
+    agents_per = int(ent.get("agents_per_office", 8))
+    office_ix = rng.integers(1, n_offices + 1, size=n)
+    agent_ix = rng.integers(1, agents_per + 1, size=n)
+    offices = [f"OFF-{int(o):03d}" for o in office_ix]
+    agents = [f"AGT-{int(o):03d}{int(a)}" for o, a in zip(office_ix, agent_ix)]
+    return offices, agents
+
+
+def assign_claim_fields(
+    df: pd.DataFrame, rng: np.random.Generator, id_prefix: str
+) -> pd.DataFrame:
+    """Stamp claimant/hospital/region identity onto claim rows (DEATH / CI_CLAIM).
+
+    Non-claim rows get None. ``claimant_id`` is unique per policy by default
+    (CLM-<prefix>-<seq>); the fraud-ring planting later overrides a shared one.
+    ``claim_region`` derives from issue_state (claims are serviced in-region).
+    """
+    ent = GEN_CONFIG.get("entities") or {}
+    n_hosp = int(ent.get("n_hospitals", 60))
+
+    is_claim = df["status_code"].isin(["DEATH", "CI_CLAIM"])
+    n = len(df)
+    hosp_ix = rng.integers(1, n_hosp + 1, size=n)
+
+    df = df.copy()
+    df["claimant_id"] = [
+        f"CLM-{id_prefix}-{i + 1:06d}" if flag else None
+        for i, flag in enumerate(is_claim)
+    ]
+    df["hospital_id"] = [
+        f"HOSP-{int(h):03d}" if flag else None for h, flag in zip(hosp_ix, is_claim)
+    ]
+    df["claim_region"] = [
+        STATE_TO_REGION.get(st, "OTHER") if flag else None
+        for st, flag in zip(df["issue_state"], is_claim)
+    ]
+    return df
+
+
+def plant_fraud_ring(term_df: pd.DataFrame, rng: np.random.Generator) -> pd.DataFrame:
+    """Overwrite a handful of Term policies as the planted fraud ring.
+
+    Ring pattern (all parameters in config ``fraud_ring``): policies issued in
+    the configured window through one rogue office, each with a CI claim inside
+    policy year 1, all treated at one out-of-roster hospital in one state's
+    region, several sharing a claimant with the same illness and near-identical
+    amounts. The P5 rule engine is expected to surface exactly this cluster.
+    """
+    ring = GEN_CONFIG.get("fraud_ring") or {}
+    if not ring:
+        return term_df
+
+    n_ring = int(ring.get("n_ring_policies", 14))
+    n_shared = int(ring.get("n_shared_claimant", 4))
+    office = str(ring.get("office_id", "OFF-013"))
+    hospital = str(ring.get("hospital_id", "HOSP-066"))
+    shared_claimant = str(ring.get("claimant_id", "CLM-424242"))
+    illness = str(ring.get("illness_code", "CI-001"))
+    face = float(ring.get("face_amount", 120000))
+    y0 = int(ring.get("issue_year_from", 2021))
+    y1 = int(ring.get("issue_year_to", 2023))
+    ring_state = str(ring.get("ring_state", "NV"))
+
+    df = term_df.copy()
+    # Overwrite the LAST n_ring rows (stable, order-independent of the draws).
+    idx = df.index[-n_ring:]
+    ent = GEN_CONFIG.get("entities") or {}
+    agents_per = int(ent.get("agents_per_office", 8))
+    office_no = int(office.split("-")[1])
+
+    for k, i in enumerate(idx):
+        issue_year = int(rng.integers(y0, y1 + 1))
+        issue_d = random_date_between(
+            rng, date(issue_year, 1, 1), date(issue_year, 9, 30)
+        )
+        claim_d = issue_d + timedelta(days=int(rng.integers(45, 300)))
+        claim_d = min(claim_d, STUDY_END)
+        ring_face = round(face * float(rng.uniform(0.95, 1.05)) / 1000) * 1000
+        sa = round(ring_face * 0.50, 2)
+        df.loc[i, "issue_date"] = issue_d.isoformat()
+        df.loc[i, "date_of_birth"] = issue_age_to_dob(issue_d, 42).isoformat()
+        df.loc[i, "issue_age_anb"] = 42
+        df.loc[i, "face_amount"] = float(ring_face)
+        df.loc[i, "status_code"] = "CI_CLAIM"
+        df.loc[i, "termination_date"] = claim_d.isoformat()
+        df.loc[i, "termination_cause_code"] = "CI_ACCELERATED_BENEFIT"
+        df.loc[i, "illness_code"] = illness
+        df.loc[i, "ci_rider_flag"] = True
+        df.loc[i, "ci_rider_sum_assured"] = sa
+        df.loc[i, "ci_rider_premium"] = round(0.0003 * sa, 2)
+        df.loc[i, "conversion_flag"] = False
+        df.loc[i, "agency_office_id"] = office
+        df.loc[i, "agent_id"] = f"AGT-{office_no:03d}{int(rng.integers(1, agents_per + 1))}"
+        df.loc[i, "issue_state"] = ring_state
+        df.loc[i, "hospital_id"] = hospital
+        df.loc[i, "claim_region"] = STATE_TO_REGION.get(ring_state, "OTHER")
+        df.loc[i, "claimant_id"] = (
+            shared_claimant if k < n_shared else f"CLM-RING-{k + 1:03d}"
+        )
+    return df

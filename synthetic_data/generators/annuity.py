@@ -23,6 +23,8 @@ import pandas as pd
 import yaml
 
 from .common import (
+    gen_volume,
+    sample_offices_and_agents,
     MACRO_SCENARIO,
     US_STATES,
     _STATE_WEIGHTS,
@@ -33,8 +35,8 @@ from .common import (
     random_date_between,
 )
 
-N_FIXED    = 900   # DA_FIXED + DA_FIA
-N_VARIABLE = 500   # DA_VA
+N_FIXED    = gen_volume("DA_FIXED_FIA", 900)   # DA_FIXED + DA_FIA
+N_VARIABLE = gen_volume("DA_VA", 500)   # DA_VA
 N_TOTAL    = N_FIXED + N_VARIABLE
 
 CHANNELS = ["CAREER", "BANK", "IBD", "RIA"]
@@ -188,6 +190,7 @@ def generate_annuity_contracts(rng: np.random.Generator) -> pd.DataFrame:
     global_idx = 0
 
     for batch_type, n, ages, offsets, ch_arr, st_arr, pm_arr, mt_arr in batches:
+        offices_blk, agents_blk = sample_offices_and_agents(rng, n)
         for j in range(n):
             issue_age  = int(ages[j])
             issue_date = issue_start + timedelta(days=int(offsets[j]))
@@ -421,6 +424,8 @@ def generate_annuity_contracts(rng: np.random.Generator) -> pd.DataFrame:
                 "termination_date":           term_date.isoformat() if term_date else None,
                 "termination_cause_code":     term_cause,
                 "distribution_channel":       channel,
+                "agency_office_id":           offices_blk[j],
+                "agent_id":                   agents_blk[j],
                 "issue_state":                state,
             })
             global_idx += 1

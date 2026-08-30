@@ -22,6 +22,7 @@ from pathlib import Path
 
 import duckdb
 import pytest
+from synthetic_data.generators.ul import N_POLICIES as _N_UL_ALL
 
 from src.calculation.ae_engine import calculate_ae
 from src.data_quality.runner import run_dq_checks
@@ -119,7 +120,7 @@ class TestAcceptanceMetricsUL:
             db,
             "SELECT COUNT(DISTINCT policy_id) FROM silver_ul_policies",
         )
-        assert row[0] == 1800, f"Expected 1800 UL records, got {row[0]}"
+        assert row[0] == _N_UL_ALL, f"Expected {_N_UL_ALL} UL records, got {row[0]}"
 
     def test_ul_inforce_reconciliation_passes(self, pipeline_run_ul) -> None:
         """In-force reconciliation must pass for all study years."""
@@ -212,6 +213,8 @@ class TestAcceptanceMetricsUL:
                   AND illness_code IS NULL
                   AND calendar_year IN (2020, 2022)
                   AND lapse_exposure_count > 0
+                  AND policy_year = 3   -- fix the duration mix so only the
+                                        -- macro multiplier moves the rate
                 GROUP BY calendar_year
                 ORDER BY calendar_year
                 """,

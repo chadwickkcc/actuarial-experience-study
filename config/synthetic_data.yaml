@@ -1,0 +1,68 @@
+# =============================================================================
+# Synthetic-data generation config (demo refresh P4).
+# -----------------------------------------------------------------------------
+# Read by synthetic_data/generators/common.py (module import time). Every
+# volume, penetration, story multiplier and fraud-ring parameter lives here —
+# never hardcoded in the generators (CLAUDE.md rule: config over code).
+# The master random seed stays 42 (synthetic_data/generate_all.py).
+#
+# IMPORTANT: regenerating with changed values reshuffles the shared seed-42
+# stream — rebuild the demo DB and expect story-lock test values to move.
+# =============================================================================
+
+# Policy volumes per product (≈2.5x the original 10,000 total → 25,000).
+volumes:
+  TERM: 8000
+  WL: 7000
+  UL: 2000
+  ULSG: 2000
+  IUL: 500
+  VUL: 2000
+  DA_FIXED_FIA: 2200     # DA_FIXED + DA_FIA (split downstream as before)
+  DA_VA: 1300
+
+ci:
+  # CI rider penetration per product (probability a policy carries the rider).
+  penetration:
+    TERM: 0.45
+    WL: 0.45             # non-final-expense WL only, as before
+    UL: 0.35             # non-ULSG UL/IUL only, as before
+    VUL: 0.35
+  # Applied to BOTH the claim draws and the ci_incidence reference table, so
+  # the portfolio genuinely runs a higher CI incidence with a matching expected
+  # basis (raises claim VOLUME without distorting the CI A/E ratio).
+  incidence_multiplier: 3.5
+
+# Planted experience stories — applied to the DRAW side only (never to the
+# reference tables), so they surface as genuine A/E signal.
+stories:
+  mortality_deterioration:
+    products: [TERM, WL]
+    factors:
+      2021: 1.08
+      2022: 1.16
+      2023: 1.25
+  lapse_spike:
+    products: [TERM, UL, ULSG, IUL]
+    factors:
+      2022: 1.40
+      2023: 1.40
+
+# Institutional entities stamped onto every policy / claim.
+entities:
+  n_offices: 40          # OFF-001 … OFF-040
+  agents_per_office: 8   # AGT-<office#><1-8>
+  n_hospitals: 60        # HOSP-001 … HOSP-060
+
+# The planted fraud ring (all Term CI claims; detected by the P5 rule engine).
+fraud_ring:
+  office_id: OFF-013
+  hospital_id: HOSP-066        # deliberately OUTSIDE the normal 60 — a "ghost" facility
+  claimant_id: CLM-424242
+  n_ring_policies: 14          # ring claims issued 2021–2023, claim in policy year 1
+  n_shared_claimant: 4         # of which this many share claimant_id (similar claims)
+  issue_year_from: 2021
+  issue_year_to: 2023
+  illness_code: CI-001
+  face_amount: 120000          # modest similar faces → similar claim amounts (±10%)
+  ring_state: NV               # claims cluster in one state → its region is "high-risk"

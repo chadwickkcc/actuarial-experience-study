@@ -23,6 +23,7 @@ from pathlib import Path
 
 import duckdb
 import pytest
+from synthetic_data.generators.annuity import N_TOTAL as _N_DA
 
 from src.data_quality.runner import run_dq_checks
 
@@ -98,8 +99,8 @@ class TestCleanDataDA:
 
     def test_da_total_records_count(self, prod_db: Path, prod_etl_run_id: str) -> None:
         result = run_dq_checks("DA", prod_db, prod_etl_run_id, halt_on_critical=False)
-        assert result.total_records == 1400, (
-            f"Expected 1400 DA records, got {result.total_records}"
+        assert result.total_records == _N_DA, (
+            f"Expected {_N_DA} DA records, got {result.total_records}"
         )
 
     def test_da_all_5_checks_present(self, prod_db: Path, prod_etl_run_id: str) -> None:

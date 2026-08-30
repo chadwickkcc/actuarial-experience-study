@@ -16,6 +16,7 @@ from pathlib import Path
 
 import duckdb
 import pytest
+from synthetic_data.generators.ul import N_TRAD_UL as _N_TRAD
 
 from src.data_quality.checks.ul_checks import HALT_CHECK_IDS
 from src.data_quality.runner import run_dq_checks
@@ -82,7 +83,7 @@ class TestCleanDataUL:
         # processed as their own product runs, so the per-product UL count is 800, not the
         # full 1,800-row UL-family CSV.
         result = run_dq_checks("UL", prod_db, prod_etl_run_id, halt_on_critical=False)
-        assert result.total_records == 800, (
+        assert result.total_records == _N_TRAD, (
             f"Expected 800 Trad-UL records, got {result.total_records}"
         )
 

@@ -14,6 +14,7 @@ from pathlib import Path
 
 import duckdb
 import pytest
+from synthetic_data.generators.whole_life import N_POLICIES as _N_WL
 
 from src.calculation.ae_engine import calculate_ae
 from src.data_quality.runner import run_dq_checks
@@ -111,7 +112,7 @@ class TestAcceptanceMetricsWL:
             db,
             "SELECT COUNT(DISTINCT policy_id) FROM silver_wl_policies",
         )
-        assert row[0] == 2800, f"Expected 2800 WL policies, got {row[0]}"
+        assert row[0] == _N_WL, f"Expected {_N_WL} WL policies, got {row[0]}"
 
     def test_wl_inforce_reconciliation_passes(self, pipeline_run_wl) -> None:
         """In-force reconciliation must pass for all study years."""
