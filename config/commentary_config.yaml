@@ -1,0 +1,25 @@
+# =============================================================================
+# Management-commentary analytics config (demo refresh P6).
+# -----------------------------------------------------------------------------
+# Consumed by src/analysis/commentary.py. Attribution dimensions per decrement,
+# the trend window and classification thresholds all live here.
+# =============================================================================
+
+# Driver-attribution dimensions per decrement (each dimension is decomposed
+# separately; per-segment contributions sum EXACTLY to the YoY change in the
+# aggregate A/E). Mortality/morbidity attribute by age band + gender; lapse by
+# product line + policy year; CI/surrender by product line.
+attribution_dimensions:
+  MORTALITY: [attained_age_band, gender]
+  LAPSE: [product_code, policy_year]
+  CI_INCIDENCE: [product_code]
+  SURRENDER: [product_code]
+
+# Cap on drivers surfaced per (year, dimension), ranked by |contribution|.
+top_n_drivers: 3
+
+trend:
+  window_years: 3          # slope fitted over the last N calendar years
+  # |slope| at/below this is "stable"; direction of a larger slope decides
+  # improving (A/E falling toward expectation) vs worsening (A/E rising).
+  stable_slope_threshold: 0.02

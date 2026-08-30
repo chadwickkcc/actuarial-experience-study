@@ -338,13 +338,87 @@ def assemble_commentary_facts(db_path: Path, run_id: str) -> Optional[dict]:
                 by_product.append({"product": product, "decrements": decrements})
     finally:
         con.close()
-    return {
+    facts = {
         "run_id": run_id,
         "study_period": period,
         "study_years": study_years,
         "credibility_method": method,  # so the chatbot recomputes Z with the run's method
         "products": products,
         "by_product": by_product,
+    }
+    facts.update(_commentary_analytics(db_path, run_id, products))
+    return facts
+
+
+def _commentary_analytics(db_path: Path, run_id: str, products: list[str]) -> dict:
+    """Fact-pack v2 additive keys (demo refresh P6): pre-computed YoY movement
+    with top drivers, 3-year trend classifications, assumption-justification
+    metrics and in-force movement legs — every number computed by
+    ``src/analysis/commentary`` so the LLM never does arithmetic.
+    """
+    from src.analysis import (
+        attribute_drivers,
+        classify_trends,
+        compute_yoy_movement,
+        justification_metrics,
+        load_commentary_config,
+        movement_legs,
+    )
+
+    cfg = load_commentary_config()
+    dims_by_dec = cfg["attribution_dimensions"]
+    top_n = int(cfg.get("top_n_drivers", 3))
+
+    yoy: dict[str, list[dict]] = {}
+    trends: list[dict] = []
+    for dec in ("MORTALITY", "LAPSE", "CI_INCIDENCE", "SURRENDER"):
+        rows = compute_yoy_movement(db_path, run_id, dec)
+        if not rows:
+            continue
+        # Top drivers for the two most recent year-on-year transitions.
+        recent_years = [r["year"] for r in rows if r["delta_vs_prior"] is not None][-2:]
+        for r in rows:
+            if r["year"] in recent_years:
+                drivers = {}
+                for dim in dims_by_dec.get(dec, []):
+                    attr = attribute_drivers(db_path, run_id, dec, r["year"], dim)
+                    if attr["delta_ae"] is None:
+                        continue
+                    drivers[dim] = [
+                        {"segment": c["segment"],
+                         "contribution": round(c["contribution"], 4)}
+                        for c in attr["contributions"][:top_n]
+                    ]
+                if drivers:
+                    r["top_drivers"] = drivers
+        yoy[dec] = rows
+
+        trend = classify_trends(db_path, run_id, dec)
+        trend.update({"product": "ALL", "decrement": dec})
+        trends.append(trend)
+        if dec in ("MORTALITY", "LAPSE"):
+            for product in products:
+                pt = classify_trends(db_path, run_id, dec, product)
+                if pt["classification"] == "insufficient_data":
+                    continue
+                pt.update({"product": product, "decrement": dec})
+                trends.append(pt)
+
+    justification = []
+    for product in products:
+        for dec in ("MORTALITY", "LAPSE", "CI_INCIDENCE", "SURRENDER"):
+            jm = justification_metrics(db_path, run_id, dec, product)
+            if jm and "proposed_cells" in jm:
+                justification.append(jm)
+
+    latest_years = sorted({r["year"] for rows in yoy.values() for r in rows})[-2:]
+    movement = movement_legs(db_path, run_id, years=latest_years)
+
+    return {
+        "yoy": yoy,
+        "trends": trends,
+        "justification": justification,
+        "movement": movement,
     }
 
 

@@ -34,6 +34,9 @@ skills:
   fraud_narrative:
     max_tokens: 2048
     temperature: 0.0
+  management_commentary:
+    max_tokens: 4096
+    temperature: 0.0
 
 providers:
   anthropic:

@@ -68,6 +68,7 @@ pg = st.navigation(
             _page("04_mortality_ae.py",         "Mortality A vs E",       "💀"),
             _page("05_lapse_ae.py",             "Lapse A vs E",           "📉"),
             _page("06_ci_explorer.py",          "CI Incidence Explorer",  "🏥"),
+            _page("18_management_commentary.py", "Management Commentary",  "📈"),
             _page("13_product_comparison.py",   "Product Comparison",     "⚖️"),
         ],
         "4 · AI Assistance": [

@@ -22,7 +22,7 @@ One phase per session; gate green before proceeding; commit per phase.
 | P3 | TEV purge | L | ✅ COMPLETE (2026-08-30) — eval re-lock pending owner |
 | P4 | Data expansion + regeneration | L | ✅ COMPLETE (2026-08-30) |
 | P5 | Fraud module | L | ✅ COMPLETE (2026-08-30) |
-| P6 | Management commentary | L | — |
+| P6 | Management commentary | L | ✅ COMPLETE (2026-08-30) |
 | P7 | Slickness pass | M | — |
 | P8 | Docs, demo script, UAT | M | — |
 
@@ -35,6 +35,7 @@ One phase per session; gate green before proceeding; commit per phase.
 | After P3 | 1212 passed, 7 skipped, 0 failed (−~150 TEV tests deleted; +2 TEV-absence standing guards; skips = 6 pre-existing baseline + 1 empty-assumption-sets lifecycle-UI) |
 | After P4 | 1217 passed, 7 skipped, 0 failed (+5 story-lock tests; ~30 volume/band/pinned-value tests made config-/live-driven) |
 | After P5 | 1234 passed, 7 skipped, 0 failed (+17 fraud tests) |
+| After P6 | 1253 passed, 7 skipped, 0 failed (+19 commentary tests) |
 
 **Owner checkpoints:** P3 eval re-lock (**REQUESTED 2026-08-30** — golden 36→30
 [G027–G032 removed], adversarial A007 retargeted to `gold_ai_proposed_factors`;
@@ -333,3 +334,57 @@ P8).
 demo DB ships flagged.
 
 **Next session: P6** (see `demo_refresh_prompts.md` → P6).
+
+---
+
+## P6 — Management commentary — COMPLETE (2026-08-30)
+
+**Analytics (`src/analysis/commentary.py` + `config/commentary_config.yaml`):**
+- `compute_yoy_movement` — per-calendar-year ratio-of-sums A/E + Δ vs prior
+  (portfolio or per product).
+- `attribute_drivers` — **exact** decomposition: `contribution_s = A_{s,t}/E_t −
+  A_{s,t−1}/E_{t−1}` sums precisely to ΔA/E (locked to 1e-9 on live data);
+  dimensions per decrement from config (mortality → age band + gender; lapse →
+  product line + policy year; CI/surrender → product line); identifier
+  interpolation guarded by an internal allowed-dimension set.
+- `classify_trends` — `numpy.polyfit` slope over `trend.window_years` (3),
+  improving/worsening/stable via `stable_slope_threshold` (0.02);
+  `insufficient_data` under the window.
+- `justification_metrics` — overall A/E, aggregate credibility Z, **cred_wtd_ae**
+  (Z·A/E + (1−Z)·1.0), BE gap vs the current 1.0 multiplier, GLM proposed-factor
+  cell count + range.
+- `movement_legs` — per-product recon movement (enabled by the P1 recon fix).
+
+**Fact-pack v2 (`assemble_commentary_facts` additive keys):** `yoy` (per
+decrement, all years; `top_drivers` per configured dimension for the last two
+transitions, top-3 by |contribution|), `trends` (portfolio per decrement +
+per-product mortality/lapse), `justification` (products with GLM proposals),
+`movement` (last 2 years). ~62 KB on the live run. Live: ALL-mortality and
+ALL-lapse classify **worsening** (slopes +0.0848 / +0.21) — the planted stories.
+
+**Skill (`src/ai/skills/management_commentary.py` + prompt v1.0):** four exact
+`##` sections — YoY Movement & Key Drivers · Experience Trends · **Proposed
+Management Actions** (recommendations explicitly allowed here, unlike chat) ·
+Assumption Justification; AI-DRAFT banner; block-not-repair; empty-body guard;
+`skills.management_commentary` params in `llm_config.yaml`. Chat
+`commentary.md` → v3.1 (may cite `yoy`/`trends` figures; still no
+recommendations in chat).
+
+**UI `ui/views/18_management_commentary.py`:** run+decrement selectors, latest-A/E
++ trend-badge + slope metrics, A/E-by-year line with fitted trend overlay, YoY
+table, **driver waterfall** (per movement-year × dimension, exact-sum caption),
+portfolio trend table, justification expander, "Draft management commentary
+(AI)" with model dropdown + .md export. Nav: under "2 · Experience Results"
+(P7 finalises grouping).
+
+**Tests (+19, `tests/test_commentary_analytics.py`):** attribution hand-calc
+(2-segment fixture: M +0.35 / F +0.05 = Δ 0.40; absent-segment counts from
+zero; exact-sum), trend edges (monotone up/down, flat→stable, 2 years→
+insufficient), config validation ×3, realdata planted-story locks (mortality
+worsening; 2022/23 top lapse movers; live exact-sum ×2 dims; fact-pack-v2
+shape), skill clean/blocked/empty via stub provider.
+
+**DoD:** gate green **1253 passed, 7 skipped, 0 failed**; boot smoke HTTP 200;
+analytics match the planted stories; actions section present; export works.
+
+**Next session: P7** (see `demo_refresh_prompts.md` → P7).
