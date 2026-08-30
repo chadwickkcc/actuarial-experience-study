@@ -31,6 +31,9 @@ skills:
   shap_explain:
     max_tokens: 2048
     temperature: 0.0
+  fraud_narrative:
+    max_tokens: 2048
+    temperature: 0.0
 
 providers:
   anthropic:

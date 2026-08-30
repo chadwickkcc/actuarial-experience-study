@@ -47,11 +47,14 @@ _PII_SUBSTRINGS = (
 _PII_EXACT = {
     "ssn", "author_id", "approved_by", "reviewer_id", "actuary_id",
     "proposer_id", "override_actuary_id", "yaml_file_path",
+    "run_by", "claimant_id",
 }
 # Tables that carry PII (policy_id) or are raw layers — never allowlist keys.
 _FORBIDDEN_TABLES = {
     "gold_dq_quarantine", "gold_exposure_segments", "gold_workflow_iterations",
     "gold_assumption_approvals", "gold_study_runs",
+    # Claim-level fraud tables carry policy_id / claimant_id (demo refresh P5).
+    "gold_fraud_scores", "gold_fraud_flags",
 }
 
 

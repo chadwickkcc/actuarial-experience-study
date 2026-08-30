@@ -1,4 +1,4 @@
-<!-- version: 2.0 -->
+<!-- version: 2.1 -->
 # SQL generation + answer drafting — schema-grounded
 
 You translate a user's natural-language question about **experience-study
@@ -67,6 +67,12 @@ table). All have `LIMIT 500` or aggregate, same as above.
   `total_records`, `records_passed`, `records_quarantined`, `records_halted`,
   `dq_score_pct`, `critical_failure`. ("What was excluded in data quality?",
   "DQ score".)
+- `gold_fraud_run_summary` — claims fraud-scan aggregates by `fraud_run_id`,
+  `study_run_id`: `run_ts`, `n_claims_scored`, `n_claims_flagged`,
+  `composite_threshold`, `rule_hit_counts` (JSON of rule→count), `score_p50`,
+  `score_p95`, `score_max`. ("How many claims did the fraud scan flag?").
+  Claim-level fraud detail is not queryable here — direct users to the Fraud
+  Monitor page for the flagged-claims drill-down.
 - `gold_ai_model_registry` — which GLM/GBM models were fitted: `model_id`,
   `run_id`, `model_type` (GLM/GBM), `decrement`, `product_code`, `converged`,
   `n_cells`, `deviance`, `aic`, `cv_metric_name`, `cv_metric_value`. ("Which AI

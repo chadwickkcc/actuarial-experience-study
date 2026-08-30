@@ -74,6 +74,7 @@ _EXTRA_QUERYABLE_TABLES = (
     "gold_ai_model_registry",
     "gold_assumption_sets",
     "gold_ai_proposed_factors",
+    "gold_fraud_run_summary",   # fraud-scan aggregates only (demo refresh P5)
 )
 
 #: Every table the AI may query (the two originals + the widened set). The chatbot

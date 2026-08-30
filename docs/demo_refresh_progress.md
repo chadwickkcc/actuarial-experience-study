@@ -21,7 +21,7 @@ One phase per session; gate green before proceeding; commit per phase.
 | P2 | Assumption workflow v2 + materiality + legacy retirement | L | ✅ COMPLETE (2026-08-30) |
 | P3 | TEV purge | L | ✅ COMPLETE (2026-08-30) — eval re-lock pending owner |
 | P4 | Data expansion + regeneration | L | ✅ COMPLETE (2026-08-30) |
-| P5 | Fraud module | L | — |
+| P5 | Fraud module | L | ✅ COMPLETE (2026-08-30) |
 | P6 | Management commentary | L | — |
 | P7 | Slickness pass | M | — |
 | P8 | Docs, demo script, UAT | M | — |
@@ -34,6 +34,7 @@ One phase per session; gate green before proceeding; commit per phase.
 | After P2 | 1356 passed, 15 skipped, 0 failed (net −13: legacy approvals/envelope-summary tests retired, +9 new materiality/guard tests; +9 skips are TEV tests skipping on the fresh no-TEV-runs DB — deleted in P3 — plus 1 empty-assumption-sets lifecycle-UI skip) |
 | After P3 | 1212 passed, 7 skipped, 0 failed (−~150 TEV tests deleted; +2 TEV-absence standing guards; skips = 6 pre-existing baseline + 1 empty-assumption-sets lifecycle-UI) |
 | After P4 | 1217 passed, 7 skipped, 0 failed (+5 story-lock tests; ~30 volume/band/pinned-value tests made config-/live-driven) |
+| After P5 | 1234 passed, 7 skipped, 0 failed (+17 fraud tests) |
 
 **Owner checkpoints:** P3 eval re-lock (**REQUESTED 2026-08-30** — golden 36→30
 [G027–G032 removed], adversarial A007 retargeted to `gold_ai_proposed_factors`;
@@ -277,3 +278,58 @@ products), AI fit: 8 models fitted, 332 proposed factors.
 HTTP 200.
 
 **Next session: P5** (see `demo_refresh_prompts.md` → P5).
+
+---
+
+## P5 — Fraud module — COMPLETE (2026-08-30)
+
+**Engine (`src/fraud/`, mirrors the DQ pattern):** `rules.py` — claims frame =
+DEATH/CI_CLAIM events (`silver_policy_events` carries claim_amount + illness_code)
+joined per Silver policy table (premium + office/agent/claimant/hospital/region;
+DA joins on `contract_id`, UL double-load de-duplicated) + the 6 pure rule
+functions (FR-RULE-01..06) in `ALL_RULES`; `runner.py` — `load_fraud_config`
+(loud validation), `run_fraud_scan` (weighted composite, flag ≥ threshold,
+persists via parameterized inserts + config sha256 stamp).
+`config/fraud_config.yaml` holds every weight/threshold/high-risk list.
+Rule 4 = **first-policy-year** claim concentration ≥ max(3× office median, 5).
+
+**Tables (DDL in `db_init.py`, 29 total):** `gold_fraud_run_summary` (aggregates;
+`run_by` excluded from allowlist), `gold_fraud_scores` + `gold_fraud_flags`
+(claim-level, OFF-allowlist).
+
+**UI `ui/views/17_fraud_monitor.py` (+ `ui/fraud_logic.py`):** propose-gated
+"Run fraud scan", headline metrics, indicator-hit bar + score histogram with
+threshold line, office/hospital/region concentration tables, flagged-claims
+drill-down (per-claim rule evidence) + CSV export, **AI narrative** (model
+dropdown, AI-DRAFT banner, .md export). Nav: added to "4 · AI Assistance"
+(P7 moves it to Risk & Fraud).
+
+**AI narrative (`src/ai/skills/fraud_narrative.py` + `config/prompts/skills/
+fraud_narrative.md` v1.0):** generate-then-verify over
+`ui/fraud_logic.assemble_fraud_facts` — **aggregates + institutional ids only**
+(office/hospital/region; never policy_id/claimant_id; run ids excluded from the
+traceable set); block-not-repair on any untraceable number; empty-body guard;
+`skills.fraud_narrative` call params in `llm_config.yaml`.
+
+**Chatbot surface:** `gold_fraud_run_summary` allowlisted (aggregate columns
+only) + added to `_EXTRA_QUERYABLE_TABLES` (sync test green), schema card in
+`sql_generation.md` v2.1, +2 few-shots (35 → 37).
+
+**Live scan on the demo DB:** 1,808 claims scored, **32 flagged**; the ring tops
+the list — the 4 shared-claimant claims score **1.20** (= hand-sum of the five
+fired weights), the other 10 ring claims 0.85; OFF-013 / HOSP-066 are the top
+flagged-office/-hospital concentrations.
+
+**Tests (+17, `tests/test_fraud.py`):** per-rule fire/null fixtures ×7, config
+validation ×4, ring realdata ×3 (≥4 OFF-013 flags; OFF-013/HOSP-066 top; the
+shared-claimant cluster's composite equals the config-weight hand-calc and is
+the scan max), fact-pack PII guard (no policy/claimant ids, no CLM-/TRM-
+strings), narrative clean/blocked/empty via stub provider. PII guard lists in
+`test_data_surface.py` extended (`run_by`, `claimant_id`, the 2 claim-level
+fraud tables). Deferred: investigator-override workflow (DEFERRED_FOLLOWUPS at
+P8).
+
+**DoD:** gate green **1234 passed, 7 skipped, 0 failed**; boot smoke HTTP 200;
+demo DB ships flagged.
+
+**Next session: P6** (see `demo_refresh_prompts.md` → P6).

@@ -172,6 +172,21 @@ chatbot:
       - expense_inflation
       - ai_proposed_value
       - ai_model_id
+    gold_fraud_run_summary:        # fraud-scan AGGREGATES (demo refresh P5).
+      # The claim-level fraud tables (gold_fraud_scores / gold_fraud_flags)
+      # carry policy_id / claimant_id and are deliberately NOT allowlisted.
+      # run_by (a username) is also excluded.
+      - fraud_run_id
+      - study_run_id
+      - run_ts
+      - config_hash
+      - n_claims_scored
+      - n_claims_flagged
+      - composite_threshold
+      - rule_hit_counts
+      - score_p50
+      - score_p95
+      - score_max
     gold_ai_proposed_factors:      # materialised GLM/GBM proposed adjustment factors
       - model_id
       - run_id

@@ -81,6 +81,11 @@ few_shots:
   - question: "Across the products, where is our mortality experience most credible and where is it thinnest?"
     sql: "SELECT product_code, SUM(actual_deaths_count) AS actual_deaths, SUM(expected_deaths_count) AS expected_deaths FROM gold_ae_results WHERE illness_code IS NULL GROUP BY product_code ORDER BY SUM(actual_deaths_count) DESC LIMIT 500"
   # ---- widened governed tables (read-only, no PII; one table per query) ----- #
+  - question: "How many claims did the latest fraud scan flag?"
+    sql: "SELECT n_claims_scored, n_claims_flagged, composite_threshold FROM gold_fraud_run_summary ORDER BY run_ts DESC LIMIT 1"
+  - question: "What did each fraud indicator hit in the last scan?"
+    sql: "SELECT rule_hit_counts, n_claims_flagged FROM gold_fraud_run_summary ORDER BY run_ts DESC LIMIT 1"
+
   - question: "What are the AI-proposed Term mortality adjustment factors by attained age band?"
     sql: "SELECT sex, smoker, attained_age_band, factor, ci_low, ci_high, credibility_z FROM gold_ai_proposed_factors WHERE product_code = 'TERM' AND decrement = 'MORTALITY' AND model_type = 'GLM' ORDER BY attained_age_band LIMIT 500"
   - question: "Show the proposed lapse factors for Whole Life from the GLM."

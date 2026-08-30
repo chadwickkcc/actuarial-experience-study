@@ -73,6 +73,7 @@ pg = st.navigation(
         "4 · AI Assistance": [
             _page("15_assumption_comparison.py", "Assumption Comparison", "🤖"),
             _page("16_ai_analyst.py",            "AI Analyst",            "🧠"),
+            _page("17_fraud_monitor.py",         "Fraud Monitor",         "🕵️"),
         ],
         "5 · Assumption Setting": [
             _page("20_assumption_step1.py", "Step 1: Select Study Basis", "1️⃣"),

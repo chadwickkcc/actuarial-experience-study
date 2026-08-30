@@ -1,0 +1,41 @@
+# =============================================================================
+# Fraud-detection rule configuration (demo refresh P5).
+# -----------------------------------------------------------------------------
+# Consumed by src/fraud/ (rules.py + runner.py). Every threshold, weight and
+# high-risk list lives here — never hardcoded (CLAUDE.md config-over-code).
+# A sha256 of this file is stamped onto every gold_fraud_run_summary row.
+# =============================================================================
+
+rules:
+  first_policy_year_claim:
+    weight: 0.25
+    max_policy_days: 366          # claim within this many days of issue
+
+  claim_exceeds_premiums:
+    weight: 0.15
+    min_ratio: 25                 # claim amount > ratio x premiums paid to date
+
+  claim_above_materiality:
+    weight: 0.15
+    thresholds:                   # per claim type
+      DEATH: 1500000
+      CI_CLAIM: 200000
+
+  agency_office_concentration:
+    weight: 0.20
+    min_multiple_of_median: 3     # office first-policy-year claim count vs office median
+    min_claims: 5                 # and at least this many early claims at the office
+
+  similar_claims_same_claimant:
+    weight: 0.35
+    amount_tolerance_pct: 10      # amounts within +/-10% of the claimant-group mean
+
+  high_risk_region_or_hospital:
+    weight: 0.25
+    hospitals:
+      - HOSP-066                  # ghost facility (outside the 60-hospital roster)
+    regions:
+      - SOUTHWEST
+
+scoring:
+  flag_threshold: 0.50            # composite score at/above which a claim is flagged

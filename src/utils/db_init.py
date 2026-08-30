@@ -819,6 +819,63 @@ _GOLD_ASSUMPTION_DDL = [
 
 
 # ============================================================
+# GOLD: FRAUD DETECTION (demo refresh P5; demo_refresh_scope.md §3.6)
+# ------------------------------------------------------------
+# Written only by src/fraud/runner.py (standard parameterized engine path).
+# gold_fraud_run_summary is the ONLY fraud table on the chatbot allowlist;
+# the claim-level tables carry policy_id / claimant_id and never reach an LLM.
+# ============================================================
+_GOLD_FRAUD_DDL = [
+    """
+    CREATE TABLE IF NOT EXISTS gold_fraud_run_summary (
+        fraud_run_id            VARCHAR(36) PRIMARY KEY,
+        study_run_id            VARCHAR(36) NOT NULL,
+        run_ts                  TIMESTAMP NOT NULL,
+        run_by                  VARCHAR(50) NOT NULL,
+        config_hash             VARCHAR(64) NOT NULL,
+        n_claims_scored         INTEGER NOT NULL,
+        n_claims_flagged        INTEGER NOT NULL,
+        composite_threshold     DOUBLE NOT NULL,
+        rule_hit_counts         VARCHAR NOT NULL,
+        score_p50               DOUBLE,
+        score_p95               DOUBLE,
+        score_max               DOUBLE
+    )
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS gold_fraud_scores (
+        fraud_run_id            VARCHAR(36) NOT NULL,
+        claim_event_id          VARCHAR(50) NOT NULL,
+        policy_id               VARCHAR(50) NOT NULL,
+        product_code            VARCHAR(20) NOT NULL,
+        event_type              VARCHAR(30) NOT NULL,
+        event_date              DATE,
+        claim_amount            DOUBLE,
+        agency_office_id        VARCHAR(10),
+        agent_id                VARCHAR(12),
+        claimant_id             VARCHAR(20),
+        hospital_id             VARCHAR(10),
+        claim_region            VARCHAR(15),
+        composite_score         DOUBLE NOT NULL,
+        n_rules_hit             INTEGER NOT NULL,
+        flagged                 BOOLEAN NOT NULL,
+        PRIMARY KEY (fraud_run_id, claim_event_id)
+    )
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS gold_fraud_flags (
+        fraud_run_id            VARCHAR(36) NOT NULL,
+        claim_event_id          VARCHAR(50) NOT NULL,
+        rule_id                 VARCHAR(20) NOT NULL,
+        weight                  DOUBLE NOT NULL,
+        evidence                VARCHAR,
+        PRIMARY KEY (fraud_run_id, claim_event_id, rule_id)
+    )
+    """,
+]
+
+
+# ============================================================
 # GOLD: AI LAYER (Phase 3; Tech Spec v2.0.1 §D)
 # ------------------------------------------------------------
 # gold_ai_model_registry lands in Session 15 (GLM). The other two AI Gold
@@ -1101,7 +1158,7 @@ def init_database(db_path: str = DEFAULT_DB_PATH) -> None:
     con = duckdb.connect(db_path)
     try:
         all_ddl = (
-            _BRONZE_DDL + _SILVER_DDL + _GOLD_AE_DDL + _GOLD_ASSUMPTION_DDL
+            _BRONZE_DDL + _SILVER_DDL + _GOLD_AE_DDL + _GOLD_ASSUMPTION_DDL + _GOLD_FRAUD_DDL
             + _GOLD_AI_DDL + _GOVERNANCE_DDL + _GOVERNANCE_SIGNOFF_DDL
             + _GOVERNANCE_EVENTS_DDL
         )
