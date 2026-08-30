@@ -6,7 +6,7 @@ the UI for that flow: a proposer submits a COMPLETE run into governance, the
 approvers sign it off level by level (proposer ≠ approver enforced), and once fit
 the compliance pack can be exported.
 
-It mirrors the Stage-4 sign-off core (ui/views/23_tev_stage4.py) with
+It mirrors the assumption sign-off core (ui/views/22_assumption_step3.py) with
 ArtifactType.STUDY_RUN — study runs carry no version / ΔTEV, so the full chain to
 chief always applies. The governance engine is unchanged; this is UI wiring.
 """
@@ -240,7 +240,6 @@ if submit_signoff:
                 rec = record_signoff(
                     me, ArtifactType.STUDY_RUN, run_id, None, dec,
                     signoff_comment.strip(), db_path=DB, config_path=GOV_CONFIG,
-                    delta_tev=None, legacy_context=None,
                 )
             except (PermissionDenied, SegregationViolation, ValueError) as exc:
                 st.error(str(exc))

@@ -150,7 +150,7 @@ def run() -> int:
             and isinstance(diff.rationale_by_cell, dict)
         )
         record("2.5 (VersionDiff: changed cells + ΔTEV + rationale)", ok_25,
-               f"changed_cells={len(diff.changed_cells)} ΔTEV={diff.delta_tev} "
+               f"changed_cells={len(diff.changed_cells)} materiality={diff.materiality_value} "
                f"rationale_keys={len(diff.rationale_by_cell)} (empty for a bare clone)")
 
         # --- 2.6: reproducibility --------------------------------------------

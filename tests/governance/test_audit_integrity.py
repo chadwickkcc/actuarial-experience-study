@@ -112,9 +112,8 @@ def test_ae_event_columns_lock(gov_env):
 
 def test_phase2_hash_columns_migrated_and_idempotent(gov_env):
     db = gov_env["db"]
-    for table in ("gold_workflow_iterations", "gold_assumption_approvals"):
-        cols = _cols(db, table)
-        assert {"seq", "prev_hash", "entry_hash"} <= set(cols)
+    cols = _cols(db, "gold_workflow_iterations")
+    assert {"seq", "prev_hash", "entry_hash"} <= set(cols)
     # Re-running init_database is a no-op (idempotent migrations).
     init_database(db)
     assert {"seq", "prev_hash", "entry_hash"} <= set(_cols(db, "gold_workflow_iterations"))
@@ -240,8 +239,8 @@ def test_verify_chain_float_and_tzaware_roundtrip(gov_env):
     """The N-row verifier honours the same normalisation as the single-row write."""
     db = gov_env["db"]
     ts = datetime(2026, 6, 29, 12, 0, 0, 123456, tzinfo=timezone(timedelta(hours=2)))
-    _append_signoff(db, delta_tev=0.0123456789, signoff_ts=ts, required_final_level=2)
-    _append_signoff(db, delta_tev=-4_480_000.5)
+    _append_signoff(db, materiality_value=0.0123456789, signoff_ts=ts, required_final_level=2)
+    _append_signoff(db, materiality_value=-4_480_000.5)
     res = verify_chain("gold_governance_signoffs", db_path=db)
     assert res.ok and res.rows_checked == 2
 
@@ -363,11 +362,7 @@ def test_phase2_column_constants_match_physical(gov_env):
     column added without updating the constant would silently corrupt the chain.
     """
     db = gov_env["db"]
-    for table, const in (
-        ("gold_workflow_iterations", audit._WORKFLOW_ITER_COLUMNS),
-        ("gold_assumption_approvals", audit._ASSUMPTION_APPROVAL_COLUMNS),
-    ):
-        assert _cols(db, table) == const
+    assert _cols(db, "gold_workflow_iterations") == audit._WORKFLOW_ITER_COLUMNS
 
 
 def test_verify_chain_detects_deleted_middle_row(gov_env):
@@ -409,7 +404,7 @@ def _chain_config(path: Path, chain: list[str]) -> str:
         ],
         "segregation": {"allow_multi_level_signoff": False},
         "materiality": {
-            "delta_tev_threshold": 0.01,
+            "max_multiplier_delta_threshold": 0.01,
             "final_level_below_threshold": "senior_actuary",
         },
         "attestation_text": _ATTEST,
@@ -490,6 +485,6 @@ def test_assumption_set_signoff_emits_no_ae_event(gov_env, tmp_path):
     set_id = _seed_set(db, author="a.analyst")
     record_signoff(
         _u(db, "c.chief"), ArtifactType.ASSUMPTION_SET, set_id, 1,
-        Decision.APPROVE, "final", db_path=db, config_path=cfg, delta_tev=0.005,
+        Decision.APPROVE, "final", db_path=db, config_path=cfg, materiality_value=0.005,
     )
     assert _ae_events(db) == []

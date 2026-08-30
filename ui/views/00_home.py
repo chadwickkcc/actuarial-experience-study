@@ -27,7 +27,7 @@ def _link(filename: str, label: str, icon: str | None = None) -> None:
 
 st.title("Actuarial Experience Study Tool")
 st.caption(
-    "Run experience studies, quantify assumption changes with TEV, and govern the "
+    "Run experience studies, set assumptions, and govern the "
     "result — for Term Life, Whole Life, Universal Life / ULSG, Variable Universal "
     "Life, and Deferred Annuities."
 )
@@ -46,7 +46,7 @@ digraph workflow {
     setup [label="1 · Setup & Data\\nrun study · data quality" fillcolor="#e8f0fe"];
     exp   [label="2 · Experience Results\\nmortality · lapse · CI A/E" fillcolor="#e6f4ea"];
     ai    [label="AI Assistance\\nproposals · analyst" fillcolor="#fef7e0" style="rounded,filled,dashed"];
-    tev   [label="3 · Assumption Setting (TEV)\\nStages 1–4" fillcolor="#fce8e6"];
+    tev   [label="3 · Assumption Setting\\nSteps 1–3" fillcolor="#fce8e6"];
     gov   [label="4 · Governance\\nsign-off · audit · versioning" fillcolor="#f3e8fd"];
 
     setup -> exp;
@@ -83,8 +83,8 @@ st.markdown("**3. (Optional) Get AI help** — see GLM/GBM-proposed factor adjus
 _link("15_assumption_comparison.py", "Assumption Comparison", "🤖")
 _link("16_ai_analyst.py", "AI Analyst", "🧠")
 
-st.markdown("**4. Set assumptions & measure impact** — create a proposed assumption set from a study run, edit within credibility guardrails, and run the TEV projection + sensitivities.")
-_link("20_tev_stage1.py", "Stage 1: Select Study Basis", "1️⃣")
+st.markdown("**4. Set assumptions** — create a proposed assumption set from a study run, edit within credibility guardrails, and submit for sign-off.")
+_link("20_assumption_step1.py", "Step 1: Select Study Basis", "1️⃣")
 
 st.markdown("**5. Govern & sign off** — submit a study run for approval, take an assumption set through the multi-level sign-off chain, and keep a tamper-evident audit trail with versioning and compliance packs.")
 _link("28_study_run_signoff.py", "Study Run Sign-Off", "✍️")
@@ -105,10 +105,10 @@ with col_ai:
             "assumptions**, and are strictly **advisory**:\n\n"
             "- **Assumption Comparison** — read-only GLM proposals with a GBM challenge "
             "model and SHAP explanations. It surfaces suggested factor adjustments and a "
-            "TEV what-if; it **never adopts** anything automatically.\n"
+            "factor comparison; it **never adopts** anything automatically.\n"
             "- **AI Analyst** — a guarded chatbot that answers questions over your own "
             "study data (every figure is traced back to the data; no free-form numbers).\n\n"
-            "You stay in control: any change is made by you in the TEV assumption editor."
+            "You stay in control: any change is made by you in the assumption editor."
         )
 
 with col_gov:
@@ -156,11 +156,10 @@ with st.expander("All pages — quick reference", expanded=False):
         _link("16_ai_analyst.py", "AI Analyst", "🧠")
 
     with ref_cols[2]:
-        st.markdown("**Assumption Setting (TEV)**")
-        _link("20_tev_stage1.py", "Stage 1: Select Study Basis", "1️⃣")
-        _link("21_tev_stage2.py", "Stage 2: Edit Assumptions", "2️⃣")
-        _link("22_tev_stage3.py", "Stage 3: TEV Analysis", "3️⃣")
-        _link("23_tev_stage4.py", "Stage 4: Approve & Lock", "4️⃣")
+        st.markdown("**Assumption Setting**")
+        _link("20_assumption_step1.py", "Step 1: Select Study Basis", "1️⃣")
+        _link("21_assumption_step2.py", "Step 2: Edit & Submit", "2️⃣")
+        _link("22_assumption_step3.py", "Step 3: Sign Off & Lock", "3️⃣")
 
         st.markdown("**Governance**")
         _link("26_governance_audit.py", "Audit & Integrity", "🛡️")

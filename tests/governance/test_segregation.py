@@ -32,7 +32,7 @@ def test_author_cannot_sign_off_even_with_matching_role(gov_env, tmp_path):
     with pytest.raises(SegregationViolation):
         record_signoff(_u(db, "j.junior"), ArtifactType.ASSUMPTION_SET, set_id, 1,
                        Decision.APPROVE, "self-approve attempt",
-                       db_path=db, config_path=cfg, delta_tev=0.05)
+                       db_path=db, config_path=cfg, materiality_value=0.05)
 
 
 def test_distinct_signer_per_level_blocks_same_user(gov_env, tmp_path):
@@ -46,11 +46,11 @@ def test_distinct_signer_per_level_blocks_same_user(gov_env, tmp_path):
     )
     set_id = _seed_set(db, author="a.analyst")
     record_signoff(_u(db, "j.junior"), ArtifactType.ASSUMPTION_SET, set_id, 1,
-                   Decision.APPROVE, "level 1", db_path=db, config_path=cfg, delta_tev=0.05)
+                   Decision.APPROVE, "level 1", db_path=db, config_path=cfg, materiality_value=0.05)
     with pytest.raises(SegregationViolation):
         record_signoff(_u(db, "j.junior"), ArtifactType.ASSUMPTION_SET, set_id, 1,
                        Decision.APPROVE, "level 2 by same user",
-                       db_path=db, config_path=cfg, delta_tev=0.05)
+                       db_path=db, config_path=cfg, materiality_value=0.05)
 
 
 def test_allow_multi_level_signoff_permits_same_user(gov_env, tmp_path):
@@ -63,9 +63,9 @@ def test_allow_multi_level_signoff_permits_same_user(gov_env, tmp_path):
     )
     set_id = _seed_set(db, author="a.analyst")
     record_signoff(_u(db, "j.junior"), ArtifactType.ASSUMPTION_SET, set_id, 1,
-                   Decision.APPROVE, "level 1", db_path=db, config_path=cfg, delta_tev=0.05)
+                   Decision.APPROVE, "level 1", db_path=db, config_path=cfg, materiality_value=0.05)
     record_signoff(_u(db, "j.junior"), ArtifactType.ASSUMPTION_SET, set_id, 1,
-                   Decision.APPROVE, "level 2", db_path=db, config_path=cfg, delta_tev=0.05)
+                   Decision.APPROVE, "level 2", db_path=db, config_path=cfg, materiality_value=0.05)
     nxt = next_required_level(ArtifactType.ASSUMPTION_SET, set_id, db_path=db, config_path=cfg)
     assert nxt is not None and nxt.required_role.value == "chief_actuary"
 
@@ -78,7 +78,7 @@ def test_wrong_role_for_level_blocked(gov_env, tmp_path):
     # Chief tries to sign level 1 (junior_actuary) first — wrong role / out of order.
     with pytest.raises(PermissionDenied):
         record_signoff(_u(db, "c.chief"), ArtifactType.ASSUMPTION_SET, set_id, 1,
-                       Decision.APPROVE, "wrong level", db_path=db, config_path=cfg, delta_tev=0.05)
+                       Decision.APPROVE, "wrong level", db_path=db, config_path=cfg, materiality_value=0.05)
 
 
 def test_study_run_submitter_cannot_sign_off(gov_env, tmp_path):
@@ -124,11 +124,11 @@ def test_real_username_author_is_blocked_but_placeholder_author_fails_open(gov_e
     real = _seed_set(db, author="j.junior")
     with pytest.raises(SegregationViolation):
         record_signoff(_u(db, "j.junior"), ArtifactType.ASSUMPTION_SET, real, 1,
-                       Decision.APPROVE, "self-approve", db_path=db, config_path=cfg, delta_tev=0.05)
+                       Decision.APPROVE, "self-approve", db_path=db, config_path=cfg, materiality_value=0.05)
 
     # (legacy) placeholder author → NOT blocked; the same human can sign it. Documents
     # the residual exposure for pre-fix data (no assertion of desirability — a red flag).
     legacy = _seed_set(db, author="ACTUARY_1")
     rec = record_signoff(_u(db, "j.junior"), ArtifactType.ASSUMPTION_SET, legacy, 1,
-                         Decision.APPROVE, "signs legacy", db_path=db, config_path=cfg, delta_tev=0.05)
+                         Decision.APPROVE, "signs legacy", db_path=db, config_path=cfg, materiality_value=0.05)
     assert rec.decision == Decision.APPROVE

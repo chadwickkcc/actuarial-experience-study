@@ -336,7 +336,7 @@ def _signoff_rows(db_path: str, artifact_type: str, artifact_id: str) -> list:
     try:
         rows = con.execute(
             "SELECT chain_level, required_role, actor_user_id, actor_role, decision, "
-            "comment, attestation_text, delta_tev, signoff_ts "
+            "comment, attestation_text, materiality_value, signoff_ts "
             "FROM gold_governance_signoffs "
             "WHERE artifact_type = ? AND artifact_id = ? ORDER BY seq",
             [artifact_type, artifact_id],
@@ -345,7 +345,7 @@ def _signoff_rows(db_path: str, artifact_type: str, artifact_id: str) -> list:
         con.close()
     out = []
     for (level, req_role, actor_id, actor_role, decision, comment,
-         attest, delta_tev, ts) in rows:
+         attest, materiality_value, ts) in rows:
         display, _role = users.get(actor_id, (actor_id, actor_role))
         out.append({
             "chain_level": level,
@@ -355,7 +355,7 @@ def _signoff_rows(db_path: str, artifact_type: str, artifact_id: str) -> list:
             "decision": decision,
             "comment": comment,
             "attestation_text": attest,
-            "delta_tev": _fmt_num(delta_tev),
+            "materiality_value": _fmt_num(materiality_value),
             "signoff_ts": _fmt_ts(ts),
         })
     return out

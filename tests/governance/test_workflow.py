@@ -3,8 +3,7 @@
 Realises the §I.3 acceptance for FR-4-12…18 and NFR-G-03/G-08: the hash-chained
 ``gold_governance_signoffs`` log + ``append_event``, ``load_chain`` /
 ``required_final_level`` / ``next_required_level``, sequential multi-level
-``record_signoff`` (with materiality-driven final level, attestation, and the
-legacy ``gold_assumption_approvals`` summary on a completing APPROVE), governed
+``record_signoff`` (with materiality-driven final level and attestation), governed
 ``reopen``, A/E study-run approval, and the ``pending_approvals`` queue.
 
 Uses the shared ``gov_env`` fixture (a temp DB with the four seeded users) plus a
@@ -78,7 +77,7 @@ def _write_chain_config(
         ],
         "segregation": {"allow_multi_level_signoff": allow_multi},
         "materiality": {
-            "delta_tev_threshold": threshold,
+            "max_multiplier_delta_threshold": threshold,
             "final_level_below_threshold": final_below,
         },
         "attestation_text": _ATTEST,
@@ -202,7 +201,7 @@ def _append_signoff(db: str, **overrides) -> str:
         "decision": "APPROVE",
         "comment": "ok",
         "attestation_text": _ATTEST,
-        "delta_tev": None,
+        "materiality_value": None,
         "required_final_level": 3,
         "signoff_ts": datetime.utcnow(),
     }
@@ -276,7 +275,7 @@ def test_load_chain_default(cfg_path):
 
 
 def test_required_final_level_study_run_full_chain(cfg_path):
-    """A study run (delta_tev None) always requires the full chain (FR-4-14)."""
+    """A study run (materiality None) always requires the full chain (FR-4-14)."""
     cfg = yaml.safe_load(Path(cfg_path).read_text())
     assert required_final_level(None, cfg) == 3
 
@@ -292,13 +291,13 @@ def test_required_final_level_below_threshold_senior(cfg_path):
 
 
 def test_required_final_level_at_threshold_is_below_branch(cfg_path):
-    """ΔTEV exactly at the threshold is NOT material (FR-4-16: 'above' forces chief)."""
+    """A value exactly at the threshold is NOT material (FR-4-16: 'above' forces chief)."""
     cfg = yaml.safe_load(Path(cfg_path).read_text())
     assert required_final_level(0.01, cfg) == 2  # == threshold -> below branch (senior)
 
 
 def test_required_final_level_negative_delta_uses_magnitude(cfg_path):
-    """A negative ΔTEV is assessed on its magnitude (|ΔTEV|)."""
+    """A negative value is assessed on its magnitude."""
     cfg = yaml.safe_load(Path(cfg_path).read_text())
     assert required_final_level(-0.05, cfg) == 3   # |−0.05| > 0.01 -> chief
     assert required_final_level(-0.005, cfg) == 2  # |−0.005| <= 0.01 -> senior
@@ -317,16 +316,16 @@ def test_required_final_level_role_not_in_chain_falls_back_to_final(gov_env, tmp
 # record_signoff — full chain, materiality, return, ordering (FR-4-13/15/16)
 # ---------------------------------------------------------------------------
 
-def test_full_chain_material_locks_set_and_writes_summary(gov_env, cfg_path):
+def test_full_chain_material_locks_set(gov_env, cfg_path):
     """A material change runs junior→senior→chief; the final APPROVE locks the set
-    and writes the legacy gold_assumption_approvals summary (FR-4-16; §G.2 note)."""
+    (FR-4-16)."""
     db = gov_env["db"]
     set_id = _seed_set(db, author="a.analyst")
     for uname in ("j.junior", "s.senior", "c.chief"):
         record_signoff(
             _u(db, uname), ArtifactType.ASSUMPTION_SET, set_id, 1,
             Decision.APPROVE, f"reviewed by {uname}",
-            db_path=db, config_path=cfg_path, delta_tev=0.05,
+            db_path=db, config_path=cfg_path, materiality_value=0.05,
         )
     assert _status(db, set_id) == "APPROVED"
     assert next_required_level(
@@ -334,19 +333,19 @@ def test_full_chain_material_locks_set_and_writes_summary(gov_env, cfg_path):
     ) is None
     con = duckdb.connect(db, read_only=True)
     try:
-        appr = con.execute(
-            "SELECT reviewer_id, reviewer_decision FROM gold_assumption_approvals "
-            "WHERE assumption_set_id = ?",
-            [set_id],
-        ).fetchone()
         n_signoffs = con.execute(
             "SELECT COUNT(*) FROM gold_governance_signoffs WHERE artifact_id = ?",
             [set_id],
         ).fetchone()[0]
+        stored_mat = con.execute(
+            "SELECT materiality_value FROM gold_governance_signoffs "
+            "WHERE artifact_id = ? ORDER BY seq LIMIT 1",
+            [set_id],
+        ).fetchone()[0]
     finally:
         con.close()
-    assert appr == ("c.chief", "APPROVE")
     assert n_signoffs == 3
+    assert stored_mat == pytest.approx(0.05)
 
 
 def test_below_threshold_completes_at_senior(gov_env, cfg_path):
@@ -354,9 +353,9 @@ def test_below_threshold_completes_at_senior(gov_env, cfg_path):
     db = gov_env["db"]
     set_id = _seed_set(db, author="a.analyst")
     record_signoff(_u(db, "j.junior"), ArtifactType.ASSUMPTION_SET, set_id, 1,
-                   Decision.APPROVE, "jr", db_path=db, config_path=cfg_path, delta_tev=0.005)
+                   Decision.APPROVE, "jr", db_path=db, config_path=cfg_path, materiality_value=0.005)
     record_signoff(_u(db, "s.senior"), ArtifactType.ASSUMPTION_SET, set_id, 1,
-                   Decision.APPROVE, "sr", db_path=db, config_path=cfg_path, delta_tev=0.005)
+                   Decision.APPROVE, "sr", db_path=db, config_path=cfg_path, materiality_value=0.005)
     assert _status(db, set_id) == "APPROVED"
     assert next_required_level(
         ArtifactType.ASSUMPTION_SET, set_id, db_path=db, config_path=cfg_path
@@ -369,7 +368,7 @@ def test_sequential_order_enforced(gov_env, cfg_path):
     set_id = _seed_set(db, author="a.analyst")
     with pytest.raises(PermissionDenied):
         record_signoff(_u(db, "s.senior"), ArtifactType.ASSUMPTION_SET, set_id, 1,
-                       Decision.APPROVE, "early", db_path=db, config_path=cfg_path, delta_tev=0.05)
+                       Decision.APPROVE, "early", db_path=db, config_path=cfg_path, materiality_value=0.05)
 
 
 def test_return_resets_to_proposed(gov_env, cfg_path):
@@ -377,7 +376,7 @@ def test_return_resets_to_proposed(gov_env, cfg_path):
     db = gov_env["db"]
     set_id = _seed_set(db, author="a.analyst")
     record_signoff(_u(db, "j.junior"), ArtifactType.ASSUMPTION_SET, set_id, 1,
-                   Decision.RETURN, "needs work", db_path=db, config_path=cfg_path, delta_tev=0.05)
+                   Decision.RETURN, "needs work", db_path=db, config_path=cfg_path, materiality_value=0.05)
     assert _status(db, set_id) == "PROPOSED"
     # round reset: the next required level is back to level 1 (junior)
     nxt = next_required_level(ArtifactType.ASSUMPTION_SET, set_id, db_path=db, config_path=cfg_path)
@@ -389,7 +388,7 @@ def test_comment_mandatory(gov_env, cfg_path):
     set_id = _seed_set(db, author="a.analyst")
     with pytest.raises(ValueError):
         record_signoff(_u(db, "j.junior"), ArtifactType.ASSUMPTION_SET, set_id, 1,
-                       Decision.APPROVE, "   ", db_path=db, config_path=cfg_path, delta_tev=0.05)
+                       Decision.APPROVE, "   ", db_path=db, config_path=cfg_path, materiality_value=0.05)
 
 
 def test_analyst_cannot_sign_off(gov_env, cfg_path, caplog):
@@ -400,7 +399,7 @@ def test_analyst_cannot_sign_off(gov_env, cfg_path, caplog):
     with caplog.at_level(logging.WARNING, logger="governance.rbac"):
         with pytest.raises(PermissionDenied):
             record_signoff(_u(db, "a.analyst"), ArtifactType.ASSUMPTION_SET, set_id, 1,
-                           Decision.APPROVE, "x", db_path=db, config_path=cfg_path, delta_tev=0.05)
+                           Decision.APPROVE, "x", db_path=db, config_path=cfg_path, materiality_value=0.05)
     assert any("RBAC denied" in rec.message for rec in caplog.records)
 
 
@@ -436,16 +435,6 @@ def test_single_chief_chain_reproduces_legacy(gov_env, tmp_path):
                          Decision.APPROVE, "final sign-off", db_path=db, config_path=single)
     assert rec.chain_level == 1
     assert _status(db, set_id) == "APPROVED"
-    con = duckdb.connect(db, read_only=True)
-    try:
-        appr = con.execute(
-            "SELECT reviewer_id, reviewer_decision FROM gold_assumption_approvals "
-            "WHERE assumption_set_id = ?",
-            [set_id],
-        ).fetchone()
-    finally:
-        con.close()
-    assert appr == ("c.chief", "APPROVE")
 
 
 # ---------------------------------------------------------------------------
@@ -517,7 +506,7 @@ def test_single_chief_below_threshold_completes_at_chief(gov_env, tmp_path):
     single = _write_chain_config(tmp_path / "single.yaml", ["chief_actuary"])
     set_id = _seed_set(db, author="a.analyst")
     record_signoff(_u(db, "c.chief"), ArtifactType.ASSUMPTION_SET, set_id, 1,
-                   Decision.APPROVE, "final", db_path=db, config_path=single, delta_tev=0.005)
+                   Decision.APPROVE, "final", db_path=db, config_path=single, materiality_value=0.005)
     assert _status(db, set_id) == "APPROVED"
 
 
@@ -527,10 +516,10 @@ def test_complete_chain_rejects_extra_signoff(gov_env, cfg_path):
     set_id = _seed_set(db, author="a.analyst")
     for uname in ("j.junior", "s.senior", "c.chief"):
         record_signoff(_u(db, uname), ArtifactType.ASSUMPTION_SET, set_id, 1,
-                       Decision.APPROVE, f"by {uname}", db_path=db, config_path=cfg_path, delta_tev=0.05)
+                       Decision.APPROVE, f"by {uname}", db_path=db, config_path=cfg_path, materiality_value=0.05)
     with pytest.raises(ValueError):
         record_signoff(_u(db, "c.chief"), ArtifactType.ASSUMPTION_SET, set_id, 1,
-                       Decision.APPROVE, "again", db_path=db, config_path=cfg_path, delta_tev=0.05)
+                       Decision.APPROVE, "again", db_path=db, config_path=cfg_path, materiality_value=0.05)
 
 
 def test_return_then_resubmit_reevaluates_materiality(gov_env, cfg_path):
@@ -540,20 +529,20 @@ def test_return_then_resubmit_reevaluates_materiality(gov_env, cfg_path):
     set_id = _seed_set(db, author="a.analyst")
     # Round 1: immaterial (final level = senior); junior approves, senior returns.
     record_signoff(_u(db, "j.junior"), ArtifactType.ASSUMPTION_SET, set_id, 1,
-                   Decision.APPROVE, "jr r1", db_path=db, config_path=cfg_path, delta_tev=0.005)
+                   Decision.APPROVE, "jr r1", db_path=db, config_path=cfg_path, materiality_value=0.005)
     record_signoff(_u(db, "s.senior"), ArtifactType.ASSUMPTION_SET, set_id, 1,
-                   Decision.RETURN, "needs rework", db_path=db, config_path=cfg_path, delta_tev=0.005)
+                   Decision.RETURN, "needs rework", db_path=db, config_path=cfg_path, materiality_value=0.005)
     assert _status(db, set_id) == "PROPOSED"
     # Round 2: now material (final level = chief); junior + senior approve must NOT complete.
     record_signoff(_u(db, "j.junior"), ArtifactType.ASSUMPTION_SET, set_id, 1,
-                   Decision.APPROVE, "jr r2", db_path=db, config_path=cfg_path, delta_tev=0.05)
+                   Decision.APPROVE, "jr r2", db_path=db, config_path=cfg_path, materiality_value=0.05)
     record_signoff(_u(db, "s.senior"), ArtifactType.ASSUMPTION_SET, set_id, 1,
-                   Decision.APPROVE, "sr r2", db_path=db, config_path=cfg_path, delta_tev=0.05)
+                   Decision.APPROVE, "sr r2", db_path=db, config_path=cfg_path, materiality_value=0.05)
     assert _status(db, set_id) != "APPROVED"   # chief still required
     nxt = next_required_level(ArtifactType.ASSUMPTION_SET, set_id, db_path=db, config_path=cfg_path)
     assert nxt is not None and nxt.required_role.value == "chief_actuary"
     record_signoff(_u(db, "c.chief"), ArtifactType.ASSUMPTION_SET, set_id, 1,
-                   Decision.APPROVE, "chief r2", db_path=db, config_path=cfg_path, delta_tev=0.05)
+                   Decision.APPROVE, "chief r2", db_path=db, config_path=cfg_path, materiality_value=0.05)
     assert _status(db, set_id) == "APPROVED"
 
 
@@ -572,10 +561,10 @@ def test_required_final_level_fixed_at_first_signoff_of_round(gov_env, cfg_path)
     db = gov_env["db"]
     set_id = _seed_set(db, author="a.analyst")
     record_signoff(_u(db, "j.junior"), ArtifactType.ASSUMPTION_SET, set_id, 1,
-                   Decision.APPROVE, "jr material", db_path=db, config_path=cfg_path, delta_tev=0.05)
+                   Decision.APPROVE, "jr material", db_path=db, config_path=cfg_path, materiality_value=0.05)
     # Senior signs with an immaterial ΔTEV; the round must still require chief.
     record_signoff(_u(db, "s.senior"), ArtifactType.ASSUMPTION_SET, set_id, 1,
-                   Decision.APPROVE, "sr immaterial", db_path=db, config_path=cfg_path, delta_tev=0.001)
+                   Decision.APPROVE, "sr immaterial", db_path=db, config_path=cfg_path, materiality_value=0.001)
     assert _status(db, set_id) != "APPROVED"
     nxt = next_required_level(ArtifactType.ASSUMPTION_SET, set_id, db_path=db, config_path=cfg_path)
     assert nxt is not None and nxt.required_role.value == "chief_actuary"
@@ -601,10 +590,10 @@ def _recompute_entry_hash(db: str) -> tuple[str, str]:
 
 
 def test_recompute_matches_with_float_and_tzaware_ts(gov_env):
-    """entry_hash recomputes from stored columns even for a populated float delta_tev
+    """entry_hash recomputes from stored columns even for a populated float materiality_value
     and a tz-aware signoff_ts (normalised to naive UTC before hashing + storing)."""
     ts = datetime(2026, 6, 29, 12, 0, 0, 123456, tzinfo=timezone(timedelta(hours=2)))
-    _append_signoff(gov_env["db"], delta_tev=0.0123456789, signoff_ts=ts, required_final_level=2)
+    _append_signoff(gov_env["db"], materiality_value=0.0123456789, signoff_ts=ts, required_final_level=2)
     recomputed, stored = _recompute_entry_hash(gov_env["db"])
     assert recomputed == stored
 
@@ -651,3 +640,83 @@ def test_reopen_records_justification_on_child(gov_env, tmp_path):
     finally:
         con.close()
     assert desc is not None and "macro shift requires revision" in desc
+
+
+# ---------------------------------------------------------------------------
+# Materiality from lineage diff (demo refresh P2, FR-4-16 new basis)
+# ---------------------------------------------------------------------------
+
+def _seed_child_of(db: str, parent_id: str, *, author: str, multiplier: float) -> str:
+    """Seed a v2 child of ``parent_id`` whose single mortality cell moved to
+    ``multiplier`` (wide credibility bounds so saves are never blocked)."""
+    child = _seed_set(db, author=author, version=2)
+    con = duckdb.connect(db)
+    try:
+        con.execute(
+            "UPDATE gold_assumption_sets SET parent_set_id = ? WHERE assumption_set_id = ?",
+            [parent_id, child],
+        )
+    finally:
+        con.close()
+    from src.assumptions.assumption_set import load_assumption_set
+    aset = load_assumption_set(child, Path(db))
+    aset.mortality_multipliers[0].multiplier = multiplier
+    aset.mortality_multipliers[0].credibility_lower = 0.0
+    aset.mortality_multipliers[0].credibility_upper = 5.0
+    save_assumption_set(aset, Path(db))
+    return child
+
+
+def test_materiality_vs_prior_approved_none_for_root(gov_env):
+    from src.governance.workflow import materiality_vs_prior_approved
+    db = gov_env["db"]
+    set_id = _seed_set(db, author="a.analyst")
+    assert materiality_vs_prior_approved(set_id, db_path=db) is None
+
+
+def test_materiality_vs_prior_approved_uses_lineage_diff(gov_env):
+    """The metric is the max |Δ multiplier| between the set and its nearest
+    APPROVED (or SUPERSEDED) ancestor."""
+    from src.governance.workflow import materiality_vs_prior_approved
+    db = gov_env["db"]
+    parent = _seed_set(db, author="a.analyst", status=AssumptionSetStatus.APPROVED)
+    child = _seed_child_of(db, parent, author="a.analyst", multiplier=1.08)
+    val = materiality_vs_prior_approved(child, db_path=db)
+    assert val == pytest.approx(0.08)  # |1.08 - 1.00|
+
+
+def test_record_signoff_autocomputes_materiality(gov_env, cfg_path):
+    """With no explicit materiality_value, record_signoff computes it from the
+    lineage: an immaterial child of an APPROVED parent completes at senior."""
+    db = gov_env["db"]
+    parent = _seed_set(db, author="a.analyst", status=AssumptionSetStatus.APPROVED)
+    child = _seed_child_of(db, parent, author="a.analyst", multiplier=1.005)  # |Δ|=0.005 ≤ 0.01
+    record_signoff(_u(db, "j.junior"), ArtifactType.ASSUMPTION_SET, child, 2,
+                   Decision.APPROVE, "jr", db_path=db, config_path=cfg_path)
+    record_signoff(_u(db, "s.senior"), ArtifactType.ASSUMPTION_SET, child, 2,
+                   Decision.APPROVE, "sr", db_path=db, config_path=cfg_path)
+    assert _status(db, child) == "APPROVED"  # completed at senior (immaterial)
+    con = duckdb.connect(db, read_only=True)
+    try:
+        stored = con.execute(
+            "SELECT materiality_value FROM gold_governance_signoffs "
+            "WHERE artifact_id = ? ORDER BY seq LIMIT 1",
+            [child],
+        ).fetchone()[0]
+    finally:
+        con.close()
+    assert stored == pytest.approx(0.005)
+
+
+def test_record_signoff_autocompute_material_requires_chief(gov_env, cfg_path):
+    """A material auto-computed change (> threshold) still requires the chief."""
+    db = gov_env["db"]
+    parent = _seed_set(db, author="a.analyst", status=AssumptionSetStatus.APPROVED)
+    child = _seed_child_of(db, parent, author="a.analyst", multiplier=1.30)  # |Δ|=0.30 > 0.01
+    record_signoff(_u(db, "j.junior"), ArtifactType.ASSUMPTION_SET, child, 2,
+                   Decision.APPROVE, "jr", db_path=db, config_path=cfg_path)
+    record_signoff(_u(db, "s.senior"), ArtifactType.ASSUMPTION_SET, child, 2,
+                   Decision.APPROVE, "sr", db_path=db, config_path=cfg_path)
+    assert _status(db, child) != "APPROVED"
+    nxt = next_required_level(ArtifactType.ASSUMPTION_SET, child, db_path=db, config_path=cfg_path)
+    assert nxt is not None and nxt.required_role.value == "chief_actuary"

@@ -90,7 +90,6 @@ GOLD_TABLES = [
     "gold_tev_run_log",
     "gold_tev_results",
     "gold_workflow_iterations",
-    "gold_assumption_approvals",
 ]
 
 # Phase 3 (AI layer) Gold tables. Run-scoped logical state — cleared by default,

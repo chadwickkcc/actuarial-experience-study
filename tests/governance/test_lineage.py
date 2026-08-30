@@ -341,16 +341,14 @@ def test_resolve_live_set_ignores_superseded(gov_env):
 # compare_versions (FR-4-10)
 # ---------------------------------------------------------------------------
 
-def test_compare_versions_reports_changed_cells_delta_tev_rationale(gov_env):
+def test_compare_versions_reports_changed_cells_materiality_rationale(gov_env):
     db = gov_env["db"]
     a = _seed_aset(db, mort=[_mult(0.90)])
     b = _seed_aset(db, mort=[_mult(1.05, rationale="strengthened for adverse trend")])
-    _seed_tev_run(db, a, total_tev=100.0)
-    _seed_tev_run(db, b, total_tev=130.0)
 
     diff = compare_versions(a, b, db_path=db)
 
-    assert diff.delta_tev == pytest.approx(30.0)
+    assert diff.materiality_value == pytest.approx(0.15)  # |1.05 - 0.90|
     assert len(diff.changed_cells) == 1
     cell = diff.changed_cells[0]
     assert cell["old"] == 0.90
@@ -363,19 +361,18 @@ def test_compare_versions_no_change_empty_diff(gov_env):
     db = gov_env["db"]
     a = _seed_aset(db, mort=[_mult(0.90)])
     b = _seed_aset(db, mort=[_mult(0.90)])
-    _seed_tev_run(db, a, total_tev=100.0)
-    _seed_tev_run(db, b, total_tev=100.0)
     diff = compare_versions(a, b, db_path=db)
     assert diff.changed_cells == []
-    assert diff.delta_tev == pytest.approx(0.0)
+    assert diff.materiality_value == pytest.approx(0.0)
 
 
-def test_compare_versions_delta_tev_nan_when_tev_missing(gov_env):
+def test_compare_versions_added_cell_counts_from_neutral(gov_env):
+    """An added/removed cell is measured against the neutral 1.0 multiplier."""
     db = gov_env["db"]
-    a = _seed_aset(db, mort=[_mult(0.90)])
-    b = _seed_aset(db, mort=[_mult(0.90)])
-    diff = compare_versions(a, b, db_path=db)   # no TEV runs seeded
-    assert math.isnan(diff.delta_tev)
+    a = _seed_aset(db, mort=[])
+    b = _seed_aset(db, mort=[_mult(1.20)])
+    diff = compare_versions(a, b, db_path=db)
+    assert diff.materiality_value == pytest.approx(0.20)  # |1.20 - 1.0|
 
 
 # ---------------------------------------------------------------------------

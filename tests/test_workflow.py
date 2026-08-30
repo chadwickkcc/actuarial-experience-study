@@ -1,17 +1,13 @@
-"""Tests for src/assumptions/workflow.py — envelope-aware workflow logging.
+"""Tests for src/assumptions/workflow.py — workflow logging + status transitions.
 
 Covers:
-- log_workflow_iteration() writes envelope_run_flag correctly
-- get_workflow_iterations() returns envelope_run_flag (no optimiser columns)
-- record_governance_approval() stores envelope_tev_min/max/percentile
-- Absence of optimiser columns in DB schema
-- No adoption path: workflow functions do not accept or return EnvelopeResult/AssumptionSet
+- log_workflow_iteration() writes and returns a UUID row
+- get_workflow_iterations() ordering + shape (no TEV/envelope columns)
+- transition_assumption_set_status() incl. the APPROVED lock guard
+- Absence of the retired TEV/envelope columns in the schema
 """
 from __future__ import annotations
 
-import ast
-import json
-import tempfile
 import uuid
 from pathlib import Path
 
@@ -22,14 +18,13 @@ from src.assumptions.workflow import (
     get_next_iteration_number,
     get_workflow_iterations,
     log_workflow_iteration,
-    record_governance_approval,
     transition_assumption_set_status,
 )
 from src.utils.db_init import init_database
 
 
 # ---------------------------------------------------------------------------
-# Fixture: isolated in-memory DB with correct schema
+# Fixture: isolated DB with correct schema
 # ---------------------------------------------------------------------------
 
 @pytest.fixture()
@@ -81,13 +76,14 @@ class TestLogWorkflowIteration:
 
         con = duckdb.connect(str(tmp_db), read_only=True)
         row = con.execute(
-            "SELECT iteration_id FROM gold_workflow_iterations WHERE iteration_id = ?",
+            "SELECT iteration_id, actuary_comment FROM gold_workflow_iterations "
+            "WHERE iteration_id = ?",
             [iteration_id]
         ).fetchone()
         con.close()
         assert row is not None
 
-    def test_envelope_run_flag_true(self, tmp_db):
+    def test_comment_stored(self, tmp_db):
         session_id = str(uuid.uuid4())
         aset_id = str(uuid.uuid4())
         _insert_assumption_set(tmp_db, aset_id)
@@ -97,41 +93,21 @@ class TestLogWorkflowIteration:
             iteration_number=1,
             assumption_set_id=aset_id,
             stage=3,
-            action="ENVELOPE_RUN",
+            action="SUBMITTED_S4",
             actuary_id="ACTUARY_1",
-            envelope_run_flag=True,
-            total_tev=5_000_000.0,
+            actuary_comment="ready for sign-off",
         )
         con = duckdb.connect(str(tmp_db), read_only=True)
         row = con.execute(
-            "SELECT envelope_run_flag FROM gold_workflow_iterations WHERE iteration_id = ?",
+            "SELECT action, actuary_comment FROM gold_workflow_iterations "
+            "WHERE iteration_id = ?",
             [iteration_id]
         ).fetchone()
         con.close()
-        assert row[0] is True
+        assert row == ("SUBMITTED_S4", "ready for sign-off")
 
-    def test_envelope_run_flag_default_false(self, tmp_db):
-        session_id = str(uuid.uuid4())
-        aset_id = str(uuid.uuid4())
-        _insert_assumption_set(tmp_db, aset_id)
-        iteration_id = log_workflow_iteration(
-            db_path=tmp_db,
-            workflow_session_id=session_id,
-            iteration_number=1,
-            assumption_set_id=aset_id,
-            stage=2,
-            action="SAVED",
-            actuary_id="ACTUARY_1",
-        )
-        con = duckdb.connect(str(tmp_db), read_only=True)
-        row = con.execute(
-            "SELECT envelope_run_flag FROM gold_workflow_iterations WHERE iteration_id = ?",
-            [iteration_id]
-        ).fetchone()
-        con.close()
-        assert row[0] is False
-
-    def test_no_optimiser_columns_in_schema(self, tmp_db):
+    def test_no_tev_columns_in_schema(self, tmp_db):
+        """The TEV/envelope columns were retired in the demo refresh (P2)."""
         con = duckdb.connect(str(tmp_db), read_only=True)
         cols = con.execute(
             "SELECT column_name FROM information_schema.columns "
@@ -139,8 +115,11 @@ class TestLogWorkflowIteration:
         ).fetchall()
         con.close()
         col_names = {r[0] for r in cols}
-        assert "optimiser_run_flag" not in col_names
-        assert "optimiser_suggestion_adopted" not in col_names
+        for retired in (
+            "tev_baseline_run_id", "total_tev", "delta_tev_vs_prior",
+            "envelope_run_flag", "optimiser_run_flag",
+        ):
+            assert retired not in col_names
 
     def test_returns_uuid_string(self, tmp_db):
         session_id = str(uuid.uuid4())
@@ -177,20 +156,7 @@ class TestGetWorkflowIterations:
         assert len(rows) == 1
         assert isinstance(rows[0], dict)
 
-    def test_includes_envelope_run_flag_key(self, tmp_db):
-        session_id = str(uuid.uuid4())
-        aset_id = str(uuid.uuid4())
-        _insert_assumption_set(tmp_db, aset_id)
-        log_workflow_iteration(
-            db_path=tmp_db, workflow_session_id=session_id, iteration_number=1,
-            assumption_set_id=aset_id, stage=3, action="ENVELOPE_RUN", actuary_id="A1",
-            envelope_run_flag=True,
-        )
-        rows = get_workflow_iterations(tmp_db, session_id)
-        assert "envelope_run_flag" in rows[0]
-        assert rows[0]["envelope_run_flag"] is True
-
-    def test_does_not_include_optimiser_keys(self, tmp_db):
+    def test_does_not_include_tev_keys(self, tmp_db):
         session_id = str(uuid.uuid4())
         aset_id = str(uuid.uuid4())
         _insert_assumption_set(tmp_db, aset_id)
@@ -199,8 +165,8 @@ class TestGetWorkflowIterations:
             assumption_set_id=aset_id, stage=2, action="SAVED", actuary_id="A1",
         )
         rows = get_workflow_iterations(tmp_db, session_id)
-        assert "optimiser_run_flag" not in rows[0]
-        assert "optimiser_suggestion_adopted" not in rows[0]
+        for retired in ("total_tev", "delta_tev_vs_prior", "envelope_run_flag"):
+            assert retired not in rows[0]
 
     def test_ordered_by_iteration_number(self, tmp_db):
         session_id = str(uuid.uuid4())
@@ -240,121 +206,36 @@ class TestGetNextIterationNumber:
 
 
 # ---------------------------------------------------------------------------
-# record_governance_approval
+# Retired legacy approvals table
 # ---------------------------------------------------------------------------
 
-class TestRecordGovernanceApproval:
-    def _call(
-        self,
-        db_path: Path,
-        aset_id: str,
-        decision: str = "APPROVE",
-        envelope_run_flag: bool = True,
-        envelope_tev_min: float | None = 4_800_000.0,
-        envelope_tev_max: float | None = 5_200_000.0,
-        envelope_percentile: float | None = 0.62,
-    ) -> str:
-        return record_governance_approval(
-            db_path=db_path,
-            assumption_set_id=aset_id,
-            workflow_session_id=str(uuid.uuid4()),
-            source_study_run_id=str(uuid.uuid4()),
-            tev_baseline_run_id=str(uuid.uuid4()),
-            proposer_id="ACTUARY_1",
-            reviewer_id="ACTUARY_2",
-            reviewer_decision=decision,
-            reviewer_comment="LGTM",
-            total_iterations=3,
-            envelope_run_flag=envelope_run_flag,
-            baseline_tev=5_000_000.0,
-            delta_tev_vs_prior=50_000.0,
-            max_sensitivity_delta=200_000.0,
-            iteration_history=[],
-            envelope_tev_min=envelope_tev_min,
-            envelope_tev_max=envelope_tev_max,
-            proposed_envelope_percentile=envelope_percentile,
+class TestLegacyApprovalsRetired:
+    def test_gold_assumption_approvals_not_created(self, tmp_db):
+        """The Phase-2 legacy summary table is retired (demo refresh P2)."""
+        con = duckdb.connect(str(tmp_db), read_only=True)
+        tables = {
+            r[0] for r in con.execute(
+                "SELECT table_name FROM information_schema.tables"
+            ).fetchall()
+        }
+        con.close()
+        assert "gold_assumption_approvals" not in tables
+
+    def test_no_source_references_legacy_writer(self):
+        """No src/ or ui/ code may write or read the retired approvals table."""
+        import subprocess
+        result = subprocess.run(
+            ["grep", "-rln", "--include=*.py", "--include=*.yaml", "--include=*.j2",
+             "gold_assumption_approvals", "src", "ui", "config", "scripts"],
+            capture_output=True, text=True,
+            cwd=str(Path(__file__).parent.parent),
         )
-
-    def test_returns_approval_id(self, tmp_db):
-        aset_id = str(uuid.uuid4())
-        _insert_assumption_set(tmp_db, aset_id)
-        approval_id = self._call(tmp_db, aset_id)
-        uuid.UUID(approval_id)  # must be valid UUID
-
-    def test_envelope_fields_stored_correctly(self, tmp_db):
-        aset_id = str(uuid.uuid4())
-        _insert_assumption_set(tmp_db, aset_id)
-        self._call(tmp_db, aset_id, envelope_tev_min=4_800_000.0,
-                   envelope_tev_max=5_200_000.0, envelope_percentile=0.62)
-
-        con = duckdb.connect(str(tmp_db), read_only=True)
-        row = con.execute("""
-            SELECT envelope_run_flag, envelope_tev_min, envelope_tev_max,
-                   proposed_envelope_percentile
-            FROM gold_assumption_approvals WHERE assumption_set_id = ?
-        """, [aset_id]).fetchone()
-        con.close()
-
-        assert row[0] is True
-        assert row[1] == pytest.approx(4_800_000.0)
-        assert row[2] == pytest.approx(5_200_000.0)
-        assert row[3] == pytest.approx(0.62)
-
-    def test_envelope_fields_none_when_not_run(self, tmp_db):
-        aset_id = str(uuid.uuid4())
-        _insert_assumption_set(tmp_db, aset_id)
-        self._call(tmp_db, aset_id, envelope_run_flag=False,
-                   envelope_tev_min=None, envelope_tev_max=None, envelope_percentile=None)
-
-        con = duckdb.connect(str(tmp_db), read_only=True)
-        row = con.execute("""
-            SELECT envelope_run_flag, envelope_tev_min, envelope_tev_max,
-                   proposed_envelope_percentile
-            FROM gold_assumption_approvals WHERE assumption_set_id = ?
-        """, [aset_id]).fetchone()
-        con.close()
-
-        assert row[0] is False
-        assert row[1] is None
-        assert row[2] is None
-        assert row[3] is None
-
-    def test_no_optimiser_columns_in_approval_schema(self, tmp_db):
-        con = duckdb.connect(str(tmp_db), read_only=True)
-        cols = con.execute(
-            "SELECT column_name FROM information_schema.columns "
-            "WHERE table_name = 'gold_assumption_approvals'"
-        ).fetchall()
-        con.close()
-        col_names = {r[0] for r in cols}
-        assert "optimiser_used_flag" not in col_names
-        assert "optimiser_adopted_flag" not in col_names
-
-    def test_return_decision_does_not_set_approved_ts(self, tmp_db):
-        aset_id = str(uuid.uuid4())
-        _insert_assumption_set(tmp_db, aset_id)
-        self._call(tmp_db, aset_id, decision="RETURN")
-
-        con = duckdb.connect(str(tmp_db), read_only=True)
-        row = con.execute(
-            "SELECT approved_ts FROM gold_assumption_approvals WHERE assumption_set_id = ?",
-            [aset_id]
-        ).fetchone()
-        con.close()
-        assert row[0] is None
-
-    def test_approve_decision_sets_approved_ts(self, tmp_db):
-        aset_id = str(uuid.uuid4())
-        _insert_assumption_set(tmp_db, aset_id)
-        self._call(tmp_db, aset_id, decision="APPROVE")
-
-        con = duckdb.connect(str(tmp_db), read_only=True)
-        row = con.execute(
-            "SELECT approved_ts FROM gold_assumption_approvals WHERE assumption_set_id = ?",
-            [aset_id]
-        ).fetchone()
-        con.close()
-        assert row[0] is not None
+        offenders = [
+            line for line in result.stdout.splitlines()
+            # the one legitimate mention: the migration script deleted in P3
+            if not line.startswith("scripts/migrate_envelope_schema.py")
+        ]
+        assert offenders == [], f"references to retired table: {offenders}"
 
 
 # ---------------------------------------------------------------------------
@@ -421,36 +302,3 @@ class TestTransitionAssumptionSetStatus:
         ).fetchone()
         con.close()
         assert row[0] == "SUPERSEDED"
-
-
-# ---------------------------------------------------------------------------
-# Architectural invariant: workflow functions have no adoption path
-# ---------------------------------------------------------------------------
-
-class TestWorkflowNoAdoptionPath:
-    def test_workflow_module_has_no_envelope_result_param(self):
-        """workflow.py must not import or use EnvelopeResult as a function parameter."""
-        workflow_src = Path("src/assumptions/workflow.py").read_text(encoding="utf-8")
-        tree = ast.parse(workflow_src)
-        violations: list[str] = []
-        for node in ast.walk(tree):
-            if isinstance(node, ast.FunctionDef):
-                for arg in node.args.args:
-                    if arg.annotation and "EnvelopeResult" in ast.unparse(arg.annotation):
-                        violations.append(node.name)
-        assert violations == [], (
-            f"workflow.py functions with EnvelopeResult param: {violations}"
-        )
-
-    def test_workflow_module_has_no_assumption_set_return(self):
-        """workflow.py must not return AssumptionSet from any function."""
-        workflow_src = Path("src/assumptions/workflow.py").read_text(encoding="utf-8")
-        tree = ast.parse(workflow_src)
-        violations: list[str] = []
-        for node in ast.walk(tree):
-            if isinstance(node, ast.FunctionDef):
-                if node.returns and "AssumptionSet" in ast.unparse(node.returns):
-                    violations.append(node.name)
-        assert violations == [], (
-            f"workflow.py functions returning AssumptionSet: {violations}"
-        )

@@ -86,7 +86,7 @@ def test_mid_chain_return_reopens_to_proposed(gov_env, tmp_path):
     transition_assumption_set_status(Path(db), set_id, "STAGE3_APPROVED")
     record_signoff(
         _u(db, "j.junior"), ArtifactType.ASSUMPTION_SET, set_id, 1,
-        Decision.RETURN, "needs rework", db_path=db, config_path=cfg, delta_tev=0.05,
+        Decision.RETURN, "needs rework", db_path=db, config_path=cfg, materiality_value=0.05,
     )
     assert _status(db, set_id) == "PROPOSED"
 
@@ -100,6 +100,6 @@ def test_return_after_completion_is_refused_not_guard_blocked(gov_env, tmp_path)
     with pytest.raises(ValueError):   # "sign-off chain is already complete"
         record_signoff(
             _u(db, "c.chief"), ArtifactType.ASSUMPTION_SET, set_id, 1,
-            Decision.RETURN, "too late", db_path=db, config_path=cfg, delta_tev=0.05,
+            Decision.RETURN, "too late", db_path=db, config_path=cfg, materiality_value=0.05,
         )
     assert _status(db, set_id) == "APPROVED"

@@ -217,9 +217,10 @@ def compare_versions(
 ) -> VersionDiff:
     """Cell-level diff between two assumption-set versions (FR-4-10).
 
-    Reports each changed multiplier cell (old, new, rationale), ΔTEV from each
-    set's latest baseline TEV run (``tev_b - tev_a``; NaN if either is missing),
-    and a per-cell rationale map keyed by the cell identifier.
+    Reports each changed multiplier cell (old, new, rationale), the materiality
+    metric (max absolute multiplier change across changed cells, treating an
+    added/removed cell as a move from/to the neutral 1.0), and a per-cell
+    rationale map keyed by the cell identifier.
     """
     aset_a = load_assumption_set(set_id_a, Path(db_path))
     aset_b = load_assumption_set(set_id_b, Path(db_path))
@@ -249,10 +250,14 @@ def compare_versions(
             if rationale:
                 rationale_by_cell[cell_id] = rationale
 
-    delta_tev = _baseline_tev(db_path, set_id_b) - _baseline_tev(db_path, set_id_a)
+    materiality_value = 0.0
+    for cell in changed_cells:
+        old = cell["old"] if cell["old"] is not None else 1.0
+        new = cell["new"] if cell["new"] is not None else 1.0
+        materiality_value = max(materiality_value, abs(new - old))
     return VersionDiff(
         changed_cells=changed_cells,
-        delta_tev=delta_tev,
+        materiality_value=materiality_value,
         rationale_by_cell=rationale_by_cell,
     )
 
@@ -363,21 +368,3 @@ def _cell_dimension(mult) -> dict:
         "risk_class": mult.risk_class,
         "duration_band": list(mult.duration_band),
     }
-
-
-def _baseline_tev(db_path: str, assumption_set_id: str) -> float:
-    """Latest baseline (sensitivity_id NULL) total_tev for a set; NaN if none."""
-    con = duckdb.connect(str(db_path), read_only=True)
-    try:
-        row = con.execute(
-            "SELECT total_tev FROM gold_tev_run_log "
-            "WHERE assumption_set_id = ? AND sensitivity_id IS NULL "
-            "AND total_tev IS NOT NULL "
-            "ORDER BY run_ts DESC LIMIT 1",
-            [assumption_set_id],
-        ).fetchone()
-    finally:
-        con.close()
-    if row is None or row[0] is None:
-        return float("nan")
-    return float(row[0])

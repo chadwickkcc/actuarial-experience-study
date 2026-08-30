@@ -46,7 +46,7 @@ from src.utils.types import AuditFilter, IntegrityResult
 _SIGNOFF_COLUMNS = [
     "signoff_id", "seq", "artifact_type", "artifact_id", "artifact_version",
     "chain_level", "required_role", "actor_user_id", "actor_role", "decision",
-    "comment", "attestation_text", "delta_tev", "required_final_level",
+    "comment", "attestation_text", "materiality_value", "required_final_level",
     "signoff_ts", "prev_hash", "entry_hash",
 ]
 
@@ -63,34 +63,24 @@ _HASH_CHAINED_TABLES: dict[str, list[str]] = {
     "gold_ae_governance_events": _AE_EVENT_COLUMNS,
 }
 
-# Full ordered column lists for the Phase-2 governance logs, with the §G.5
+# Full ordered column list for the Phase-2 workflow-iterations log, with the §G.5
 # migrated hash-chain columns appended (physical order is cosmetic — _canonical_row
 # sorts keys — but the SELECT reads them in this order).
 _WORKFLOW_ITER_COLUMNS = [
     "iteration_id", "workflow_session_id", "iteration_number", "assumption_set_id",
-    "tev_baseline_run_id", "stage", "action", "actuary_id", "actuary_comment",
-    "total_tev", "delta_tev_vs_prior", "envelope_run_flag", "iteration_ts",
+    "stage", "action", "actuary_id", "actuary_comment", "iteration_ts",
     "seq", "prev_hash", "entry_hash",
-]
-_ASSUMPTION_APPROVAL_COLUMNS = [
-    "approval_id", "assumption_set_id", "workflow_session_id", "source_study_run_id",
-    "tev_baseline_run_id", "proposer_id", "reviewer_id", "reviewer_decision",
-    "reviewer_comment", "total_iterations", "envelope_run_flag", "envelope_tev_min",
-    "envelope_tev_max", "proposed_envelope_percentile", "baseline_tev",
-    "delta_tev_vs_prior", "max_sensitivity_delta", "proposed_ts", "approved_ts",
-    "iteration_history", "seq", "prev_hash", "entry_hash",
 ]
 
 # VERIFY registry: tables ``verify_chain`` may recompute. A superset of the write
 # allowlist — it also covers the Phase-2 logs (§G.5: hashed from Phase 4 onward;
 # the verifier begins each chain at the first row that carries an entry_hash, so a
 # log with no hashed rows verifies as ok / rows_checked=0). Registered here for
-# verification only; their writers are NOT routed through append_event this session.
+# verification only; its writer is NOT routed through append_event.
 _VERIFIABLE_CHAINS: dict[str, list[str]] = {
     "gold_governance_signoffs": _SIGNOFF_COLUMNS,
     "gold_ae_governance_events": _AE_EVENT_COLUMNS,
     "gold_workflow_iterations": _WORKFLOW_ITER_COLUMNS,
-    "gold_assumption_approvals": _ASSUMPTION_APPROVAL_COLUMNS,
 }
 
 # Columns assigned/computed by append_event itself, not supplied in ``content``.
@@ -364,8 +354,8 @@ def unified_audit_query(
     """Read across the three governance logs into one common event shape (FR-4-22).
 
     Sources: the Phase-4 sign-off log (``gold_governance_signoffs``) and the legacy
-    Phase-2 workflow/approval logs (``gold_workflow_iterations`` /
-    ``gold_assumption_approvals``); the A/E governance-events log
+    Phase-2 workflow-iterations log (``gold_workflow_iterations``); the A/E
+    governance-events log
     (``gold_ae_governance_events``); and the Phase-3 AI audit log
     (``gold_ai_audit_log``, projected via its §D.3 scheme). Each source is read
     defensively (a missing/empty table degrades to no rows, never an error).
@@ -484,22 +474,6 @@ def unified_audit_query(
         except Exception:
             pass
 
-        # 5. Legacy Phase-2 assumption approvals (free-text reviewer_id)
-        try:
-            for ts, reviewer, aid, decision, comment in con.execute(
-                "SELECT COALESCE(approved_ts, proposed_ts), reviewer_id, "
-                "assumption_set_id, reviewer_decision, reviewer_comment "
-                "FROM gold_assumption_approvals"
-            ).fetchall():
-                _disp, _uid, _role = resolve_named(reviewer)
-                events.append({
-                    "ts": ts, "actor": _disp, "actor_user_id": _uid, "role": _role,
-                    "artifact_type": "ASSUMPTION_SET", "artifact_id": aid,
-                    "artifact": f"ASSUMPTION_SET:{aid}", "action": decision,
-                    "detail": comment, "source": "APPROVAL",
-                })
-        except Exception:
-            pass
     finally:
         con.close()
 
@@ -516,8 +490,8 @@ def artifact_timeline(
 
     ``artifact_type`` may be an ``ArtifactType`` enum or its string value. Reuses
     the unified projection filtered to the artifact, so an ASSUMPTION_SET yields
-    its sign-offs + legacy workflow/approval rows and a STUDY_RUN yields its A/E
-    events + study-run sign-offs.
+    its sign-offs + legacy workflow rows and a STUDY_RUN yields its A/E events +
+    study-run sign-offs.
     """
     at = artifact_type.value if hasattr(artifact_type, "value") else str(artifact_type)
     rows = unified_audit_query(AuditFilter(artifact_id=artifact_id), db_path=db_path)

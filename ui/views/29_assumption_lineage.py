@@ -5,7 +5,7 @@ Surfaces the lineage engine that was previously engine-only:
   • **Re-open** an APPROVED set → a new DRAFT child version (proposer);
   • **Publish** an APPROVED set → set its effective range + supersede the prior live
     version (approver);
-  • **Compare** two versions (changed cells + ΔTEV + rationale).
+  • **Compare** two versions (changed cells + materiality + rationale).
 
 Reconciliation of the two approval paths: the Stage-4 sign-off chain remains the
 approval authority (it sets a set to APPROVED). "Publish" here only adds
@@ -57,7 +57,7 @@ _can_signoff = user_can(_user, Action.SIGN_OFF)
 # ---------------------------------------------------------------------------
 sets = gov.list_assumption_sets()
 if not sets:
-    st.warning("No assumption sets found. Create one in **TEV Stage 1** first.")
+    st.warning("No assumption sets found. Create one in **Assumption Step 1** first.")
     st.stop()
 labels = {s["label"]: s["id"] for s in sets}
 selected_label = st.selectbox("Assumption set", list(labels.keys()))
@@ -143,7 +143,7 @@ else:
                 st.session_state["source_study_run_id"] = _src[0]
             st.success(
                 f"Created DRAFT version `{new_id[:8]}…` (child of `{set_id[:8]}…`). "
-                "Open **TEV Stage 2** to edit it, then run Stages 3–4 to approve."
+                "Open **Assumption Step 2** to edit it, then submit and sign off to approve."
             )
             st.rerun()
 
@@ -218,11 +218,11 @@ else:
             st.info("Choose two different versions to compare.")
         else:
             diff = compare_versions(set_a, set_b, db_path=DB)
-            dtev = diff.delta_tev
+            mval = diff.materiality_value
             st.metric(
-                "ΔTEV (B − A)",
-                "n/a" if dtev is None or (isinstance(dtev, float) and math.isnan(dtev))
-                else f"{dtev:,.2f}",
+                "Materiality (max |Δ multiplier|)",
+                "n/a" if mval is None or (isinstance(mval, float) and math.isnan(mval))
+                else f"{mval:.4f}",
             )
             if diff.changed_cells:
                 rows = []

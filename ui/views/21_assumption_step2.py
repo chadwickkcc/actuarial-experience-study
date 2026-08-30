@@ -1,10 +1,10 @@
-"""Stage 2 — Proposed Assumption Set Editor.
+"""Step 2 — Edit Assumptions & Submit for Sign-Off.
 
-Editable assumption set pre-populated from the A/E study (FR-2-35).
+Editable assumption set pre-populated from the A/E study.
 Credibility bounds shown alongside each multiplier as guardrails.
-Live ΔTEV preview panel in sidebar using pre-computed sensitivity approximation (FR-2-36).
-"Restore from A/E" resets cells to credibility-weighted A/E values (FR-2-37).
-Every save is logged to gold_workflow_iterations.
+"Restore from A/E" resets cells to credibility-weighted A/E values.
+Every save is logged to gold_workflow_iterations; when the proposer is
+satisfied, **Submit for sign-off** moves the set into the governance chain.
 """
 import sys
 from pathlib import Path
@@ -12,19 +12,16 @@ from typing import Optional
 
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
-import copy
-
 import duckdb
 import pandas as pd
 import streamlit as st
 
-from ui.config import DB_PATH, CONFIG_DIR
+from ui.config import DB_PATH
 from src.assumptions.assumption_set import (
     AssumptionSet,
     DecrementMultiplier,
     load_assumption_set,
     save_assumption_set,
-    create_assumption_set_from_ae_run,
     find_ai_proposal_for_set,
     record_ai_provenance,
 )
@@ -32,24 +29,25 @@ from src.utils.types import AssumptionSetStatus
 from src.assumptions.workflow import (
     log_workflow_iteration,
     get_next_iteration_number,
+    get_workflow_iterations,
+    transition_assumption_set_status,
 )
 
-st.set_page_config(page_title="TEV Stage 2 — Propose Assumptions", layout="wide")
+st.set_page_config(page_title="Step 2 — Edit & Submit", layout="wide")
 
 from ui.config import require_auth, user_can
 from src.governance.rbac import Action, PermissionDenied, require
 _user = require_auth()
 _can_propose = user_can(_user, Action.PROPOSE)
-st.title("Stage 2 — Proposed Assumption Set")
+st.title("Step 2 — Edit Assumptions & Submit")
 
 # ---------------------------------------------------------------------------
 # Workflow progress indicator
 # ---------------------------------------------------------------------------
-cols_prog = st.columns(4)
-cols_prog[0].success("Stage 1 — Experience Study ✓")
-cols_prog[1].success("**Stage 2** — Assumptions ✓")  # shortened to prevent wrapping
-cols_prog[2].info("Stage 3 — TEV Impact Analysis")
-cols_prog[3].info("Stage 4 — Governance Sign-Off")
+cols_prog = st.columns(3)
+cols_prog[0].success("Step 1 — Select Study Basis ✓")
+cols_prog[1].success("**Step 2** — Edit & Submit ✓")
+cols_prog[2].info("Step 3 — Sign Off & Lock")
 
 st.divider()
 
@@ -61,7 +59,7 @@ def _require_assumption_set() -> Optional[str]:
     aset_id = st.session_state.get("active_assumption_set_id")
     if not aset_id:
         st.warning(
-            "No active assumption set. Go to **Stage 1 — Experience Study** "
+            "No active assumption set. Go to **Step 1 — Select Study Basis** "
             "to create one, or resume an existing set."
         )
         return None
@@ -169,7 +167,7 @@ if _is_locked:
     )
 
 # ---------------------------------------------------------------------------
-# Multiplier tables (FR-2-35)
+# Multiplier tables
 # ---------------------------------------------------------------------------
 
 def _fmt_band(b) -> str:
@@ -248,11 +246,10 @@ _MULT_COLUMN_CONFIG = {
     "override_rationale": st.column_config.TextColumn("Override Rationale"),
 }
 
-tab_mort, tab_lapse, tab_ci, tab_econ = st.tabs([
+tab_mort, tab_lapse, tab_ci = st.tabs([
     "Mortality Multipliers",
     "Lapse Multipliers",
     "CI Incidence Multipliers",
-    "Economic Parameters",
 ])
 
 # --- Mortality ---
@@ -307,163 +304,8 @@ with tab_ci:
             column_config=_MULT_COLUMN_CONFIG,
         )
 
-# --- Economic Parameters ---
-with tab_econ:
-    st.markdown("**Economic parameters** affect PVFP discounting and PVCoC calculation.")
-    col_e1, col_e2 = st.columns(2)
-    with col_e1:
-        new_rdr = st.number_input(
-            "Risk Discount Rate (RDR)", value=aset.rdr,
-            min_value=0.01, max_value=0.30, step=0.001, format="%.3f", key="s2_rdr"
-        )
-        new_earned_ga = st.number_input(
-            "Earned Rate (General Account)", value=aset.earned_rate_ga,
-            min_value=0.01, max_value=0.20, step=0.001, format="%.3f", key="s2_earned_ga"
-        )
-        new_earned_sa = st.number_input(
-            "Earned Rate (Separate Account)", value=aset.earned_rate_sa,
-            min_value=0.01, max_value=0.25, step=0.001, format="%.3f", key="s2_earned_sa"
-        )
-    with col_e2:
-        new_tax = st.number_input(
-            "Tax Rate", value=aset.tax_rate,
-            min_value=0.0, max_value=0.50, step=0.005, format="%.3f", key="s2_tax"
-        )
-        new_exp_infl = st.number_input(
-            "Expense Inflation", value=aset.expense_inflation,
-            min_value=0.0, max_value=0.20, step=0.001, format="%.3f", key="s2_exp_infl"
-        )
-        new_maint_pp = st.number_input(
-            "Maintenance per Policy ($)", value=aset.maintenance_per_policy,
-            min_value=0.0, max_value=5000.0, step=1.0, format="%.0f", key="s2_maint_pp"
-        )
-
-    st.subheader("Required Capital (% of Reserve)")
-    rc_cols = st.columns(3)
-    rc_products = ["TERM", "WL", "UL", "ULSG", "VUL", "DA"]
-    rc_vals: dict[str, float] = {}
-    for i, prod in enumerate(rc_products):
-        with rc_cols[i % 3]:
-            rc_vals[prod] = st.number_input(
-                f"RC % — {prod}",
-                value=aset.rc_pct_reserve.get(prod, 0.04),
-                min_value=0.0, max_value=0.30, step=0.005, format="%.3f",
-                key=f"s2_rc_{prod}",
-            )
-
 # ---------------------------------------------------------------------------
-# Live ΔTEV preview — sidebar (FR-2-36)
-# Placed after tabs so edited_*_df variables are in scope.
-# ---------------------------------------------------------------------------
-
-@st.cache_data(ttl=120)
-def _load_sensitivity_results(as_id: str) -> Optional[pd.DataFrame]:
-    """Load most recent sensitivity results for this assumption set from DB."""
-    con = duckdb.connect(str(DB_PATH), read_only=True)
-    try:
-        df = con.execute("""
-            SELECT r.sensitivity_id, r.product_code, r.tev, l.total_tev,
-                   r.tev_run_id
-            FROM gold_tev_results r
-            JOIN gold_tev_run_log l USING (tev_run_id)
-            WHERE r.assumption_set_id = ?
-              AND r.sensitivity_id IS NOT NULL
-            ORDER BY l.run_ts DESC
-            LIMIT 66
-        """, [as_id]).df()
-        return df if not df.empty else None
-    finally:
-        con.close()
-
-
-@st.cache_data(ttl=120)
-def _load_baseline_tev(as_id: str) -> Optional[float]:
-    con = duckdb.connect(str(DB_PATH), read_only=True)
-    try:
-        row = con.execute("""
-            SELECT total_tev FROM gold_tev_run_log
-            WHERE assumption_set_id = ? AND sensitivity_id IS NULL
-            ORDER BY run_ts DESC LIMIT 1
-        """, [as_id]).fetchone()
-        return float(row[0]) if row else None
-    finally:
-        con.close()
-
-
-with st.sidebar:
-    st.divider()
-    st.markdown("**📊 ΔTEV Preview** _(approx.)_")
-
-    sens_df = _load_sensitivity_results(aset_id)
-    baseline_tev = _load_baseline_tev(aset_id)
-
-    if baseline_tev is None:
-        st.info("Available after first Stage 3 TEV run.")
-    elif sens_df is None:
-        st.info("Run sensitivity grid in Stage 3 to enable.")
-    else:
-        SENS_SHOCKS = {
-            "SENS-01": ("lapse",          0.90),
-            "SENS-02": ("lapse",          1.10),
-            "SENS-03": ("mortality_life", 0.95),
-            "SENS-04": ("mortality_life", 1.05),
-            "SENS-06": ("ci_incidence",   0.90),
-            "SENS-07": ("ci_incidence",   1.10),
-        }
-        total_row = sens_df.groupby("sensitivity_id")["total_tev"].first()
-
-        orig = st.session_state.get(cache_key, {})
-
-        def _mean_mult(mults_dicts: list) -> float:
-            if not mults_dicts:
-                return 1.0
-            return sum(m["multiplier"] for m in mults_dicts) / len(mults_dicts)
-
-        orig_mort  = _mean_mult(orig.get("mortality_multipliers", []))
-        orig_lapse = _mean_mult(orig.get("lapse_multipliers", []))
-        orig_ci    = _mean_mult(orig.get("ci_incidence_multipliers", []))
-
-        cur_mort  = float(edited_mort_df["multiplier"].mean())  if not edited_mort_df.empty  else orig_mort
-        cur_lapse = float(edited_lapse_df["multiplier"].mean()) if not edited_lapse_df.empty else orig_lapse
-        cur_ci    = float(edited_ci_df["multiplier"].mean())    if not edited_ci_df.empty    else orig_ci
-
-        approx_delta = 0.0
-        for sens_id, (dec_type, shock) in SENS_SHOCKS.items():
-            if sens_id not in total_row.index:
-                continue
-            delta_per_shock = float(total_row[sens_id]) - baseline_tev
-            if dec_type == "lapse" and orig_lapse > 0:
-                ratio_change = (cur_lapse - orig_lapse) / orig_lapse
-            elif dec_type == "mortality_life" and orig_mort > 0:
-                ratio_change = (cur_mort - orig_mort) / orig_mort
-            elif dec_type == "ci_incidence" and orig_ci > 0:
-                ratio_change = (cur_ci - orig_ci) / orig_ci
-            else:
-                ratio_change = 0.0
-            if abs(shock - 1.0) > 0:
-                approx_delta += delta_per_shock * (ratio_change / (shock - 1.0))
-
-        rdr_change = new_rdr - aset.rdr
-        for s_id in ["SENS-10", "SENS-11"]:
-            if s_id in total_row.index:
-                d = float(total_row[s_id]) - baseline_tev
-                shock_sign = +1 if s_id == "SENS-10" else -1
-                if abs(d) > 0:
-                    approx_delta += d * (rdr_change / (shock_sign * 0.01))
-                break
-
-        st.metric("Baseline TEV", f"${baseline_tev:,.0f}")
-        st.metric(
-            "Approx ΔTEV",
-            f"${approx_delta:+,.0f}",
-            delta=f"${approx_delta:+,.0f}",
-            delta_color="normal",
-        )
-        st.metric("Approx new TEV", f"${baseline_tev + approx_delta:,.0f}")
-        st.caption("First-order approx. Run Stage 3 for exact result.")
-
-# ---------------------------------------------------------------------------
-# Action buttons (FR-2-35)
+# Action buttons
 # ---------------------------------------------------------------------------
 st.divider()
 
@@ -514,7 +356,7 @@ if _ai_proposal is not None:
             "factor; on save, the AI-proposed value and model id are stamped onto "
             "this assumption set. The save comment above is the required justification. "
             "This **updates the assumption set you are editing in place** — it does "
-            "not create a new set (new sets are minted only in Stage 1)."
+            "not create a new set (new sets are minted only in Step 1)."
         )
         _adopt_ai = st.checkbox("This save adopts the AI proposal", key="s2_adopt_ai")
         _adopted_value = st.number_input(
@@ -584,13 +426,6 @@ if save_clicked and save_comment.strip():
     aset.mortality_multipliers    = new_mort_mults
     aset.lapse_multipliers        = new_lapse_mults
     aset.ci_incidence_multipliers = new_ci_mults
-    aset.rdr                      = new_rdr
-    aset.earned_rate_ga           = new_earned_ga
-    aset.earned_rate_sa           = new_earned_sa
-    aset.tax_rate                 = new_tax
-    aset.expense_inflation        = new_exp_infl
-    aset.maintenance_per_policy   = new_maint_pp
-    aset.rc_pct_reserve           = rc_vals
     aset.status                   = AssumptionSetStatus.PROPOSED
 
     with st.spinner("Saving assumption set…"):
@@ -629,6 +464,95 @@ if save_clicked and save_comment.strip():
     st.session_state["workflow_iteration"] = iter_num
     st.success(
         f"✅ Assumption set saved as PROPOSED (iteration {iter_num}). "
-        "Proceed to **Stage 3 — TEV Impact Analysis**."
+        "When you are satisfied, **Submit for sign-off** below."
     )
     st.cache_data.clear()
+
+# ---------------------------------------------------------------------------
+# Submit for sign-off (PROPOSED → STAGE3_APPROVED → governance chain)
+# ---------------------------------------------------------------------------
+st.divider()
+st.subheader("Submit for Sign-Off")
+
+_status = aset.status.value
+_already_submitted = _status in ("STAGE3_APPROVED", "APPROVED")
+if _already_submitted:
+    st.info(
+        f"This assumption set is already **{_status}**. "
+        + ("It is locked." if _status == "APPROVED"
+           else "It is awaiting governance sign-off on **Step 3 — Sign Off & Lock**. "
+                "A RETURN from a reviewer will re-open it for editing here.")
+    )
+else:
+    st.markdown(
+        "Submitting hands the proposed set to the governance sign-off chain "
+        "(**Step 3**). The reviewer chain, materiality rule and segregation of "
+        "duties are enforced there."
+    )
+    submit_comment = st.text_area(
+        "Mandatory comment for submission to sign-off",
+        key="s2_submit_comment",
+        height=100,
+        placeholder="Describe the basis for submission…",
+    )
+    submit_btn = st.button(
+        "Submit for sign-off →",
+        use_container_width=False,
+        disabled=not _can_propose or _is_locked,
+    )
+    if submit_btn:
+        try:
+            require(_user, Action.PROPOSE)  # server-side re-check (defense-in-depth)
+        except PermissionDenied as exc:
+            st.error(str(exc))
+            st.stop()
+        if not submit_comment.strip():
+            st.error("A comment is mandatory before submitting.")
+        elif _status != "PROPOSED":
+            st.error(
+                f"Only a PROPOSED set can be submitted (current status: {_status}). "
+                "Save your edits first."
+            )
+        else:
+            try:
+                transition_assumption_set_status(DB_PATH, aset_id, "STAGE3_APPROVED")
+            except Exception as exc:
+                st.error(f"Status transition failed: {exc}")
+                st.stop()
+            wf_session = st.session_state.get("workflow_session_id", "UNKNOWN")
+            iter_num = get_next_iteration_number(DB_PATH, wf_session)
+            log_workflow_iteration(
+                db_path=DB_PATH,
+                workflow_session_id=wf_session,
+                iteration_number=iter_num,
+                assumption_set_id=aset_id,
+                stage=3,
+                action="SUBMITTED_S4",
+                actuary_id=actuary_id,
+                actuary_comment=submit_comment.strip(),
+            )
+            st.cache_data.clear()
+            st.success(
+                "✅ Submitted for sign-off. Navigate to **Step 3 — Sign Off & Lock** "
+                "to complete governance approval."
+            )
+
+# ---------------------------------------------------------------------------
+# Workflow iteration history
+# ---------------------------------------------------------------------------
+with st.expander("Iteration history for this workflow session", expanded=False):
+    _wf_session = st.session_state.get("workflow_session_id")
+    if _wf_session:
+        history = get_workflow_iterations(DB_PATH, _wf_session)
+        if history:
+            hist_df = pd.DataFrame(history)
+            display_cols = [
+                "iteration_number", "stage", "action", "actuary_id",
+                "actuary_comment", "iteration_ts",
+            ]
+            hist_df = hist_df[[c for c in display_cols if c in hist_df.columns]]
+            st.dataframe(hist_df, hide_index=True, use_container_width=True)
+        else:
+            st.caption("No iterations recorded yet for this session.")
+    else:
+        st.caption("No workflow session active.")

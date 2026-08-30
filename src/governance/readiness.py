@@ -173,7 +173,7 @@ def check_tenancy_readiness(
         if not cfg.get(key):
             violations.append(f"{config_path}: '{key}' not in config (must be config-not-code)")
     materiality = cfg.get("materiality") or {}
-    for mkey in ("delta_tev_threshold", "final_level_below_threshold"):
+    for mkey in ("max_multiplier_delta_threshold", "final_level_below_threshold"):
         if mkey not in materiality:
             violations.append(f"{config_path}: 'materiality.{mkey}' not in config")
 

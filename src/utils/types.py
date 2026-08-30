@@ -462,11 +462,13 @@ class SignoffRecord:
 class VersionDiff:
     """Cell-level diff between two assumption-set versions (FR-4-10; §H.5).
 
-    ``delta_tev`` is ``tev_b - tev_a`` from each set's latest baseline TEV run;
-    it is ``float('nan')`` when either version has no baseline TEV run.
+    ``materiality_value`` is the max absolute multiplier change across the
+    changed cells (an added/removed cell counts as a move from/to the neutral
+    1.0); ``0.0`` when nothing changed. It drives the FR-4-16 required
+    sign-off level.
     """
     changed_cells:     list[dict]          # {decrement, dimension, old, new, rationale}
-    delta_tev:         float
+    materiality_value: float
     rationale_by_cell: dict[str, str]
 
 

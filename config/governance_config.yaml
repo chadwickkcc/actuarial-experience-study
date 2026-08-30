@@ -31,10 +31,10 @@ approval_chain:                    # ordered sign-off chain (FR-4-12) — consum
 segregation:
   allow_multi_level_signoff: false # default false (FR-4-05); proposer != approver always enforced
 
-materiality:                       # consumed from Session 25 (FR-4-16)
-  delta_tev_threshold: 0.01        # |ΔTEV| fraction vs prior approved set that forces
-                                   # chief_actuary final sign-off. NEW governance threshold
-                                   # (not the §6.8 envelope-width floor). Placeholder — owner sets.
+materiality:                       # FR-4-16 (demo refresh: multiplier-change basis)
+  max_multiplier_delta_threshold: 0.05   # max |Δ multiplier| vs the prior approved version
+                                   # above which chief_actuary final sign-off is forced.
+                                   # Owner-tunable.
   final_level_below_threshold: senior_actuary   # required final sign-off level when the
                                    # change is below the threshold. Must be a role in the chain.
 

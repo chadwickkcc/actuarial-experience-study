@@ -1,10 +1,8 @@
-"""Stage 1 — Experience Study Summary.
+"""Step 1 — Select Study Basis.
 
 Read-only view of A/E results from the most recent study run.
 The actuary selects a study run as the basis for a new assumption set,
-then clicks "Create Proposed Assumption Set" to proceed to Stage 2.
-
-Implements FR-2-34 (Stage 1) and feeds into FR-2-35 (Stage 2).
+then clicks "Create Proposed Assumption Set" to proceed to Step 2.
 """
 import sys
 import uuid
@@ -26,27 +24,26 @@ from ui.stats_helpers import (
 )
 from src.assumptions.assumption_set import create_assumption_set_from_ae_run
 
-st.set_page_config(page_title="TEV Stage 1 — Experience Study", layout="wide")
+st.set_page_config(page_title="Step 1 — Select Study Basis", layout="wide")
 
 from ui.config import require_auth, user_can
 from src.governance.rbac import Action, PermissionDenied, require
 _user = require_auth()
 _can_propose = user_can(_user, Action.PROPOSE)
-st.title("Stage 1 — Experience Study")
+st.title("Step 1 — Select Study Basis")
 st.markdown(
     "**Read-only.** Select a completed study run as the basis for a new assumption set. "
     "Review credibility-weighted A/E ratios and 95% confidence intervals, then click "
-    "**Create Proposed Assumption Set** to proceed to Stage 2."
+    "**Create Proposed Assumption Set** to proceed to Step 2."
 )
 
 # ---------------------------------------------------------------------------
 # Workflow progress indicator
 # ---------------------------------------------------------------------------
-cols_prog = st.columns(4)
-cols_prog[0].success("**Stage 1** — Experience Study ✓")
-cols_prog[1].info("Stage 2 — Propose Assumptions")
-cols_prog[2].info("Stage 3 — TEV Impact Analysis")
-cols_prog[3].info("Stage 4 — Governance Sign-Off")
+cols_prog = st.columns(3)
+cols_prog[0].success("**Step 1** — Select Study Basis ✓")
+cols_prog[1].info("Step 2 — Edit & Submit")
+cols_prog[2].info("Step 3 — Sign Off & Lock")
 
 st.divider()
 
@@ -252,13 +249,13 @@ with st.expander("Compare with prior assumption set", expanded=False):
                  f"Author: {prior_as['author_id']} — Effective: {prior_as['effective_date']}")
         st.info(
             "The multipliers below will be pre-populated from the A/E study. "
-            "You can compare them with the prior set in Stage 2."
+            "You can compare them with the prior set in Step 2."
         )
     else:
         st.info(
             "No prior approved assumption set found. This is the first run — "
             "the comparison column will be available once an assumption set has "
-            "been approved through Stage 4."
+            "been approved through Step 3."
         )
 
 # ---------------------------------------------------------------------------
@@ -269,7 +266,7 @@ st.subheader("Create Proposed Assumption Set")
 st.markdown(
     "Click the button below to create a new **PROPOSED** assumption set "
     "pre-populated with the credibility-weighted A/E ratios from this study run. "
-    "You will be taken to Stage 2 to review and edit before running the TEV."
+    "You will be taken to Step 2 to review, edit and submit for sign-off."
 )
 
 col_btn, col_status = st.columns([2, 3])
@@ -294,7 +291,7 @@ if create_clicked:
         st.stop()
     tev_config_path = CONFIG_DIR / "tev_config.yaml"
     if not tev_config_path.exists():
-        st.error(f"TEV config not found: {tev_config_path}")
+        st.error(f"Config not found: {tev_config_path}")
         st.stop()
 
     output_yaml_dir = DB_PATH.parent / "assumption_sets"
@@ -313,17 +310,12 @@ if create_clicked:
             st.error(f"Failed to create assumption set: {exc}")
             st.stop()
 
-    # Store in session state for Stage 2
+    # Store in session state for Step 2
     st.session_state["active_assumption_set_id"] = aset.id
     st.session_state["source_study_run_id"] = selected_run_id
     st.session_state["workflow_session_id"] = str(uuid.uuid4())
     st.session_state["workflow_author_id"] = author_id
     st.session_state["workflow_iteration"] = 0
-    st.session_state["stage3_approved"] = False
-    st.session_state["s3_envelope_run"] = False
-    st.session_state["s3_envelope_tev_min"] = None
-    st.session_state["s3_envelope_tev_max"] = None
-    st.session_state["s3_envelope_percentile"] = None
 
     readable_label = f"{aset.author_id} | v{aset.version} | eff. {aset.effective_date}"
     st.success(
@@ -333,7 +325,7 @@ if create_clicked:
         f"CI multipliers: {len(aset.ci_incidence_multipliers)} cells"
     )
     st.caption(f"UUID: `{aset.id}`")
-    st.info("Proceed to **Stage 2 — Propose Assumptions** in the sidebar to review and edit.")
+    st.info("Proceed to **Step 2 — Edit & Submit** in the sidebar to review and edit.")
 
 # ---------------------------------------------------------------------------
 # Existing assumption sets (resume workflow)
@@ -357,10 +349,10 @@ with st.expander("Resume an existing workflow (select assumption set)", expanded
         sel_id = st.text_input("Paste assumption set ID to resume:")
         if st.button("Resume this assumption set") and sel_id.strip():
             _resume_id = sel_id.strip()
-            # Preserve the resumed set's ORIGINAL author for proposer attribution
-            # (Stage-4 "Proposer" + the legacy approval summary) — do NOT overwrite it
-            # with the current user, who may merely be continuing someone else's work.
-            # Segregation is unaffected (it reads gold_assumption_sets.author_id directly).
+            # Preserve the resumed set's ORIGINAL author for proposer attribution —
+            # do NOT overwrite it with the current user, who may merely be continuing
+            # someone else's work. Segregation is unaffected (it reads
+            # gold_assumption_sets.author_id directly).
             _match = existing_sets[existing_sets["assumption_set_id"] == _resume_id]
             _resumed_author = (
                 str(_match.iloc[0]["author_id"]) if not _match.empty else author_id
@@ -369,9 +361,4 @@ with st.expander("Resume an existing workflow (select assumption set)", expanded
             st.session_state["workflow_session_id"] = str(uuid.uuid4())
             st.session_state["workflow_author_id"] = _resumed_author
             st.session_state["workflow_iteration"] = 0
-            st.session_state["stage3_approved"] = False
-            st.session_state["s3_envelope_run"] = False
-            st.session_state["s3_envelope_tev_min"] = None
-            st.session_state["s3_envelope_tev_max"] = None
-            st.session_state["s3_envelope_percentile"] = None
-            st.success(f"Resumed. Proceed to Stage 2.")
+            st.success("Resumed. Proceed to Step 2.")

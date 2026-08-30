@@ -867,46 +867,15 @@ _GOLD_TEV_DDL = [
         workflow_session_id     VARCHAR(36) NOT NULL,
         iteration_number        INTEGER NOT NULL,
         assumption_set_id       VARCHAR(36) NOT NULL,
-        tev_baseline_run_id     VARCHAR(36),
         stage                   INTEGER NOT NULL,
         action                  VARCHAR(20) NOT NULL,
-        -- Action values: SAVED, RAN_TEV, APPROVED_S3, RETURNED_TO_S2, ENVELOPE_RUN, SUBMITTED_S4
+        -- Action values: SAVED, RETURNED_TO_S2, SUBMITTED_S4, APPROVED
         actuary_id              VARCHAR(50) NOT NULL,
         actuary_comment         VARCHAR,
-        total_tev               DOUBLE,
-        delta_tev_vs_prior      DOUBLE,
-        envelope_run_flag       BOOLEAN NOT NULL DEFAULT FALSE,
         iteration_ts            TIMESTAMP NOT NULL
     )
     """,
 
-    # --------------------------------------------------------
-    # GOLD: ASSUMPTION APPROVALS
-    # --------------------------------------------------------
-    """
-    CREATE TABLE IF NOT EXISTS gold_assumption_approvals (
-        approval_id             VARCHAR(36) PRIMARY KEY,
-        assumption_set_id       VARCHAR(36) NOT NULL UNIQUE,
-        workflow_session_id     VARCHAR(36) NOT NULL,
-        source_study_run_id     VARCHAR(36) NOT NULL,
-        tev_baseline_run_id     VARCHAR(36) NOT NULL,
-        proposer_id             VARCHAR(50) NOT NULL,
-        reviewer_id             VARCHAR(50) NOT NULL,
-        reviewer_decision       VARCHAR(10) NOT NULL,
-        reviewer_comment        VARCHAR NOT NULL,
-        total_iterations        INTEGER NOT NULL,
-        envelope_run_flag       BOOLEAN NOT NULL DEFAULT FALSE,
-        envelope_tev_min        DOUBLE,
-        envelope_tev_max        DOUBLE,
-        proposed_envelope_percentile DOUBLE,
-        baseline_tev            DOUBLE NOT NULL,
-        delta_tev_vs_prior      DOUBLE,
-        max_sensitivity_delta   DOUBLE,
-        proposed_ts             TIMESTAMP NOT NULL,
-        approved_ts             TIMESTAMP,
-        iteration_history       VARCHAR NOT NULL
-    )
-    """,
 ]
 
 
@@ -1069,7 +1038,7 @@ _GOVERNANCE_DDL = [
 # row's entry_hash ordered by seq (empty string for the first row). Written
 # exclusively through src/governance/audit.py::append_event (the standard
 # parameterized write path, NOT the AI read-only sql_boundary). The Phase-2
-# gold_workflow_iterations / gold_assumption_approvals logs gain their own
+# gold_workflow_iterations log gains its own
 # hash-chain columns in Session 26 (§G.5) — not here.
 # ============================================================
 _GOVERNANCE_SIGNOFF_DDL = [
@@ -1087,7 +1056,7 @@ _GOVERNANCE_SIGNOFF_DDL = [
         decision             VARCHAR(10) NOT NULL,
         comment              VARCHAR NOT NULL,
         attestation_text     VARCHAR NOT NULL,
-        delta_tev            DOUBLE,
+        materiality_value    DOUBLE,
         required_final_level INTEGER,
         signoff_ts           TIMESTAMP NOT NULL,
         prev_hash            VARCHAR(64),
@@ -1157,9 +1126,6 @@ _COLUMN_MIGRATIONS = [
     ("gold_workflow_iterations", "seq", "BIGINT"),
     ("gold_workflow_iterations", "prev_hash", "VARCHAR(64)"),
     ("gold_workflow_iterations", "entry_hash", "VARCHAR(64)"),
-    ("gold_assumption_approvals", "seq", "BIGINT"),
-    ("gold_assumption_approvals", "prev_hash", "VARCHAR(64)"),
-    ("gold_assumption_approvals", "entry_hash", "VARCHAR(64)"),
 ]
 
 

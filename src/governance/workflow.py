@@ -12,17 +12,17 @@ Governance is ordinary application code outside ``src/ai/``: RBAC is enforced
 server-side (``rbac.require`` / ``rbac.may_sign_off_at``); each chain-level sign-off
 is written as a hash-chained row to ``gold_governance_signoffs`` via the §H.7
 ``audit.append_event`` write path (never a hand-written INSERT here); on a
-completing assumption-set APPROVE the artifact is locked and the legacy Phase-2
-``gold_assumption_approvals`` summary is still written (§G.2 note) so Phase-2
-reporting keeps working. Org-specific values (chain, materiality threshold,
+completing assumption-set APPROVE the artifact is locked. Org-specific values
+(chain, materiality threshold,
 ``final_level_below_threshold``, attestation text, segregation policy) come from
 ``config/governance_config.yaml`` (FR-4-27).
 
 Chain state is evaluated per **round**: the sign-off rows since the last RETURN
 (a RETURN resets the artifact to its editable state and starts a fresh round).
 ``required_final_level`` is fixed at the first sign-off of a round (from the
-caller-supplied ΔTEV fraction) and reused thereafter, so the materiality decision
-is stable across the chain.
+materiality metric — the max absolute multiplier change vs the prior approved
+version) and reused thereafter, so the materiality decision is stable across
+the chain.
 """
 
 from __future__ import annotations
@@ -37,14 +37,10 @@ import yaml
 
 from src.governance import rbac
 from src.governance.audit import append_event, record_ae_event
-from src.governance.lineage import create_version
+from src.governance.lineage import compare_versions, create_version
 from src.governance.rbac import Action, PermissionDenied
 from src.governance.users import DEFAULT_CONFIG_PATH
-from src.assumptions.workflow import (
-    get_workflow_iterations,
-    record_governance_approval,
-    transition_assumption_set_status,
-)
+from src.assumptions.workflow import transition_assumption_set_status
 from src.utils.db_init import DEFAULT_DB_PATH
 from src.utils.types import (
     ArtifactType,
@@ -100,24 +96,27 @@ def _level_of_role_or(chain: list[ChainLevel], role_value: str, default: int) ->
     return default
 
 
-def required_final_level(delta_tev: Optional[float], cfg: dict) -> int:
+def required_final_level(materiality_value: Optional[float], cfg: dict) -> int:
     """The minimum required *final* sign-off level (FR-4-16).
 
-    A study run (``delta_tev is None``) always runs the **full** chain (FR-4-14).
-    For an assumption set, ``|ΔTEV|`` above ``materiality.delta_tev_threshold``
-    requires the ``chief_actuary`` level; at/below it the chain may complete at
-    ``materiality.final_level_below_threshold``. ``delta_tev`` is the ΔTEV fraction
-    vs the prior approved set, computed by the caller.
+    A study run (``materiality_value is None``) always runs the **full** chain
+    (FR-4-14) — as does an assumption set with no prior approved version to
+    compare against. For an assumption set, a materiality metric (the max
+    absolute multiplier change vs the prior approved version, see
+    ``materiality_vs_prior_approved``) above
+    ``materiality.max_multiplier_delta_threshold`` requires the
+    ``chief_actuary`` level; at/below it the chain may complete at
+    ``materiality.final_level_below_threshold``.
     """
     chain = load_chain(cfg)
     if not chain:
         raise ValueError("No approval_chain configured.")
     last_level = chain[-1].level  # the final level (robust to non-contiguous numbering)
-    if delta_tev is None:
+    if materiality_value is None:
         return last_level
     mat = cfg.get("materiality") or {}
-    threshold = float(mat.get("delta_tev_threshold", 0.01))
-    if abs(delta_tev) > threshold:
+    threshold = float(mat.get("max_multiplier_delta_threshold", 0.05))
+    if abs(materiality_value) > threshold:
         return _level_of_role_or(chain, Role.CHIEF_ACTUARY.value, last_level)
     below = mat.get("final_level_below_threshold", Role.SENIOR_ACTUARY.value)
     return _level_of_role_or(chain, str(below), last_level)
@@ -177,7 +176,7 @@ def next_required_level(
 def _effective_final_level(
     artifact_type: ArtifactType,
     artifact_id: str,
-    delta_tev: Optional[float],
+    materiality_value: Optional[float],
     cfg: dict,
     db_path: str,
 ) -> int:
@@ -185,7 +184,47 @@ def _effective_final_level(
     round_rows = _round_signoffs(artifact_type, artifact_id, db_path)
     if round_rows and round_rows[-1].get("required_final_level") is not None:
         return int(round_rows[-1]["required_final_level"])
-    return required_final_level(delta_tev, cfg)
+    return required_final_level(materiality_value, cfg)
+
+
+def materiality_vs_prior_approved(
+    assumption_set_id: str, *, db_path: str = DEFAULT_DB_PATH
+) -> Optional[float]:
+    """Materiality metric for a set: max |Δ multiplier| vs its prior approved version.
+
+    Walks the ``parent_set_id`` chain to the nearest ancestor that reached
+    APPROVED (possibly since SUPERSEDED) and returns
+    ``compare_versions(prior, this).materiality_value``. ``None`` when the set
+    has no approved ancestor (a lineage root or an all-draft chain) — the chain
+    then runs in full (FR-4-16 conservative default).
+    """
+    con = duckdb.connect(str(db_path), read_only=True)
+    try:
+        current: Optional[str] = assumption_set_id
+        prior: Optional[str] = None
+        seen: set[str] = set()
+        while current is not None and current not in seen:
+            seen.add(current)
+            row = con.execute(
+                "SELECT parent_set_id, status FROM gold_assumption_sets "
+                "WHERE assumption_set_id = ?",
+                [current],
+            ).fetchone()
+            if row is None:
+                break
+            parent_id = row[0]
+            if current != assumption_set_id and row[1] in (
+                AssumptionSetStatus.APPROVED.value,
+                AssumptionSetStatus.SUPERSEDED.value,
+            ):
+                prior = current
+                break
+            current = parent_id
+    finally:
+        con.close()
+    if prior is None:
+        return None
+    return compare_versions(prior, assumption_set_id, db_path=db_path).materiality_value
 
 
 # ---------------------------------------------------------------------------
@@ -295,8 +334,7 @@ def record_signoff(
     *,
     db_path: str = DEFAULT_DB_PATH,
     config_path: str = DEFAULT_CONFIG_PATH,
-    delta_tev: Optional[float] = None,
-    legacy_context: Optional[dict] = None,
+    materiality_value: Optional[float] = None,
 ) -> SignoffRecord:
     """Record one chain-level sign-off; return the ``SignoffRecord`` (FR-4-13/15).
 
@@ -306,10 +344,14 @@ def record_signoff(
     (``check_segregation``). The comment is mandatory. The row is written
     hash-chained via ``audit.append_event``. On a completing assumption-set APPROVE
     (the signed level equals the round's ``required_final_level``) the set is locked
-    (status APPROVED) and the legacy ``gold_assumption_approvals`` summary is written;
-    a RETURN resets an assumption set to PROPOSED (editable). A study run's
-    "fit for assumption-setting" state is derived from its sign-off rows
+    (status APPROVED); a RETURN resets an assumption set to PROPOSED (editable). A
+    study run's "fit for assumption-setting" state is derived from its sign-off rows
     (``is_study_run_fit``), so nothing is mutated in a table for it.
+
+    ``materiality_value`` (FR-4-16) is the max absolute multiplier change vs the
+    prior approved version. When not supplied for an assumption set it is computed
+    automatically via ``materiality_vs_prior_approved``; a set with no approved
+    ancestor gets ``None`` → the full chain.
     """
     rbac.require(user, Action.SIGN_OFF, config_path=config_path)
     if not comment or not comment.strip():
@@ -330,7 +372,9 @@ def record_signoff(
         )
     check_segregation(user, artifact_type, artifact_id, db_path=db_path, config_path=config_path)
 
-    rfl = _effective_final_level(artifact_type, artifact_id, delta_tev, cfg, db_path)
+    if materiality_value is None and artifact_type == ArtifactType.ASSUMPTION_SET:
+        materiality_value = materiality_vs_prior_approved(artifact_id, db_path=db_path)
+    rfl = _effective_final_level(artifact_type, artifact_id, materiality_value, cfg, db_path)
     attestation = str(cfg.get("attestation_text") or "")
     signoff_id = str(uuid.uuid4())
     signoff_ts = datetime.utcnow()
@@ -349,7 +393,7 @@ def record_signoff(
             "decision": decision.value,
             "comment": comment.strip(),
             "attestation_text": attestation,
-            "delta_tev": delta_tev,
+            "materiality_value": materiality_value,
             "required_final_level": rfl,
             "signoff_ts": signoff_ts,
         },
@@ -367,10 +411,6 @@ def record_signoff(
         if artifact_type == ArtifactType.ASSUMPTION_SET:
             transition_assumption_set_status(
                 Path(db_path), artifact_id, "APPROVED", approved_by=user.username
-            )
-            _write_legacy_summary(
-                user, artifact_id, comment.strip(),
-                db_path=db_path, legacy_context=legacy_context,
             )
         elif artifact_type == ArtifactType.STUDY_RUN:
             # Study run: "fit" is derived from sign-off rows; nothing to lock. Record
@@ -390,82 +430,6 @@ def record_signoff(
         comment=comment.strip(),
         attestation_text=attestation,
         signoff_ts=signoff_ts,
-    )
-
-
-def _write_legacy_summary(
-    user: User,
-    assumption_set_id: str,
-    comment: str,
-    *,
-    db_path: str,
-    legacy_context: Optional[dict],
-) -> None:
-    """Write the Phase-2 ``gold_assumption_approvals`` summary on a completing APPROVE.
-
-    Reuses ``src.assumptions.workflow.record_governance_approval`` so Phase-2 reporting/UI
-    keep working (§G.2 note). Fields not supplied in ``legacy_context`` are read from
-    the DB (source run, author/proposer, latest baseline TEV run, workflow session)
-    and otherwise defaulted, so the engine-level path works without full UI context.
-    """
-    ctx = legacy_context or {}
-    con = duckdb.connect(str(db_path), read_only=True)
-    try:
-        meta = con.execute(
-            "SELECT source_study_run_id, author_id FROM gold_assumption_sets "
-            "WHERE assumption_set_id = ?",
-            [assumption_set_id],
-        ).fetchone()
-        tev = con.execute(
-            "SELECT tev_run_id, total_tev FROM gold_tev_run_log "
-            "WHERE assumption_set_id = ? AND sensitivity_id IS NULL "
-            "ORDER BY run_ts DESC LIMIT 1",
-            [assumption_set_id],
-        ).fetchone()
-        wf = con.execute(
-            "SELECT workflow_session_id FROM gold_workflow_iterations "
-            "WHERE assumption_set_id = ? ORDER BY iteration_ts DESC LIMIT 1",
-            [assumption_set_id],
-        ).fetchone()
-    finally:
-        con.close()
-
-    source_run = ctx.get("source_study_run_id") or (meta[0] if meta else "") or ""
-    proposer_id = ctx.get("proposer_id") or (meta[1] if meta else "") or ""
-    workflow_session_id = ctx.get("workflow_session_id") or (wf[0] if wf else None) or str(uuid.uuid4())
-    tev_run_id = ctx.get("tev_baseline_run_id") or (tev[0] if tev else "") or ""
-
-    baseline_tev = ctx.get("baseline_tev")
-    if baseline_tev is None:
-        baseline_tev = float(tev[1]) if tev and tev[1] is not None else 0.0
-
-    iteration_history = ctx.get("iteration_history")
-    total_iterations = ctx.get("total_iterations")
-    if iteration_history is None:
-        hist = get_workflow_iterations(Path(db_path), workflow_session_id)
-        iteration_history = [{k: str(v) for k, v in h.items()} for h in hist]
-        if total_iterations is None:
-            total_iterations = len([h for h in hist if h.get("stage") in (2, 3)])
-
-    record_governance_approval(
-        db_path=Path(db_path),
-        assumption_set_id=assumption_set_id,
-        workflow_session_id=workflow_session_id,
-        source_study_run_id=source_run,
-        tev_baseline_run_id=tev_run_id,
-        proposer_id=proposer_id,
-        reviewer_id=user.username,
-        reviewer_decision="APPROVE",
-        reviewer_comment=comment,
-        total_iterations=int(total_iterations or 0),
-        envelope_run_flag=bool(ctx.get("envelope_run_flag", False)),
-        baseline_tev=float(baseline_tev),
-        delta_tev_vs_prior=ctx.get("delta_tev_vs_prior"),
-        max_sensitivity_delta=ctx.get("max_sensitivity_delta"),
-        iteration_history=iteration_history,
-        envelope_tev_min=ctx.get("envelope_tev_min"),
-        envelope_tev_max=ctx.get("envelope_tev_max"),
-        proposed_envelope_percentile=ctx.get("proposed_envelope_percentile"),
     )
 
 

@@ -54,6 +54,7 @@ def _page(filename: str, title: str, icon: str) -> st.Page:
 
 # Sidebar navigation — grouped and ordered to follow the end-to-end workflow:
 # set up & run → review experience → get AI help → set assumptions → govern.
+# (Assumption setting is the three-step propose → edit/submit → sign-off flow.)
 pg = st.navigation(
     {
         "1 · Getting Started": [
@@ -73,11 +74,10 @@ pg = st.navigation(
             _page("15_assumption_comparison.py", "Assumption Comparison", "🤖"),
             _page("16_ai_analyst.py",            "AI Analyst",            "🧠"),
         ],
-        "5 · Assumption Setting (TEV)": [
-            _page("20_tev_stage1.py", "Stage 1: Select Study Basis", "1️⃣"),
-            _page("21_tev_stage2.py", "Stage 2: Edit Assumptions",   "2️⃣"),
-            _page("22_tev_stage3.py", "Stage 3: TEV Analysis",       "3️⃣"),
-            _page("23_tev_stage4.py", "Stage 4: Approve & Lock",     "4️⃣"),
+        "5 · Assumption Setting": [
+            _page("20_assumption_step1.py", "Step 1: Select Study Basis", "1️⃣"),
+            _page("21_assumption_step2.py", "Step 2: Edit & Submit",      "2️⃣"),
+            _page("22_assumption_step3.py", "Step 3: Sign Off & Lock",    "3️⃣"),
         ],
         "6 · Governance": [
             _page("26_governance_audit.py",    "Audit & Integrity",    "🛡️"),

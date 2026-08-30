@@ -38,7 +38,6 @@ _VERIFIABLE_LOGS = [
     "gold_governance_signoffs",
     "gold_ae_governance_events",
     "gold_workflow_iterations",
-    "gold_assumption_approvals",
 ]
 
 _DISPLAY_COLUMNS = ["ts", "source", "actor", "role", "action", "artifact", "detail"]

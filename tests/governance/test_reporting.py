@@ -58,7 +58,7 @@ def _write_chain_config(path: Path) -> str:
         ],
         "segregation": {"allow_multi_level_signoff": False},
         "materiality": {
-            "delta_tev_threshold": 0.01,
+            "max_multiplier_delta_threshold": 0.01,
             "final_level_below_threshold": "senior_actuary",
         },
         "attestation_text": _ATTEST,
@@ -138,7 +138,7 @@ def _approve_assumption_set(db: str, cfg: str, set_id: str, version: int) -> Non
         record_signoff(
             _u(db, uname), ArtifactType.ASSUMPTION_SET, set_id, version,
             Decision.APPROVE, f"reviewed by {uname}",
-            db_path=db, config_path=cfg, delta_tev=0.05,
+            db_path=db, config_path=cfg, materiality_value=0.05,
         )
 
 
@@ -482,7 +482,7 @@ def test_dashboard_global_pending_spans_roles(gov_env, cfg):
     awaiting_senior = _seed_set(db, status=AssumptionSetStatus.PROPOSED)
     record_signoff(  # one junior sign-off advances this one to the senior level
         _u(db, "j.junior"), ArtifactType.ASSUMPTION_SET, awaiting_senior, 1,
-        Decision.APPROVE, "junior ok", db_path=db, config_path=cfg, delta_tev=0.05,
+        Decision.APPROVE, "junior ok", db_path=db, config_path=cfg, materiality_value=0.05,
     )
     pending = {p["artifact_id"]: p["required_role"] for p in dashboard_data(db_path=db, config_path=cfg)["pending_approvals"]}
     assert pending.get(awaiting_junior) == "junior_actuary"

@@ -1,10 +1,11 @@
-"""Stage 4 — Governance Sign-Off.
+"""Step 3 — Governance Sign-Off & Lock.
 
-Presents the TEV Impact Report to a reviewer (different from the proposer),
-captures the governance decision (APPROVE or RETURN TO STAGE 2), and records
-the immutable approval record.
-
-Implements FR-2-42 to FR-2-46.
+Presents the submitted assumption set to the configured multi-level approval
+chain, captures each governance decision (APPROVE or RETURN), and locks the
+set on the completing approval. The signing actor is the authenticated user;
+proposer ≠ approver is enforced at every level (FR-4-05). The materiality
+metric (max |Δ multiplier| vs the prior approved version) drives the required
+final sign-off level (FR-4-16).
 """
 import sys
 import uuid
@@ -16,7 +17,7 @@ import duckdb
 import pandas as pd
 import streamlit as st
 
-from ui.config import DB_PATH, CONFIG_DIR, REPORTS_DIR
+from ui.config import DB_PATH, CONFIG_DIR
 from ui import skills_logic as skills
 from src.ai.llm.base import LLMProviderError
 from src.ai.llm.client import load_llm_config
@@ -25,59 +26,45 @@ import yaml
 
 from src.utils.types import ArtifactType, Decision, DecrementType
 from src.assumptions.assumption_set import load_assumption_set
-from src.assumptions.workflow import (
-    get_workflow_iterations,
-)
-from src.reporting.generator import generate_tev_impact_report
+from src.assumptions.workflow import get_workflow_iterations
 
-# Phase 4 — configurable approval chain (Session 25, FR-4-12..18).
+# Phase 4 — configurable approval chain (FR-4-12..18).
 from src.governance.auth import current_user
 from src.governance.rbac import PermissionDenied, may_sign_off_at
 from src.governance.workflow import (
     SegregationViolation,
     check_segregation,
     load_chain,
+    materiality_vs_prior_approved,
     next_required_level,
     pending_approvals,
     record_signoff,
 )
 
-st.set_page_config(page_title="TEV Stage 4 — Governance Sign-Off", layout="wide")
+st.set_page_config(page_title="Step 3 — Sign Off & Lock", layout="wide")
 
 from ui.config import require_auth
 require_auth()
-st.title("Stage 4 — Governance Sign-Off")
+st.title("Step 3 — Governance Sign-Off & Lock")
 st.markdown(
-    "This stage is **locked until Stage 3 is approved**. "
-    "The reviewer must be a different actuary from the proposer. "
-    "An **APPROVE** decision locks the assumption set permanently. "
-    "A **RETURN** decision sends the workflow back to Stage 2."
+    "This step accepts assumption sets that have been **submitted for sign-off** "
+    "in Step 2. The reviewer must be a different actuary from the proposer. "
+    "The completing **APPROVE** locks the assumption set permanently. "
+    "A **RETURN** decision re-opens it for editing in Step 2."
 )
 
 # ---------------------------------------------------------------------------
 # Workflow progress indicator
 # ---------------------------------------------------------------------------
-cols_prog = st.columns(4)
-cols_prog[0].success("Stage 1 — Experience Study ✓")
-cols_prog[1].success("Stage 2 — Propose Assumptions ✓")
-cols_prog[2].success("Stage 3 — TEV Impact Analysis ✓")
-cols_prog[3].info("**Stage 4** — Governance Sign-Off")
+cols_prog = st.columns(3)
+cols_prog[0].success("Step 1 — Select Study Basis ✓")
+cols_prog[1].success("Step 2 — Edit & Submit ✓")
+cols_prog[2].info("**Step 3** — Sign Off & Lock")
 
 st.divider()
 
 # ---------------------------------------------------------------------------
-# Session state guard + DB status check
-# ---------------------------------------------------------------------------
-aset_id = st.session_state.get("active_assumption_set_id")
-if not aset_id:
-    st.warning(
-        "No active assumption set found. "
-        "Start from **Stage 1** to create or resume a workflow."
-    )
-    st.stop()
-
-# ---------------------------------------------------------------------------
-# Load assumption set for display
+# Assumption-set selection: session first, else pick a submitted set
 # ---------------------------------------------------------------------------
 @st.cache_data(ttl=0)
 def _load_aset(aset_id: str):
@@ -85,88 +72,92 @@ def _load_aset(aset_id: str):
 
 
 @st.cache_data(ttl=0)
-def _load_run_meta(study_run_id: str, tev_run_id_: str):
-    """Fetch human-readable labels for study run and TEV run."""
+def _load_run_meta(study_run_id: str):
+    """Fetch a human-readable label for the source study run."""
     con = duckdb.connect(str(DB_PATH), read_only=True)
     try:
-        sr = con.execute(
+        return con.execute(
             "SELECT run_ts, product_codes FROM gold_study_runs WHERE run_id = ?",
             [study_run_id],
         ).fetchone()
-        tr = con.execute(
-            "SELECT run_ts FROM gold_tev_run_log WHERE tev_run_id = ?",
-            [tev_run_id_],
-        ).fetchone()
     finally:
         con.close()
-    return sr, tr
 
 
-aset = _load_aset(aset_id)
+con = duckdb.connect(str(DB_PATH), read_only=True)
+try:
+    _submitted = con.execute("""
+        SELECT assumption_set_id, version, status, author_id, effective_date
+        FROM gold_assumption_sets
+        WHERE status IN ('STAGE3_APPROVED', 'APPROVED')
+        ORDER BY created_ts DESC LIMIT 20
+    """).df()
+finally:
+    con.close()
 
-# Reject sets that are not yet at Stage 3 approval (or beyond).
-if aset.status not in ("STAGE3_APPROVED", "APPROVED"):
+_session_id = st.session_state.get("active_assumption_set_id")
+_options: dict[str, str] = {}
+if _session_id:
+    _options[f"(from session) {_session_id[:8]}…"] = _session_id
+for _, r in _submitted.iterrows():
+    lbl = (f"{r['author_id']} | v{r['version']} | eff. {r['effective_date']} "
+           f"({r['status']}) — {r['assumption_set_id'][:8]}…")
+    _options.setdefault(lbl, r["assumption_set_id"])
+
+if not _options:
     st.warning(
-        f"Assumption set status is **{aset.status}** — expected STAGE3_APPROVED. "
-        "Return to Stage 3 and approve before proceeding."
+        "No assumption set is awaiting sign-off. Submit one from "
+        "**Step 2 — Edit & Submit** first."
     )
     st.stop()
 
-# For sets that are not yet fully APPROVED, require the session-state flag
-# set by Stage 3's approve button. This prevents direct URL navigation to
-# Stage 4 mid-workflow. Already-APPROVED sets bypass this gate because
-# session state is cleared after approval and the set is permanently locked.
-if aset.status != "APPROVED":
-    stage3_approved = st.session_state.get("stage3_approved", False)
-    if not stage3_approved:
-        st.warning(
-            "Stage 3 has not been approved yet for this session. "
-            "Complete Stage 3 and click **Approve and proceed to Stage 4** before continuing."
-        )
-        st.stop()
+_sel = st.selectbox("Assumption set", list(_options.keys()), key="s3_set_selector")
+aset_id = _options[_sel]
+st.session_state["active_assumption_set_id"] = aset_id
+
+aset = _load_aset(aset_id)
+
+# Only sets submitted for sign-off (or already locked) belong on this page.
+if aset.status not in ("STAGE3_APPROVED", "APPROVED"):
+    st.warning(
+        f"Assumption set status is **{aset.status}** — expected STAGE3_APPROVED. "
+        "Return to Step 2 and submit it for sign-off first."
+    )
+    st.stop()
 
 workflow_session_id = st.session_state.get("workflow_session_id", str(uuid.uuid4()))
-# The proposer is the set's recorded author (FR-4-03) — never the current signer and
-# never the "ACTUARY_1" placeholder. Prefer the session value, else the persisted
-# author_id so segregation and the legacy summary attribute the real proposer.
+# The proposer is the set's recorded author (FR-4-03) — never the current signer.
 proposer_id = (
     st.session_state.get("workflow_author_id")
     or getattr(aset, "author_id", None)
     or "UNKNOWN"
 )
-tev_run_id = st.session_state.get("s3_tev_run_id", "")
-total_tev = st.session_state.get("s3_total_tev", 0.0)
-delta_tev = st.session_state.get("s3_delta_tev")
-max_sensitivity_delta = st.session_state.get("s3_max_sensitivity_delta")
-source_study_run_id = st.session_state.get("source_study_run_id", "")
-envelope_run = st.session_state.get("s3_envelope_run", False)
-envelope_tev_min = st.session_state.get("s3_envelope_tev_min")
-envelope_tev_max = st.session_state.get("s3_envelope_tev_max")
-envelope_percentile = st.session_state.get("s3_envelope_percentile")
-env_res_obj = st.session_state.get("s3_env_result")
+source_study_run_id = (
+    st.session_state.get("source_study_run_id") or aset.source_study_run_id or ""
+)
 
 if aset.status == "APPROVED":
-    st.success(
-        f"✅ This assumption set is already **APPROVED**. "
-        f"No further action required."
-    )
+    st.success("✅ This assumption set is already **APPROVED**. No further action required.")
     st.divider()
 
 # ---------------------------------------------------------------------------
 # Summary panel
 # ---------------------------------------------------------------------------
 st.subheader("Assumption Set Summary")
+
+_materiality = materiality_vs_prior_approved(aset_id, db_path=str(DB_PATH))
+
 info_col1, info_col2, info_col3, info_col4 = st.columns(4)
 aset_label = f"v{aset.version} ({str(aset.effective_date)[:10]}, {proposer_id})"
 info_col1.metric("Assumption Set", aset_label)
 info_col2.metric("Proposer", proposer_id)
-info_col3.metric("Baseline TEV", f"${total_tev:,.0f}")
-if delta_tev is not None:
-    info_col4.metric("ΔTEV vs prior", f"${delta_tev:+,.0f}")
+info_col3.metric("Status", str(aset.status.value if hasattr(aset.status, "value") else aset.status))
+if _materiality is not None:
+    info_col4.metric("Materiality (max |Δ mult|)", f"{_materiality:.4f}")
 else:
-    info_col4.metric("ΔTEV vs prior", "N/A (first run)")
+    info_col4.metric("Materiality", "First approval")
 
-sr_meta, tr_meta = _load_run_meta(source_study_run_id, tev_run_id)
+sr_meta = _load_run_meta(source_study_run_id) if source_study_run_id else None
 if sr_meta:
     sr_label = f"{sr_meta[1]} @ {str(sr_meta[0])[:10]}"
 elif source_study_run_id:
@@ -174,22 +165,11 @@ elif source_study_run_id:
 else:
     sr_label = "—"
 
-if tr_meta:
-    tr_label = str(tr_meta[0])[:16]
-elif tev_run_id:
-    tr_label = f"(metadata not found — id `{tev_run_id[:8]}…`)"
-else:
-    tr_label = "—"
-
-cols_detail = st.columns(3)
-cols_detail[0].caption(f"**Source study:** {sr_label}")
-cols_detail[1].caption(f"**TEV run:** {tr_label}")
-cols_detail[2].caption(f"**Envelope analysis run:** {'Yes' if envelope_run else 'No'}")
+st.caption(f"**Source study:** {sr_label}")
 with st.expander("Audit trail IDs (raw UUIDs)", expanded=False):
     st.code(
         f"assumption_set_id   = {aset_id}\n"
         f"source_study_run_id = {source_study_run_id or '—'}\n"
-        f"tev_run_id          = {tev_run_id or '—'}\n"
         f"workflow_session_id = {workflow_session_id or '—'}",
         language="text",
     )
@@ -207,67 +187,13 @@ if history:
     hist_df = pd.DataFrame(history)
     display_cols = [
         "iteration_number", "stage", "action", "actuary_id",
-        "total_tev", "delta_tev_vs_prior",
-        "envelope_run_flag",
         "actuary_comment", "iteration_ts",
     ]
     hist_df = hist_df[[c for c in display_cols if c in hist_df.columns]]
-    hist_disp = hist_df.copy()
-    if "total_tev" in hist_disp.columns:
-        hist_disp["total_tev"] = hist_disp["total_tev"].apply(lambda v: f"${v:,.0f}" if pd.notna(v) else "")
-    if "delta_tev_vs_prior" in hist_disp.columns:
-        hist_disp["delta_tev_vs_prior"] = hist_disp["delta_tev_vs_prior"].apply(lambda v: f"${v:+,.0f}" if pd.notna(v) else "")
-    st.dataframe(hist_disp, hide_index=True, use_container_width=True)
-    st.caption(f"Total Stage 2/3 iterations: **{total_iterations}**")
+    st.dataframe(hist_df, hide_index=True, use_container_width=True)
+    st.caption(f"Total Step 2 iterations this session: **{total_iterations}**")
 else:
     st.caption("No iteration records found for this workflow session.")
-
-st.divider()
-
-# ---------------------------------------------------------------------------
-# TEV Impact Report
-# ---------------------------------------------------------------------------
-st.subheader("TEV Impact Report")
-st.markdown(
-    "Generate the TEV Impact Report for governance review. "
-    "This is the document the reviewer uses as the basis for sign-off."
-)
-
-gen_col, _ = st.columns([2, 3])
-with gen_col:
-    if st.button("Generate TEV Impact Report", use_container_width=True):
-        with st.spinner("Generating report…"):
-            try:
-                report_path = generate_tev_impact_report(
-                    db_path=DB_PATH,
-                    assumption_set_id=aset_id,
-                    tev_run_id=tev_run_id,
-                    workflow_session_id=workflow_session_id,
-                    output_dir=REPORTS_DIR,
-                    envelope_run=envelope_run,
-                    envelope_tev_min=envelope_tev_min,
-                    envelope_tev_max=envelope_tev_max,
-                    envelope_percentile=envelope_percentile,
-                    envelope_width_abs=env_res_obj.envelope_width_abs if env_res_obj else None,
-                    envelope_width_pct=env_res_obj.envelope_width_pct if env_res_obj else None,
-                    top5_decrements=env_res_obj.top5_decrements if env_res_obj else None,
-                    theta_proposed=env_res_obj.theta_proposed if env_res_obj else None,
-                    theta_min=env_res_obj.theta_min if env_res_obj else None,
-                    theta_max=env_res_obj.theta_max if env_res_obj else None,
-                    credibility_bounds=env_res_obj.credibility_bounds if env_res_obj else None,
-                )
-                with open(report_path, "rb") as f:
-                    report_bytes = f.read()
-                st.session_state["s4_report_path"] = str(report_path)
-                st.success(f"Report generated: `{Path(report_path).name}`")
-                st.download_button(
-                    "Download TEV Impact Report (HTML)",
-                    data=report_bytes,
-                    file_name=Path(report_path).name,
-                    mime="text/html",
-                )
-            except Exception as exc:
-                st.error(f"Report generation failed: {exc}")
 
 st.divider()
 
@@ -308,7 +234,6 @@ else:
             try:
                 memo_input = skills.assemble_memo_input(
                     DB_PATH, source_study_run_id, memo_decrement, memo_product,
-                    whatif_delta_tev=delta_tev,
                 )
                 st.session_state["s4_memo_out"] = interpret_ae_and_draft_memo(
                     memo_input, load_llm_config(CONFIG_DIR / "llm_config.yaml"), memo_model
@@ -362,18 +287,10 @@ except Exception as exc:
 
 st.subheader("Governance Sign-Off")
 st.caption(
-    "The legacy single Stage-4 reviewer is generalised into the configured "
-    "multi-level approval chain. The signing actor is your authenticated identity; "
-    "proposer ≠ approver is enforced at every level (FR-4-05)."
+    "Approvals run through the configured multi-level chain. The signing actor is "
+    "your authenticated identity; proposer ≠ approver is enforced at every level "
+    "(FR-4-05)."
 )
-
-# ΔTEV fraction vs the prior approved set drives the materiality-required final
-# level (FR-4-16); None when there is no prior (first approval → full chain).
-delta_frac = None
-if delta_tev is not None and total_tev:
-    prior_tev = total_tev - delta_tev
-    if prior_tev:
-        delta_frac = abs(delta_tev) / abs(prior_tev)
 
 # Current chain state (current round = sign-offs since the last RETURN).
 _con = duckdb.connect(DB, read_only=True)
@@ -409,11 +326,15 @@ if next_level is None:
     st.success("✅ The approval chain is complete; the assumption set is locked (APPROVED).")
     st.stop()
 
+_mat_threshold = float(
+    ((_gov_cfg.get("materiality") or {}).get("max_multiplier_delta_threshold", 0.05))
+)
 st.caption(
     f"Next required level: **{next_level.level} — {next_level.required_role.value}**. "
     + (
-        f"Materiality: |ΔTEV| ≈ {delta_frac:.2%} vs prior approved set."
-        if delta_frac is not None
+        f"Materiality: max |Δ multiplier| = {_materiality:.4f} vs prior approved "
+        f"version (threshold {_mat_threshold:.2f})."
+        if _materiality is not None
         else "Materiality: first approval — the full chain is required."
     )
 )
@@ -453,7 +374,7 @@ signoff_comment = st.text_area(
 )
 decision = st.radio(
     "Decision",
-    options=["APPROVE", "RETURN TO STAGE 2"],
+    options=["APPROVE", "RETURN TO STEP 2"],
     index=0,
     horizontal=True,
     key="s4_chain_decision",
@@ -474,39 +395,22 @@ if submit_btn:
             st.error(e)
     else:
         dec = Decision.APPROVE if decision == "APPROVE" else Decision.RETURN
-        legacy_ctx = {
-            "workflow_session_id": workflow_session_id,
-            "source_study_run_id": source_study_run_id,
-            "tev_baseline_run_id": tev_run_id,
-            "proposer_id": proposer_id,
-            "baseline_tev": total_tev,
-            "delta_tev_vs_prior": delta_tev,
-            "max_sensitivity_delta": max_sensitivity_delta,
-            "total_iterations": total_iterations,
-            "envelope_run_flag": envelope_run,
-            "envelope_tev_min": envelope_tev_min,
-            "envelope_tev_max": envelope_tev_max,
-            "proposed_envelope_percentile": envelope_percentile,
-            "iteration_history": [{k: str(v) for k, v in h.items()} for h in history],
-        }
         with st.spinner("Recording sign-off…"):
             try:
                 rec = record_signoff(
                     me, ArtifactType.ASSUMPTION_SET, aset_id, aset.version, dec,
                     signoff_comment.strip(), db_path=DB, config_path=GOV_CONFIG,
-                    delta_tev=delta_frac, legacy_context=legacy_ctx,
                 )
             except (PermissionDenied, SegregationViolation, ValueError) as exc:
                 st.error(str(exc))
                 st.stop()
 
         _load_aset.clear()
-        st.session_state["stage3_approved"] = False
         if dec == Decision.RETURN:
             st.warning(
-                f"**Returned to Stage 2** by {me.display_name}. The set is back to PROPOSED. "
+                f"**Returned to Step 2** by {me.display_name}. The set is back to PROPOSED. "
                 f"Comment: _{signoff_comment.strip()}_  \n"
-                f"Navigate to **Stage 2** to make the requested changes."
+                f"Navigate to **Step 2** to make the requested changes."
             )
         else:
             complete = next_required_level(
@@ -529,26 +433,22 @@ if submit_btn:
         st.rerun()
 
 # ---------------------------------------------------------------------------
-# View existing approvals
+# View existing sign-offs
 # ---------------------------------------------------------------------------
-with st.expander("All approvals for this assumption set", expanded=False):
+with st.expander("All sign-offs for this assumption set", expanded=False):
     con = duckdb.connect(str(DB_PATH), read_only=True)
     try:
-        approvals = con.execute("""
-            SELECT approval_id, reviewer_id, reviewer_decision,
-                   reviewer_comment, proposed_ts, approved_ts,
-                   total_iterations, baseline_tev, delta_tev_vs_prior
-            FROM gold_assumption_approvals
-            WHERE assumption_set_id = ?
-            ORDER BY proposed_ts DESC
+        signoffs = con.execute("""
+            SELECT chain_level, required_role, actor_role, decision,
+                   comment, materiality_value, signoff_ts
+            FROM gold_governance_signoffs
+            WHERE artifact_type = 'ASSUMPTION_SET' AND artifact_id = ?
+            ORDER BY seq DESC
         """, [aset_id]).df()
     finally:
         con.close()
 
-    if approvals.empty:
-        st.caption("No approval records yet.")
+    if signoffs.empty:
+        st.caption("No sign-off records yet.")
     else:
-        approvals_disp = approvals.copy()
-        approvals_disp["baseline_tev"] = approvals_disp["baseline_tev"].apply(lambda v: f"${v:,.0f}" if pd.notna(v) else "")
-        approvals_disp["delta_tev_vs_prior"] = approvals_disp["delta_tev_vs_prior"].apply(lambda v: f"${v:+,.0f}" if pd.notna(v) else "")
-        st.dataframe(approvals_disp, hide_index=True, use_container_width=True)
+        st.dataframe(signoffs, hide_index=True, use_container_width=True)

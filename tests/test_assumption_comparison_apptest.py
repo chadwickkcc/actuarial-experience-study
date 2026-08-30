@@ -61,10 +61,10 @@ def test_skill_buttons_are_live_not_greyed():
     assert "explain_shap_results" in src              # SHAP Skill wired
 
 
-def test_stage4_has_live_memo_skill():
-    """Session 19 (FR-3B-20): the memo Skill is reachable from Stage-4 governance."""
+def test_signoff_step_has_live_memo_skill():
+    """Session 19 (FR-3B-20): the memo Skill is reachable from the sign-off step."""
     import pathlib
 
-    src = pathlib.Path("ui/views/23_tev_stage4.py").read_text(encoding="utf-8")
+    src = pathlib.Path("ui/views/22_assumption_step3.py").read_text(encoding="utf-8")
     assert "interpret_ae_and_draft_memo" in src
     assert "Draft A/E memo (AI)" in src
