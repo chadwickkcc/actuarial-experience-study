@@ -17,11 +17,27 @@ Universal Life (VUL), and Deferred Annuities.
 - @docs/phase3_claude_code_prompts.md — the per-session prompt blocks (Sessions 14–22)
 - @docs/phase3_build_progress.md — what is built so far, DoD status, known limitations, next session
 
+## ⚡ DEMO REFRESH IN PROGRESS (2026-08-30 →) — read this first
+This copy of the codebase is being refreshed into a **client-facing demo**: TEV modelling is
+being **removed entirely**, management-commentary analytics (YoY movement/drivers/trends/actions)
+and an AI fraud-detection module are being **added**, the dataset is being expanded/regenerated,
+and the UI is being streamlined. Driver documents (read before any refresh session, in order):
+- @docs/demo_refresh_progress.md — status board + resume protocol (which phase is next)
+- @docs/demo_refresh_prompts.md — per-phase session blocks (P1–P8)
+- @docs/demo_refresh_scope.md — **decision authority**; where it names a schema, interface,
+  page, prompt, or config, it **supersedes** the legacy specs below and rules 1–2.
+The Phase 1–4 history below remains accurate as history; TEV-related statements describe the
+pre-refresh state.
+
 ## Key rules
 1. All database schemas must exactly match the DDL in the technical spec (v2.0.1 Section A;
    §D for the new AI Gold tables). Do not add, rename, or remove columns from those schemas.
+   **Demo refresh:** for schemas the refresh changes, `docs/demo_refresh_scope.md` §3.9 is the
+   authority instead.
 2. All module function signatures must exactly match the interfaces in the technical spec
    (v2.0.1 Section B; §E for the AI layer). Do not invent alternative return types.
+   **Demo refresh:** for modules the refresh moves/changes (src/assumptions/, src/analysis/,
+   src/fraud/, trimmed AI surface), `docs/demo_refresh_scope.md` §3 is the authority instead.
 3. All product-specific logic goes in YAML config files under config/products/.
    The calculation engine must be product-agnostic Python.
 4. The random seed for all synthetic data generation is 42.
