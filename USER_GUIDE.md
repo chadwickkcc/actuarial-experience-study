@@ -1,4 +1,4 @@
-# User Guide — Experience Study & TEV Tool
+# User Guide — Experience Study Tool
 
 A step-by-step guide to installing, running, and maintaining the tool. For the
 project overview and the reproducible-install summary, see
@@ -8,12 +8,13 @@ project overview and the reproducible-install summary, see
 
 ## 1. What this tool is
 
-A Python-based actuarial **experience study** and **TEV (Traditional Embedded
-Value)** modelling tool for life insurance, covering five product families —
+A Python-based, AI-enabled actuarial **experience study** demo for life
+insurance, covering five product families —
 Term Life, Whole Life, Universal Life (UL/ULSG), Variable Universal Life (VUL),
 and Deferred Annuities. It runs a Bronze → Silver → Gold data pipeline, computes
 A/E (actual-to-expected) experience, proposes assumptions (with an optional AI
-layer), models TEV, and enforces a multi-role governance & sign-off workflow. The
+layer), screens claims for fraud, drafts management commentary, and enforces a
+multi-role governance & sign-off workflow. The
 UI is a Streamlit app; all data used is **synthetic** — there is no real
 policyholder information.
 
@@ -96,7 +97,7 @@ streamlit run ui/app.py
 A **login gate** appears first — sign in as one of the four users (see §8). After
 signing in, the sidebar groups the workflow into numbered sections (Getting
 Started → Experience Results → Product Monitors → AI Assistance → Assumption
-Setting / TEV → Governance).
+Setting → Governance).
 
 ---
 
@@ -107,7 +108,7 @@ The database starts empty. To populate it:
 1. Open the **Study Setup / Run Study** page in the UI.
 2. Generate the synthetic dataset (or trigger a study run) — this rebuilds the
    Bronze → Silver → Gold layers from the synthetic source data.
-3. Explore the A/E results, product monitors, assumption proposals, and TEV pages.
+3. Explore the A/E results, management commentary, fraud monitor, and assumption pages.
 
 The random seed for all synthetic data generation is fixed (42), so runs are
 reproducible.
@@ -118,7 +119,7 @@ reproducible.
 
 Sign-off follows a three-level chain: **junior → senior → chief**. The
 **proposer can never be an approver** (segregation of duties is enforced), and
-the required final level depends on materiality (|ΔTEV| ≥ threshold requires the
+the required final level depends on materiality (max |Δ multiplier| ≥ threshold requires the
 chief actuary).
 
 | Role | Default username | What it can do |

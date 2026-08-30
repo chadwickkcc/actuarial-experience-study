@@ -188,8 +188,10 @@ from client-visible copy (grep-guarded).
   .venv/bin/python -m pytest tests/ -v --tb=short` green. Baseline at P0: **1368 passed,
   6 skipped**.
 - **Live-DB rebuild rule:** any phase changing DDL or the generator ends with a headless
-  rebuild (`scripts/reset_for_testing.py` → `scripts/_uat_rerun.py` → `scripts/_uat_ai_fit.py`)
-  so realdata tests + the running app stay coherent and hash chains restart fresh.
+  rebuild (`scripts/reset_for_testing.py` → `scripts/_uat_rerun.py` → `scripts/_uat_ai_fit.py`
+  → `scripts/_uat_seed_workflow.py`) so realdata tests + the running app stay coherent, hash
+  chains restart fresh, and the DB ships with seeded users + one completed example
+  assumption-set workflow (P8 addition — `_uat_rerun.py` also seeds `gold_users`).
 - Governance spine never relaxed: MCP-only chatbot data path; AI dynamic SQL via
   `src/utils/sql_boundary.py`; traceability blocks-not-repairs; PII bright line; every
   threshold in YAML; seed 42; no new dependencies; delete over dead code.

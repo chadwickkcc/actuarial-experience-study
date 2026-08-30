@@ -235,3 +235,25 @@ part of the offline gate:
    "Post-UAT hardening (round 4)" re-test checklist.
 
 **Severity:** Low — go-live operational steps, not a defect; the build + offline tests are complete.
+
+---
+
+## [ ] FU-7 — Demo-refresh deferrals (2026-08-30) — **OPEN (owner decisions)**
+
+Recorded at P8 of the demo refresh (`docs/demo_refresh_scope.md` §6):
+
+1. **Fraud investigator-override workflow.** The DQ engine has a governed
+   per-record override trail; the fraud monitor deliberately shipped without one
+   (flags are investigation prompts, not exclusions). Add a DQ-style
+   `investigator_override_*` trail on `gold_fraud_scores` if the demo evolves
+   toward case management.
+2. **Optional fraud/commentary golden-set additions.** The locked eval sets were
+   trimmed (golden 36→30, adversarial A007 retargeted) and await owner re-lock;
+   the owner may also add golden Q→SQL pairs for `gold_fraud_run_summary` and
+   the yoy/trends commentary surface.
+3. **`anti_selection_flag` computed but dropped before insert** (pre-existing
+   Phase-1 quirk; the Gold column is always FALSE). Harmless; out of demo scope.
+4. **Empty-assumption-set lifecycle-UI skip.** `tests/governance/test_lifecycle_ui.py`
+   skips on a freshly rebuilt DB until an assumption set exists (the demo
+   walkthrough creates one live). Seed a demo set post-rebuild if a green
+   no-skip run matters.

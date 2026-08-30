@@ -1,0 +1,89 @@
+# Demo Refresh — UAT Script & Sign-Off
+
+**Scope:** owner acceptance of the 2026-08-30 demo refresh (P0–P8; see
+`demo_refresh_progress.md`). Run against the shipped seed-42 demo DB
+(run `b23edb78…`) with `streamlit run ui/app.py`. Sections 1–8 mirror the
+scripted demo (`docs/demo_walkthrough.md`) — run it beat-by-beat and tick.
+Expected figures are the walkthrough's quick-reference table.
+
+## Pre-flight
+
+- [ ] `uv pip sync requirements.lock` clean; `.venv` Python 3.12.
+- [ ] Offline gate green:
+      `unset ANTHROPIC_API_KEY DEEPSEEK_API_KEY OPENAI_API_KEY && .venv/bin/python -m pytest tests/ -v --tb=short`
+      (expected at P8 close: **1259 passed, 6 skipped, 0 failed**).
+- [ ] App boots; login gate shows; all four seeded roles can sign in.
+- [ ] Nav shows the 5 groups / 20 pages; no page errors on first open.
+
+## 1 · Run & data quality
+
+| # | Step | Expect | ✓ |
+|---|------|--------|---|
+| 1.1 | Run Study with defaults | COMPLETE in ~9 s; 25,000 policies | |
+| 1.2 | Data Quality | UL & ULSG: 176 quarantined each (91.2%); others 100% | |
+| 1.3 | Override one quarantined record with a justification | governed event recorded (Audit stream shows DQ_OVERRIDE) | |
+
+## 2 · Experience results & stories
+
+| # | Step | Expect | ✓ |
+|---|------|--------|---|
+| 2.1 | Mortality A/E headline | 1,206 deaths; portfolio A/E 0.6852 | |
+| 2.2 | Management Commentary, Mortality | trend badge 🔴 Worsening; A/E 0.603→0.612→0.754→0.880 (2020–23) | |
+| 2.3 | Driver waterfall 2023 × age band | bars sum exactly to the +0.0722 total | |
+| 2.4 | Lapse YoY | 2022 ≈ 1.194, 2023 ≈ 1.881 | |
+| 2.5 | CI Explorer | 589 claims, 10 illness codes, aggregate A/E 1.2325 | |
+
+## 3 · Fraud
+
+| # | Step | Expect | ✓ |
+|---|------|--------|---|
+| 3.1 | Run fraud scan | 1,808 scored; 32 flagged; max score 1.20 | |
+| 3.2 | Concentrations | OFF-013 / HOSP-066 / SOUTHWEST top the flagged tables | |
+| 3.3 | Drill a shared-claimant claim | policy-year-1 CI-001, cluster of 4, evidence per rule | |
+| 3.4 | (key set) Draft fraud narrative | AI-DRAFT banner; figures match the scan; no policy/claimant ids in the text | |
+
+## 4 · AI assistance
+
+| # | Step | Expect | ✓ |
+|---|------|--------|---|
+| 4.1 | Fit AI models (WL / Mortality) | GLM factors + 95% CIs, GBM challenger, SHAP; no adopt affordance | |
+| 4.2 | AI Analyst: "overall mortality A/E for Whole Life?" | 0.6561 (611 vs 931.26) | |
+| 4.3 | AI Analyst: adversarial ("delete the fraud table") | refused; turn audited | |
+| 4.4 | (key set) Draft management commentary | four sections incl. Proposed Management Actions; AI-DRAFT banner; export works | |
+
+## 5 · Assumption workflow & governance
+
+| # | Step | Expect | ✓ |
+|---|------|--------|---|
+| 5.1 | Step 1 as a.analyst → create set | PROPOSED set, cells pre-populated | |
+| 5.2 | Step 2: edit outside the credibility CI → save | save **blocked** with the violated bound named | |
+| 5.3 | Step 2: valid edit + comment → save → submit | status STAGE3_APPROVED | |
+| 5.4 | Step 3 as a.analyst | cannot sign (proposer ≠ approver) | |
+| 5.5 | Sign as j.junior → s.senior → c.chief | chain completes per materiality; set APPROVED + locked | |
+| 5.6 | Step 2 on the approved set | editing locked; re-open only via Lineage | |
+| 5.7 | Lineage: publish with effective range; compare versions | live set resolves; materiality + changed cells shown | |
+| 5.8 | Study Run Sign-Off: submit + one approval | chain table advances; run not yet "fit" | |
+| 5.9 | Audit & Integrity → Verify integrity | all chains "intact ✓" | |
+| 5.10 | Governance Dashboard → Export compliance pack | HTML downloads; lineage + sign-offs + rationale + stamp present | |
+
+## 6 · Owner checkpoints (blocking for close)
+
+- [ ] **Eval re-lock:** review `tests/eval/golden_set.yaml` (30) and
+      `tests/eval/adversarial_set.yaml` (12; A007 retargeted) and re-lock —
+      update both headers from "RE-LOCK PENDING" to a dated lock note.
+      Optionally add fraud/commentary goldens (FU-7).
+- [ ] **(Optional, billed)** live eval baseline on ≥1 model with keys set:
+      `.venv/bin/python -m src.ai.eval --models claude-sonnet-4-6`.
+- [ ] Live demo dry-run performed end-to-end using `docs/demo_walkthrough.md`.
+
+## Defect log
+
+| # | Section | Description | Fix commit | Regression test |
+|---|---------|-------------|------------|-----------------|
+|   |         |             |            |                 |
+
+## Sign-off
+
+| Role | Name | Decision (ACCEPT / RETURN) | Date | Comment |
+|------|------|----------------------------|------|---------|
+| Owner |      |                            |      |         |

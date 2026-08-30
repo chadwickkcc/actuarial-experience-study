@@ -24,7 +24,7 @@ One phase per session; gate green before proceeding; commit per phase.
 | P5 | Fraud module | L | ✅ COMPLETE (2026-08-30) |
 | P6 | Management commentary | L | ✅ COMPLETE (2026-08-30) |
 | P7 | Slickness pass | M | ✅ COMPLETE (2026-08-30) |
-| P8 | Docs, demo script, UAT | M | — |
+| P8 | Docs, demo script, UAT | M | ✅ BUILD COMPLETE (2026-08-30) — owner dry-run + sign-off pending |
 
 **Test baseline history:**
 | Point | Suite |
@@ -37,6 +37,7 @@ One phase per session; gate green before proceeding; commit per phase.
 | After P5 | 1234 passed, 7 skipped, 0 failed (+17 fraud tests) |
 | After P6 | 1253 passed, 7 skipped, 0 failed (+19 commentary tests) |
 | After P7 | 1258 passed, 7 skipped, 0 failed (+5 UI guards; +1 home test updated) |
+| After P8 (FINAL) | **1259 passed, 6 skipped, 0 failed** (lifecycle-UI skip cleared by the seeded workflow; the 6 skips are the original pre-refresh baseline skips) |
 
 **Owner checkpoints:** P3 eval re-lock (**REQUESTED 2026-08-30** — golden 36→30
 [G027–G032 removed], adversarial A007 retargeted to `gold_ai_proposed_factors`;
@@ -425,3 +426,44 @@ sections.
 **DoD:** gate green **1258 passed, 7 skipped, 0 failed**; boot smoke HTTP 200.
 
 **Next session: P8** (see `demo_refresh_prompts.md` → P8).
+
+---
+
+## P8 — Docs, demo script, UAT — BUILD COMPLETE (2026-08-30); owner sign-off pending
+
+**Docs refreshed:** `README.md` + `USER_GUIDE.md` de-TEV'd and re-pitched
+(AI-enabled demo feature set); dated **supersession notes** stamped on all four
+legacy specs (v4_0 + v3_0 in `docs/`, v3_0_1 + v2_0_1 in `docs_archive/`);
+CLAUDE.md finalised (project blurb, governing-doc pointers fixed to the real
+file locations, refresh section → BUILD COMPLETE); `DEFERRED_FOLLOWUPS.md`
+gains **FU-7** (fraud investigator-override workflow; optional fraud/commentary
+goldens; the pre-existing `anti_selection_flag` quirk; lifecycle-skip note).
+
+**Demo script:** `docs/demo_walkthrough.md` — nine-beat, 20–30 min script
+(login → run → DQ → mortality story → lapse story → CI → commentary+waterfall →
+fraud-ring reveal → AI proposals/analyst → 3-step assumption workflow with role
+switching → lineage → run sign-off → audit verify → compliance pack), every
+beat carrying its expected seed-42 figure + a quick-reference table.
+
+**UAT:** `docs/demo_refresh_uat.md` — pre-flight, 5 sections of per-step
+expected values, owner checkpoints (eval re-lock; optional live eval; dry-run),
+defect log + sign-off table.
+
+**Workflow seeding (new, closes three harness preconditions):**
+`scripts/_uat_seed_workflow.py` drives one assumption set through
+create (a.analyst) → save/submit → junior/senior/chief sign-offs → APPROVED on
+the live DB (idempotent; skips when an APPROVED set exists). `_uat_rerun.py`
+now also seeds `gold_users` (a fresh headless rebuild previously shipped an
+empty user table — the app only seeds on first page load). Rebuild sequence is
+now reset → rerun → ai_fit → seed_workflow (scope §4 updated).
+
+**Verification:** all five governance harnesses PASS (s2 6/6, s3_3 7/7,
+s3_7 5/5, s4_4 4/4, s5_6 8/8); boot smoke HTTP 200; final gate
+**1259 passed, 6 skipped, 0 failed** — the empty-assumption-set skip cleared;
+the remaining 6 skips are the pre-refresh baseline set (RPU/ETT ×2, missing
+alt reference tables ×4).
+
+**Remaining owner items (tracked in the UAT doc §6):**
+1. Eval-set re-lock (golden 30 / adversarial 12 — headers say RE-LOCK PENDING).
+2. Live demo dry-run via `docs/demo_walkthrough.md` + UAT sign-off.
+3. Optional: live eval baseline with API keys; optional fraud/commentary goldens (FU-7).

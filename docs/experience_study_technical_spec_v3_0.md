@@ -1,5 +1,15 @@
 # AI-Powered Actuarial Experience Study Tool — Technical Specification
 
+> **⚡ DEMO-REFRESH SUPERSESSION NOTE (2026-08-30).** This copy of the codebase was
+> refreshed into a client demo: **TEV modelling was removed entirely**, the
+> assumption workflow was rebuilt TEV-free (3 steps, multiplier-based materiality),
+> management-commentary analytics and a fraud-detection module were added, and the
+> dataset was expanded/regenerated (25k policies, planted stories, fraud ring).
+> Wherever this spec describes TEV artifacts, the pre-refresh schemas/interfaces,
+> or superseded requirement wording, **`docs/demo_refresh_scope.md` is the
+> authority**. This spec remains valid history for everything it covers that the
+> refresh did not change.
+
 **Version:** 3.0 — Locked  
 **Audience:** Claude Code (build agent)  
 **Companion document:** Requirements Specification v4.0  

@@ -1,27 +1,38 @@
 # Experience Study Tool — Project Briefing
 
 ## What this project is
-A Python-based actuarial experience study and TEV modelling tool for life insurance.
-It covers 5 products: Term Life, Whole Life, Universal Life (UL/ULSG), Variable
-Universal Life (VUL), and Deferred Annuities.
+A Python-based, AI-enabled actuarial experience-study **client demo** for life
+insurance covering 5 product families: Term Life, Whole Life, Universal Life
+(UL/ULSG/IUL), Variable Universal Life (VUL), and Deferred Annuities. Core
+surfaces: A/E results + credibility, YoY movement/driver/trend analytics with
+AI-drafted management commentary, rule-based claims fraud screening with an
+AI narrative, AI-proposed assumption factors + governed AI analyst, and a
+multi-level assumption sign-off workflow with tamper-evident audit.
+(TEV modelling existed in the original PoC and was removed in the 2026-08-30
+demo refresh.)
 
 ## Governing documents (read these before writing any code)
-**Latest authoritative specs (supersede the older v2.1 / v1.2 still in /docs):**
-- @docs/experience_study_requirements_spec_v3_0_1.md — full functional requirements (incl. Phase 3
-  AI layer, FR-3A/FR-3B series), phase map, synthetic data spec, and non-functional requirements
-- @docs/experience_study_technical_spec_v2_0_1.md — exact DuckDB DDL (Section A; §D for AI Gold
-  tables), Python module interface contracts (Section B; §E for AI modules), synthetic data generator
-  spec (Section C), config schemas (§F)
+**Authoritative for everything the demo refresh changed:** @docs/demo_refresh_scope.md.
+**Legacy specs (valid history; carry dated supersession notes):**
+- @docs/experience_study_requirements_spec_v4_0.md + @docs/experience_study_technical_spec_v3_0.md
+  (Phase 4 governance) — in `docs/`
+- experience_study_requirements_spec_v3_0_1.md + experience_study_technical_spec_v2_0_1.md
+  (Phases 1–3) — archived in `docs_archive/`
 
 **Phase 3 build driver + progress (read before any Phase 3 session):**
 - @docs/phase3_claude_code_prompts.md — the per-session prompt blocks (Sessions 14–22)
 - @docs/phase3_build_progress.md — what is built so far, DoD status, known limitations, next session
 
-## ⚡ DEMO REFRESH IN PROGRESS (2026-08-30 →) — read this first
-This copy of the codebase is being refreshed into a **client-facing demo**: TEV modelling is
-being **removed entirely**, management-commentary analytics (YoY movement/drivers/trends/actions)
-and an AI fraud-detection module are being **added**, the dataset is being expanded/regenerated,
-and the UI is being streamlined. Driver documents (read before any refresh session, in order):
+## ⚡ DEMO REFRESH (2026-08-30) — BUILD COMPLETE (P0–P8); owner items pending
+The refresh into a **client-facing demo** is built and committed phase-by-phase:
+TEV removed entirely; 3-step assumption workflow with multiplier-based
+materiality; 25k-policy dataset with planted mortality/lapse stories + a fraud
+ring; fraud module (6 rules + composite + AI narrative); management-commentary
+analytics + skill; 5-group nav + shared theme; demo walkthrough + UAT docs.
+**Gate at close: see the progress doc's baseline table.** Owner items pending:
+eval-set re-lock (golden 30 / adversarial 12, headers say RE-LOCK PENDING) and
+the live demo dry-run + UAT sign-off. Driver documents (read before any
+follow-up session, in order):
 - @docs/demo_refresh_progress.md — status board + resume protocol (which phase is next)
 - @docs/demo_refresh_prompts.md — per-phase session blocks (P1–P8)
 - @docs/demo_refresh_scope.md — **decision authority**; where it names a schema, interface,

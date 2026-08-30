@@ -24,6 +24,7 @@ from ui.config import (
     DA_SOURCE_CSV, DA_MAPPING_YAML,
 )
 from src.calculation.ae_engine import calculate_ae
+from src.governance.users import seed_users_from_config
 from src.data_quality.runner import DQCriticalFailure, run_dq_checks
 from src.exposure.engine import build_exposure_file
 from src.ingestion.pipeline import run_etl_pipeline
@@ -55,6 +56,7 @@ def main() -> None:
         credibility_method=CredibilityMethod("LF"),
     )
 
+    seed_users_from_config()  # idempotent — headless rebuilds must not ship an empty gold_users
     con = duckdb.connect(str(DB_PATH))
     con.execute(
         """

@@ -1,8 +1,14 @@
 # Experience Study Tool
 
-A Python-based actuarial experience study and TEV modelling tool for life
-insurance (Term, Whole Life, UL/ULSG, VUL, Deferred Annuities). See
-[`CLAUDE.md`](CLAUDE.md) and the specs under [`docs/`](docs/) for full detail.
+A Python-based, AI-enabled actuarial experience-study demo for life insurance
+(Term, Whole Life, UL/ULSG/IUL, VUL, Deferred Annuities): A/E results with
+credibility, year-on-year movement + driver attribution + trend classification,
+rule-based claims **fraud screening**, AI-proposed assumption factors, a
+governed AI analyst, and a multi-level assumption sign-off workflow with
+tamper-evident audit. See [`CLAUDE.md`](CLAUDE.md),
+[`docs/demo_refresh_scope.md`](docs/demo_refresh_scope.md) and
+[`docs/demo_walkthrough.md`](docs/demo_walkthrough.md) (the scripted 20–30 min
+demo) for full detail.
 
 > **New here? Start with the [User Guide](USER_GUIDE.md)** — how to install, run,
 > log in (the four governance roles), and clean/reset the database.
