@@ -14,7 +14,8 @@ from ui.config import DB_PATH
 from ui.stats_helpers import credibility_z, get_run_method
 from src.aggregation.aggregator import aggregate_ae
 
-st.set_page_config(page_title="Lapse A/E Explorer", layout="wide")
+from ui.theme import page_setup
+page_setup("Lapse A/E Explorer")
 
 from ui.config import require_auth
 require_auth()
@@ -572,7 +573,7 @@ with tab_persist:
     _info_col, _filter_col = st.columns([3, 1])
     with _info_col:
         st.info(
-            "Dynamic lapse multiplier (FR-1B-08): expected_lapses × min(2.5, max(0.4, 1 + 0.5×(mkt−crd))). "
+            "Dynamic lapse multiplier: expected_lapses × min(2.5, max(0.4, 1 + 0.5×(mkt−crd))). "
             "A/E near 1.0 **in all years** is correct: when both actual and expected lapses are "
             "adjusted by the same multiplier, A/E stays near 1.0. The multiplier peaks at ×1.005 "
             "in 2022–2023 (0.5% uplift) — too small to be visually distinct from Poisson noise."
@@ -643,7 +644,7 @@ with tab_persist:
             fig_dyn.add_hline(y=1.0, line_dash="dash", line_color="black",
                               annotation_text="A/E = 1.0")
             fig_dyn.update_layout(
-                title="Base Lapse A/E by Calendar Year — Dynamic Lapse Effect (FR-1B-08)",
+                title="Base Lapse A/E by Calendar Year — Dynamic Lapse Effect",
                 xaxis_title="Calendar Year",
                 yaxis_title="Lapse A/E (actual / expected)",
                 height=360,

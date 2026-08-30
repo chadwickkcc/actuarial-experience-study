@@ -15,7 +15,8 @@ from ui.config import DB_PATH
 from ui.stats_helpers import credibility_z, get_run_method
 from src.aggregation.aggregator import aggregate_ae, get_drill_through_records
 
-st.set_page_config(page_title="Mortality A/E Explorer", layout="wide")
+from ui.theme import page_setup
+page_setup("Mortality A/E Explorer")
 
 from ui.config import require_auth
 require_auth()
@@ -390,7 +391,7 @@ with st.expander("Drill-Through: Underlying Exposure Records"):
         seriatim exposure records that make up that cell's A/E result.
 
         - **policy_id** is masked to a SHA-256 hash (PII protection)
-        - **face_amount** is shown as a band (e.g. \$100K–\$250K)
+        - **face_amount** is shown as a band (e.g. USD 100K–250K)
         - Up to 200 records are returned; apply filters above to narrow the slice
         - **Tip:** to investigate an outlier cell (e.g. A/E > 1.15 at age 30–34),
           select `attained_age_band` → `30-34` to see which policies are driving it

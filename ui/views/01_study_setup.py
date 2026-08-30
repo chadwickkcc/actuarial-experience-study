@@ -53,7 +53,8 @@ from src.utils.types import (
     StudyConfig,
 )
 
-st.set_page_config(page_title="Study Setup", layout="wide")
+from ui.theme import page_setup
+page_setup("Study Setup")
 
 from ui.config import require_auth
 require_auth()

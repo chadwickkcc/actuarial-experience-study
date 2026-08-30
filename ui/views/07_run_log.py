@@ -36,7 +36,8 @@ from src.ingestion.pipeline import run_etl_pipeline
 from src.utils.db_init import init_database
 from src.utils.types import CredibilityMethod, ExposureMethod, StudyConfig
 
-st.set_page_config(page_title="Run Log", layout="wide")
+from ui.theme import page_setup
+page_setup("Run Log")
 
 from ui.config import require_auth
 require_auth()
@@ -532,7 +533,12 @@ if col_r1.button("Generate Working Actuary Report"):
         from ui.config import REPORTS_DIR
         out_path = REPORTS_DIR / f"working_actuary_{selected_run[:8]}.html"
         generate_working_actuary_report(selected_run, DB_PATH, out_path)
-        st.success(f"Report written to `{out_path}`")
+        st.success(f"Report generated: `{out_path.name}`")
+        col_r1.download_button(
+            "Download Working Actuary Report (HTML)",
+            data=out_path.read_bytes(), file_name=out_path.name,
+            mime="text/html", key="dl_wa_report",
+        )
     except Exception as exc:
         st.error(f"Report generation failed: {exc}")
 
@@ -542,7 +548,12 @@ if col_r2.button("Generate Chief Actuary Summary"):
         from ui.config import REPORTS_DIR
         out_path = REPORTS_DIR / f"chief_actuary_{selected_run[:8]}.html"
         generate_chief_actuary_summary(selected_run, DB_PATH, out_path)
-        st.success(f"Report written to `{out_path}`")
+        st.success(f"Report generated: `{out_path.name}`")
+        col_r2.download_button(
+            "Download Chief Actuary Summary (HTML)",
+            data=out_path.read_bytes(), file_name=out_path.name,
+            mime="text/html", key="dl_ca_report",
+        )
     except Exception as exc:
         st.error(f"Report generation failed: {exc}")
 
@@ -569,7 +580,7 @@ with st.expander("Recent AI turns (gold_ai_audit_log)", expanded=False):
             st.info("No AI activity recorded yet. Use the AI Analyst page.")
         else:
             st.caption(
-                "Append-only per-turn audit (FR-3B-47). Every figure shown to a "
+                "Append-only per-turn audit. Every figure shown to a "
                 "user was traceable to the data; blocked turns are recorded too."
             )
             st.dataframe(_audit_df, use_container_width=True, hide_index=True)

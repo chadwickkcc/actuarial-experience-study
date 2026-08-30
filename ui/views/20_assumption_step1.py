@@ -24,7 +24,8 @@ from ui.stats_helpers import (
 )
 from src.assumptions.assumption_set import create_assumption_set_from_ae_run
 
-st.set_page_config(page_title="Step 1 — Select Study Basis", layout="wide")
+from ui.theme import page_setup
+page_setup("Step 1 — Select Study Basis")
 
 from ui.config import require_auth, user_can
 from src.governance.rbac import Action, PermissionDenied, require

@@ -1,4 +1,4 @@
-"""Home — landing page: what the tool does, the end-to-end workflow, and how to run it."""
+"""Home — demo landing page: the end-to-end experience-study workflow."""
 import sys
 from pathlib import Path
 
@@ -10,30 +10,24 @@ from ui.config import require_auth
 
 require_auth()
 
-_VIEWS = Path(__file__).resolve().parent
-
-
-def _link(filename: str, label: str, icon: str | None = None) -> None:
-    """A clickable sidebar-page link (path matches the app's st.navigation entries).
-
-    Falls back to a labelled hint if rendered outside the multipage navigation
-    context (e.g. an isolated AppTest has no page registry to resolve the link).
-    """
+def _link(fname: str, label: str, icon: str) -> None:
+    """Page link that degrades to plain text when rendered outside st.navigation
+    (e.g. under AppTest, where page URLs cannot resolve)."""
     try:
-        st.page_link(str(_VIEWS / filename), label=label, icon=icon)
-    except Exception:
-        st.markdown(f"{icon or '→'} **{label}**")
+        st.page_link(f"views/{fname}", label=label, icon=icon)
+    except Exception:  # noqa: BLE001 - standalone render (tests) has no nav registry
+        st.markdown(f"{icon} {label}")
 
-
-st.title("Actuarial Experience Study Tool")
-st.caption(
-    "Run experience studies, set assumptions, and govern the "
-    "result — for Term Life, Whole Life, Universal Life / ULSG, Variable Universal "
-    "Life, and Deferred Annuities."
+st.title("📊 Experience Study Tool")
+st.markdown(
+    "Run life-insurance experience studies end-to-end — **data quality → "
+    "actual-vs-expected results → management commentary → fraud screening → "
+    "AI-proposed assumptions → governed sign-off** — with AI assistance that is "
+    "verified, audited, and always subject to actuarial review."
 )
 
 # ---------------------------------------------------------------------------
-# End-to-end workflow diagram
+# How it fits together
 # ---------------------------------------------------------------------------
 st.subheader("How it fits together")
 _FLOW = """
@@ -43,126 +37,123 @@ digraph workflow {
     node [shape=box style="rounded,filled" fontname="Helvetica" fontsize=11 color="#cfcfcf"];
     edge [fontname="Helvetica" fontsize=9 color="#888888"];
 
-    setup [label="1 · Setup & Data\\nrun study · data quality" fillcolor="#e8f0fe"];
-    exp   [label="2 · Experience Results\\nmortality · lapse · CI A/E" fillcolor="#e6f4ea"];
-    ai    [label="AI Assistance\\nproposals · analyst" fillcolor="#fef7e0" style="rounded,filled,dashed"];
-    tev   [label="3 · Assumption Setting\\nSteps 1–3" fillcolor="#fce8e6"];
-    gov   [label="4 · Governance\\nsign-off · audit · versioning" fillcolor="#f3e8fd"];
+    setup [label="1 · Run the study\\nETL · data quality · exposure · A/E" fillcolor="#e8f0fe"];
+    exp   [label="2 · Experience results\\nmortality · lapse · CI\\nYoY movement · trends" fillcolor="#e6f4ea"];
+    fraud [label="3 · Fraud screening\\n6 indicators · composite score\\nAI narrative" fillcolor="#fdeaea"];
+    ai    [label="4 · AI assistance\\nproposed factors · analyst chat\\ndrafted commentary" fillcolor="#fef7e0" style="rounded,filled,dashed"];
+    aset  [label="5 · Assumption setting\\nSteps 1–3: propose · edit · sign off" fillcolor="#fce8e6"];
+    gov   [label="6 · Governance\\nsign-off chains · tamper-evident audit\\ncompliance pack" fillcolor="#f3e8fd"];
 
     setup -> exp;
+    exp -> fraud [style=dashed label="claims"];
     exp -> ai [style=dashed];
-    exp -> tev;
-    ai -> tev [label="advisory" style=dashed];
-    tev -> gov [label="approve / sign off"];
+    ai -> aset [label="advisory"];
+    exp -> aset;
+    aset -> gov [label="approve & lock"];
+    setup -> gov [style=dashed label="run sign-off"];
 }
 """
 st.graphviz_chart(_FLOW, use_container_width=True)
-st.caption(
-    "AI Assistance is **advisory** (dashed) — it informs assumption-setting but never "
-    "changes assumptions automatically. Governance wraps the study runs and assumption "
-    "sets with sign-off, audit and versioning."
-)
+
+# ---------------------------------------------------------------------------
+# The demo storyline
+# ---------------------------------------------------------------------------
+st.subheader("A guided tour")
+c1, c2, c3 = st.columns(3)
+with c1:
+    st.markdown(
+        "**1 · Run & review**\n\n"
+        "Run the 25,000-policy study in seconds, check data quality, then read "
+        "credibility-weighted A/E by product, age, duration and calendar year."
+    )
+    _link("01_study_setup.py", "Run Study", "⚙️")
+    _link("04_mortality_ae.py", "Mortality A/E", "💀")
+    _link("18_management_commentary.py", "Management Commentary", "📈")
+with c2:
+    st.markdown(
+        "**2 · Let the AI assist**\n\n"
+        "Screen every claim against six fraud indicators, ask the AI Analyst "
+        "questions in plain language, and review AI-proposed assumption factors "
+        "— every number verified against the data, nothing adopted automatically."
+    )
+    _link("17_fraud_monitor.py", "Fraud Monitor", "🕵️")
+    _link("16_ai_analyst.py", "AI Analyst", "🧠")
+    _link("15_assumption_comparison.py", "AI Assumption Proposals", "🤖")
+with c3:
+    st.markdown(
+        "**3 · Decide & govern**\n\n"
+        "Propose an assumption set, edit within credibility guardrails, submit "
+        "through the multi-level sign-off chain, and export the tamper-evident "
+        "compliance pack."
+    )
+    _link("20_assumption_step1.py", "Step 1 · Select Study Basis", "1️⃣")
+    _link("22_assumption_step3.py", "Step 3 · Sign Off & Lock", "3️⃣")
+    _link("26_governance_audit.py", "Audit & Integrity", "🛡️")
 
 st.divider()
 
 # ---------------------------------------------------------------------------
-# How to run the model — end to end
+# Where the AI fits / where governance fits
 # ---------------------------------------------------------------------------
-st.subheader("How to run the model — end to end")
-
-st.markdown("**1. Set up & run a study** — configure dates, products and reference tables, then run the full pipeline (ETL → data quality → exposure → A/E).")
-_link("01_study_setup.py", "Study Setup", "⚙️")
-_link("02_data_quality.py", "Data Quality Check", "🔍")
-
-st.markdown("**2. Review the experience** — inspect credibility-weighted A/E ratios by decrement and product; drill into product-specific mechanics as needed.")
-_link("04_mortality_ae.py", "Mortality A vs E", "💀")
-_link("05_lapse_ae.py", "Lapse A vs E", "📉")
-_link("06_ci_explorer.py", "CI Incidence Explorer", "🏥")
-
-st.markdown("**3. (Optional) Get AI help** — see GLM/GBM-proposed factor adjustments with a challenge model, or ask the guarded AI Analyst questions about your study data. Both are advisory.")
-_link("15_assumption_comparison.py", "Assumption Comparison", "🤖")
-_link("16_ai_analyst.py", "AI Analyst", "🧠")
-
-st.markdown("**4. Set assumptions** — create a proposed assumption set from a study run, edit within credibility guardrails, and submit for sign-off.")
-_link("20_assumption_step1.py", "Step 1: Select Study Basis", "1️⃣")
-
-st.markdown("**5. Govern & sign off** — submit a study run for approval, take an assumption set through the multi-level sign-off chain, and keep a tamper-evident audit trail with versioning and compliance packs.")
-_link("28_study_run_signoff.py", "Study Run Sign-Off", "✍️")
-_link("27_governance_dashboard.py", "Governance Dashboard", "📊")
+g1, g2 = st.columns(2)
+with g1:
+    st.markdown("##### 🤖 Where the AI fits")
+    st.markdown(
+        "- **Proposes, never decides** — GLM factors with confidence intervals, "
+        "a challenger model, and explainability; adoption is a human edit with "
+        "recorded provenance.\n"
+        "- **Every number verified** — drafted memos, commentary and fraud "
+        "narratives are checked figure-by-figure against the data; an invented "
+        "number blocks the draft.\n"
+        "- **Data access is governed** — the analyst chat reaches the database "
+        "only through read-only, allow-listed tools; no policyholder identity "
+        "ever reaches a model.\n"
+        "- **Everything is audited** — every AI turn is logged and reviewable."
+    )
+with g2:
+    st.markdown("##### 🛡️ Where governance fits")
+    st.markdown(
+        "- **Segregation of duties** — the proposer can never approve their own "
+        "assumption set.\n"
+        "- **Materiality-driven sign-off** — larger assumption changes require "
+        "the chief actuary; smaller ones complete earlier in the chain.\n"
+        "- **Tamper-evident audit** — governance logs are hash-chained; one "
+        "click re-verifies their integrity.\n"
+        "- **Version lineage** — approved sets are locked; changes create new "
+        "versions with effective dating and a full compliance pack."
+    )
 
 st.divider()
 
-# ---------------------------------------------------------------------------
-# Where the AI and Governance pages fit
-# ---------------------------------------------------------------------------
-col_ai, col_gov = st.columns(2, gap="large")
-
-with col_ai:
-    with st.container(border=True):
-        st.markdown("#### 🤖 Where the AI pages fit")
-        st.markdown(
-            "The two AI pages sit **between reviewing experience and setting "
-            "assumptions**, and are strictly **advisory**:\n\n"
-            "- **Assumption Comparison** — read-only GLM proposals with a GBM challenge "
-            "model and SHAP explanations. It surfaces suggested factor adjustments and a "
-            "factor comparison; it **never adopts** anything automatically.\n"
-            "- **AI Analyst** — a guarded chatbot that answers questions over your own "
-            "study data (every figure is traced back to the data; no free-form numbers).\n\n"
-            "You stay in control: any change is made by you in the assumption editor."
-        )
-
-with col_gov:
-    with st.container(border=True):
-        st.markdown("#### 🛡️ Where Governance fits")
-        st.markdown(
-            "Governance is the **controls layer around assumption-setting**:\n\n"
-            "- **Sign-off chains** — a study run must be approved *fit for "
-            "assumption-setting*, and an assumption set is taken through junior → senior "
-            "→ chief sign-off (proposer ≠ approver enforced).\n"
-            "- **Audit & Integrity** — every governance action is recorded in a "
-            "tamper-evident (hash-chained) log you can verify.\n"
-            "- **Versioning & Lineage** — re-open an approved set into a new version, set "
-            "effective dates, supersede the prior, and compare versions.\n"
-            "- **Compliance packs** — export a defensible HTML dossier for an approved "
-            "artifact."
-        )
-
-st.divider()
-
-# ---------------------------------------------------------------------------
-# Full page reference (collapsed to keep the landing page clean)
-# ---------------------------------------------------------------------------
-with st.expander("All pages — quick reference", expanded=False):
-    ref_cols = st.columns(3, gap="large")
+with st.expander("All pages", expanded=False):
+    ref_cols = st.columns(3)
 
     with ref_cols[0]:
-        st.markdown("**Getting Started**")
-        _link("00_home.py", "Home", "🏠")
-        _link("01_study_setup.py", "Study Setup", "⚙️")
-        _link("02_data_quality.py", "Data Quality Check", "🔍")
+        st.markdown("**Overview**")
+        _link("01_study_setup.py", "Run Study", "⚙️")
+        _link("02_data_quality.py", "Data Quality", "🔍")
         _link("07_run_log.py", "Study Run Log", "📋")
-
-        st.markdown("**Experience Results (A/E)**")
+        st.markdown("**Experience Results**")
         _link("03_exposure_summary.py", "Exposure Summary", "📐")
-        _link("04_mortality_ae.py", "Mortality A vs E", "💀")
-        _link("05_lapse_ae.py", "Lapse A vs E", "📉")
-        _link("06_ci_explorer.py", "CI Incidence Explorer", "🏥")
+        _link("04_mortality_ae.py", "Mortality A/E", "💀")
+        _link("05_lapse_ae.py", "Lapse A/E", "📉")
+        _link("06_ci_explorer.py", "Critical Illness A/E", "🏥")
         _link("13_product_comparison.py", "Product Comparison", "⚖️")
+        _link("18_management_commentary.py", "Management Commentary", "📈")
 
     with ref_cols[1]:
-
-        st.markdown("**AI Assistance**")
-        _link("15_assumption_comparison.py", "Assumption Comparison", "🤖")
+        st.markdown("**Risk & Fraud**")
+        _link("17_fraud_monitor.py", "Fraud Monitor", "🕵️")
+        st.markdown("**Assumptions & AI**")
+        _link("15_assumption_comparison.py", "AI Assumption Proposals", "🤖")
         _link("16_ai_analyst.py", "AI Analyst", "🧠")
+        _link("20_assumption_step1.py", "Step 1 · Select Study Basis", "1️⃣")
+        _link("21_assumption_step2.py", "Step 2 · Edit & Submit", "2️⃣")
+        _link("22_assumption_step3.py", "Step 3 · Sign Off & Lock", "3️⃣")
+        _link("29_assumption_lineage.py", "Versioning & Lineage", "🌿")
 
     with ref_cols[2]:
-        st.markdown("**Assumption Setting**")
-        _link("20_assumption_step1.py", "Step 1: Select Study Basis", "1️⃣")
-        _link("21_assumption_step2.py", "Step 2: Edit & Submit", "2️⃣")
-        _link("22_assumption_step3.py", "Step 3: Sign Off & Lock", "3️⃣")
-
         st.markdown("**Governance**")
-        _link("26_governance_audit.py", "Audit & Integrity", "🛡️")
-        _link("27_governance_dashboard.py", "Governance Dashboard", "📊")
         _link("28_study_run_signoff.py", "Study Run Sign-Off", "✍️")
-        _link("29_assumption_lineage.py", "Versioning & Lineage", "🌿")
+        _link("27_governance_dashboard.py", "Governance Dashboard", "📊")
+        _link("26_governance_audit.py", "Audit & Integrity", "🛡️")

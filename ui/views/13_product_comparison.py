@@ -17,11 +17,12 @@ import streamlit as st
 from ui.config import DB_PATH
 from ui.stats_helpers import credibility_z, get_run_method
 
-st.set_page_config(page_title="Product Comparison", layout="wide")
+from ui.theme import page_setup
+page_setup("Product Comparison")
 
 from ui.config import require_auth
 require_auth()
-st.title("Product Comparison — All Five Products")
+st.title("Product Comparison")
 st.caption("Aggregate A/E ratios by product: mortality, lapse/surrender, and CI incidence.")
 
 _ALL_PRODUCTS = ["TERM", "WL", "UL", "ULSG", "IUL", "VUL", "DA", "DA_FIXED", "DA_FIA", "DA_VA"]
@@ -264,7 +265,7 @@ view = st.radio(
     ["Mortality", "Lapse", "Surrender", "CI Incidence"],
     horizontal=True,
 )
-st.caption("Grey bars indicate credibility Z < 0.5 — treat with caution. Error bars show 95% Poisson CI (FR-1A-25).")
+st.caption("Grey bars indicate credibility Z < 0.5 — treat with caution. Error bars show 95% Poisson CI.")
 
 plot_df = summary_df[summary_df["product_code"].isin(selected_products)].copy()
 
@@ -304,8 +305,8 @@ elif view == "Lapse":
     else:
         st.info("No lapse A/E data available for selected products.")
 
-    # NFR-C-07 directionality check
-    st.subheader("NFR-C-07 Directionality Check — ULSG vs UL Lapse A/E")
+    # ULSG vs UL lapse directionality (a lapse-supported product should lapse less)
+    st.subheader("Directionality Check — ULSG vs UL Lapse A/E")
     ul_row   = plot_df[plot_df["product_code"] == "UL"]
     ulsg_row = plot_df[plot_df["product_code"] == "ULSG"]
 
@@ -318,17 +319,16 @@ elif view == "Lapse":
 
         if not pd.isna(ul_ae) and not pd.isna(ulsg_ae):
             if ulsg_ae < ul_ae:
-                st.success("NFR-C-07 PASS: ULSG lapse A/E is below UL lapse A/E (as expected for a lapse-supported product).")
+                st.success("ULSG lapse A/E is below UL lapse A/E — as expected "
+                           "for a lapse-supported secondary-guarantee product.")
             else:
                 st.warning(
-                    f"**NFR-C-07 FAIL:** ULSG lapse A/E ({ulsg_ae:.2%}) ≥ UL lapse A/E ({ul_ae:.2%}). "
-                    "Expected ULSG to show lower lapse A/E — ULSG base lapse is 50% of Trad UL (Section 8.3). "
-                    "Root cause: the dynamic lapse multiplier (interest-rate spread) is applied equally to UL "
-                    "and ULSG without rescaling for the already-reduced ULSG base, causing ULSG actuals to "
-                    "slightly exceed the 50% reference-table expectation."
+                    f"ULSG lapse A/E ({ulsg_ae:.2%}) is at or above UL lapse A/E "
+                    f"({ul_ae:.2%}) — unusual for a lapse-supported product and "
+                    "worth investigating with the drill-downs above."
                 )
     else:
-        st.info("Both UL and ULSG must be selected to run the NFR-C-07 check.")
+        st.info("Select both UL and ULSG to run the directionality check.")
 
     fig_ts = _trend_chart(yr_df, selected_products, "actual_lapses", "expected_lapses",
                           "Lapse A/E Trend by Product")

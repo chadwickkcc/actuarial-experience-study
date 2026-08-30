@@ -25,7 +25,8 @@ from src.ai.llm.client import load_llm_config
 from src.ai.skills.fraud_narrative import draft_fraud_narrative
 from src.fraud import run_fraud_scan
 
-st.set_page_config(page_title="Fraud Monitor", layout="wide")
+from ui.theme import page_setup
+page_setup("Fraud Monitor")
 
 from ui.config import require_auth, user_can
 from src.governance.rbac import Action

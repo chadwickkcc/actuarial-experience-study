@@ -23,7 +23,7 @@ One phase per session; gate green before proceeding; commit per phase.
 | P4 | Data expansion + regeneration | L | ✅ COMPLETE (2026-08-30) |
 | P5 | Fraud module | L | ✅ COMPLETE (2026-08-30) |
 | P6 | Management commentary | L | ✅ COMPLETE (2026-08-30) |
-| P7 | Slickness pass | M | — |
+| P7 | Slickness pass | M | ✅ COMPLETE (2026-08-30) |
 | P8 | Docs, demo script, UAT | M | — |
 
 **Test baseline history:**
@@ -36,6 +36,7 @@ One phase per session; gate green before proceeding; commit per phase.
 | After P4 | 1217 passed, 7 skipped, 0 failed (+5 story-lock tests; ~30 volume/band/pinned-value tests made config-/live-driven) |
 | After P5 | 1234 passed, 7 skipped, 0 failed (+17 fraud tests) |
 | After P6 | 1253 passed, 7 skipped, 0 failed (+19 commentary tests) |
+| After P7 | 1258 passed, 7 skipped, 0 failed (+5 UI guards; +1 home test updated) |
 
 **Owner checkpoints:** P3 eval re-lock (**REQUESTED 2026-08-30** — golden 36→30
 [G027–G032 removed], adversarial A007 retargeted to `gold_ai_proposed_factors`;
@@ -388,3 +389,39 @@ shape), skill clean/blocked/empty via stub provider.
 analytics match the planted stories; actions section present; export works.
 
 **Next session: P7** (see `demo_refresh_prompts.md` → P7).
+
+---
+
+## P7 — Slickness pass — COMPLETE (2026-08-30)
+
+**Nav → 5 storyline groups / 20 pages:** Overview (Home, Run Study, Data
+Quality, Study Run Log) · Experience Results (Exposure, Mortality, Lapse, CI,
+Product Comparison, Management Commentary) · Risk & Fraud (Fraud Monitor) ·
+Assumptions & AI (AI Assumption Proposals, AI Analyst, Steps 1–3, Versioning &
+Lineage) · Governance (Study Run Sign-Off, Dashboard, Audit & Integrity).
+
+**Home rebuilt (`00_home.py`):** demo-facing copy, six-stage flow graphic
+(commentary + fraud in, TEV gone), three-column guided tour with page links
+(AppTest-safe `_link` fallback), "Where the AI fits" / "Where governance fits"
+cards, All-pages reference expander.
+
+**Shared theme (`ui/theme.py`):** `page_setup()` (wide layout + titled tab)
+replaced 18 duplicate `st.set_page_config` calls; registers a default Plotly
+template (colour-blind-safe palette, unified hover, consistent fonts/margins).
+
+**Client-visible polish:** run-log Working/Chief Actuary reports now have
+`st.download_button`s; every rendered FR-/NFR- requirement-ID string swept
+(docstrings/comments retained; `FR-RULE-nn` fraud ids deliberately allowed);
+page-13 stale "All Five Products" title fixed and the internal NFR-C-07
+root-cause block replaced with client-appropriate directionality copy; page-15
+GLM/GBM `st.write(dict)` dumps → tidy dataframes.
+
+**Tests (+5, `tests/test_ui_slickness.py`):** every view registered exactly
+once (no orphans/dupes), the 5 nav groups present, run-log download buttons
+present, AST-based requirement-ID leak guard over rendered strings, and a
+no-bare-`st.set_page_config` guard. `test_home_apptest` updated to the new
+sections.
+
+**DoD:** gate green **1258 passed, 7 skipped, 0 failed**; boot smoke HTTP 200.
+
+**Next session: P8** (see `demo_refresh_prompts.md` → P8).

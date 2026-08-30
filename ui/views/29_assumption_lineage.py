@@ -35,7 +35,8 @@ from src.governance.lineage import (
 from src.governance.rbac import Action
 from src.governance.workflow import reopen
 
-st.set_page_config(page_title="Versioning & Lineage", layout="wide")
+from ui.theme import page_setup
+page_setup("Versioning & Lineage")
 
 _user = require_auth()
 me = current_user()

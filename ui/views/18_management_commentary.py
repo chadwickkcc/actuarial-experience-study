@@ -29,7 +29,8 @@ from src.analysis import (
     load_commentary_config,
 )
 
-st.set_page_config(page_title="Management Commentary", layout="wide")
+from ui.theme import page_setup
+page_setup("Management Commentary")
 
 from ui.config import require_auth
 require_auth()

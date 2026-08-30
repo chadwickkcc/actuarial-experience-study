@@ -52,40 +52,40 @@ def _page(filename: str, title: str, icon: str) -> st.Page:
     return st.Page(str(_PAGES_DIR / filename), title=title, icon=icon)
 
 
-# Sidebar navigation — grouped and ordered to follow the end-to-end workflow:
-# set up & run → review experience → get AI help → set assumptions → govern.
-# (Assumption setting is the three-step propose → edit/submit → sign-off flow.)
+# Sidebar navigation — five groups following the demo storyline:
+# run the study → read the experience → screen for fraud → let the AI assist
+# and set assumptions → govern and evidence it.
 pg = st.navigation(
     {
-        "1 · Getting Started": [
-            _page("00_home.py",             "Home",               "🏠"),
-            _page("01_study_setup.py",      "Study Setup",        "⚙️"),
-            _page("02_data_quality.py",     "Data Quality Check", "🔍"),
-            _page("07_run_log.py",          "Study Run Log",      "📋"),
+        "Overview": [
+            _page("00_home.py",         "Home",          "🏠"),
+            _page("01_study_setup.py",  "Run Study",     "⚙️"),
+            _page("02_data_quality.py", "Data Quality",  "🔍"),
+            _page("07_run_log.py",      "Study Run Log", "📋"),
         ],
-        "2 · Experience Results (A/E)": [
-            _page("03_exposure_summary.py",     "Exposure Summary",       "📐"),
-            _page("04_mortality_ae.py",         "Mortality A vs E",       "💀"),
-            _page("05_lapse_ae.py",             "Lapse A vs E",           "📉"),
-            _page("06_ci_explorer.py",          "CI Incidence Explorer",  "🏥"),
-            _page("18_management_commentary.py", "Management Commentary",  "📈"),
-            _page("13_product_comparison.py",   "Product Comparison",     "⚖️"),
+        "Experience Results": [
+            _page("03_exposure_summary.py",      "Exposure Summary",      "📐"),
+            _page("04_mortality_ae.py",          "Mortality A/E",         "💀"),
+            _page("05_lapse_ae.py",              "Lapse A/E",             "📉"),
+            _page("06_ci_explorer.py",           "Critical Illness A/E",  "🏥"),
+            _page("13_product_comparison.py",    "Product Comparison",    "⚖️"),
+            _page("18_management_commentary.py", "Management Commentary", "📈"),
         ],
-        "4 · AI Assistance": [
-            _page("15_assumption_comparison.py", "Assumption Comparison", "🤖"),
-            _page("16_ai_analyst.py",            "AI Analyst",            "🧠"),
-            _page("17_fraud_monitor.py",         "Fraud Monitor",         "🕵️"),
+        "Risk & Fraud": [
+            _page("17_fraud_monitor.py", "Fraud Monitor", "🕵️"),
         ],
-        "5 · Assumption Setting": [
-            _page("20_assumption_step1.py", "Step 1: Select Study Basis", "1️⃣"),
-            _page("21_assumption_step2.py", "Step 2: Edit & Submit",      "2️⃣"),
-            _page("22_assumption_step3.py", "Step 3: Sign Off & Lock",    "3️⃣"),
+        "Assumptions & AI": [
+            _page("15_assumption_comparison.py", "AI Assumption Proposals",     "🤖"),
+            _page("16_ai_analyst.py",            "AI Analyst",                  "🧠"),
+            _page("20_assumption_step1.py",      "Step 1 · Select Study Basis", "1️⃣"),
+            _page("21_assumption_step2.py",      "Step 2 · Edit & Submit",      "2️⃣"),
+            _page("22_assumption_step3.py",      "Step 3 · Sign Off & Lock",    "3️⃣"),
+            _page("29_assumption_lineage.py",    "Versioning & Lineage",        "🌿"),
         ],
-        "6 · Governance": [
-            _page("26_governance_audit.py",    "Audit & Integrity",    "🛡️"),
-            _page("27_governance_dashboard.py","Governance Dashboard", "📊"),
-            _page("28_study_run_signoff.py",   "Study Run Sign-Off",   "✍️"),
-            _page("29_assumption_lineage.py",  "Versioning & Lineage", "🌿"),
+        "Governance": [
+            _page("28_study_run_signoff.py",    "Study Run Sign-Off",   "✍️"),
+            _page("27_governance_dashboard.py", "Governance Dashboard", "📊"),
+            _page("26_governance_audit.py",     "Audit & Integrity",    "🛡️"),
         ],
     }
 )

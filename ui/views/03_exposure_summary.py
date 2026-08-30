@@ -12,7 +12,8 @@ import streamlit as st
 
 from ui.config import DB_PATH
 
-st.set_page_config(page_title="Exposure Summary", layout="wide")
+from ui.theme import page_setup
+page_setup("Exposure Summary")
 
 from ui.config import require_auth
 require_auth()

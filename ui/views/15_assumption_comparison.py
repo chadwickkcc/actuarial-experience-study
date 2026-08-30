@@ -29,7 +29,8 @@ from src.ai.skills.memo import interpret_ae_and_draft_memo
 from src.ai.skills.shap_explain import explain_shap_results
 from src.utils.types import DecrementType
 
-st.set_page_config(page_title="Assumption Comparison — AI Proposals", layout="wide")
+from ui.theme import page_setup
+page_setup("Assumption Comparison — AI Proposals")
 
 from ui.config import require_auth
 require_auth()
@@ -37,7 +38,7 @@ st.title("Assumption Comparison — AI Proposals")
 st.markdown(
     "**Read-only.** GLM proposals, the GBM challenge, SHAP explainability, and a "
     "factor comparison. The AI proposes, explains, and audits — the actuary decides. "
-    "No assumption is changed on this page (FR-3A-44); adopt a proposal in "
+    "No assumption is changed on this page; adopt a proposal in "
     "**Stage 2 — Edit Assumptions**, which records the AI provenance."
 )
 
@@ -170,10 +171,13 @@ with st.expander("Model diagnostics (GLM + GBM)"):
     dcol1, dcol2 = st.columns(2)
     with dcol1:
         st.markdown("**GLM**")
-        st.write({
-            "deviance": glm.deviance, "dispersion": glm.dispersion,
-            "aic": glm.aic, "n_cells": glm.n_cells, "seed": glm.seed,
-        })
+        st.dataframe(
+            pd.DataFrame(
+                {"value": {"deviance": glm.deviance, "dispersion": glm.dispersion,
+                           "aic": glm.aic, "n_cells": glm.n_cells, "seed": glm.seed}}
+            ),
+            use_container_width=True,
+        )
         diag_path = Path(getattr(glm, "diagnostics_path", "") or "")
         if diag_path and diag_path.exists():
             try:
@@ -183,12 +187,15 @@ with st.expander("Model diagnostics (GLM + GBM)"):
     with dcol2:
         st.markdown("**GBM**")
         if gbm is not None and gbm.factors:
-            st.write({
-                "cv_metric_name": gbm.cv_metric_name,
-                "cv_metric_value": gbm.cv_metric_value,
-                "n_cells": gbm.n_cells, "seed": gbm.seed,
-                "n_interaction_flags": len(gbm.divergence_flags),
-            })
+            st.dataframe(
+                pd.DataFrame(
+                    {"value": {"cv_metric_name": gbm.cv_metric_name,
+                               "cv_metric_value": gbm.cv_metric_value,
+                               "n_cells": gbm.n_cells, "seed": gbm.seed,
+                               "n_interaction_flags": len(gbm.divergence_flags)}}
+                ),
+                use_container_width=True,
+            )
         else:
             st.caption("No GBM challenge produced for this combination.")
 

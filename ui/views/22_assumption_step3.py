@@ -41,7 +41,8 @@ from src.governance.workflow import (
     record_signoff,
 )
 
-st.set_page_config(page_title="Step 3 — Sign Off & Lock", layout="wide")
+from ui.theme import page_setup
+page_setup("Step 3 — Sign Off & Lock")
 
 from ui.config import require_auth
 require_auth()
@@ -289,7 +290,7 @@ st.subheader("Governance Sign-Off")
 st.caption(
     "Approvals run through the configured multi-level chain. The signing actor is "
     "your authenticated identity; proposer ≠ approver is enforced at every level "
-    "(FR-4-05)."
+    "— the proposer can never approve their own set."
 )
 
 # Current chain state (current round = sign-offs since the last RETURN).

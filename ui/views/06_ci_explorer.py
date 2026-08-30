@@ -15,7 +15,8 @@ import streamlit as st
 from ui.config import DB_PATH
 from ui.stats_helpers import credibility_z, poisson_ci, get_run_method
 
-st.set_page_config(page_title="CI Incidence Explorer", layout="wide")
+from ui.theme import page_setup
+page_setup("CI Incidence Explorer")
 
 from ui.config import require_auth
 require_auth()
@@ -551,7 +552,7 @@ if not gender_df.empty and gender_df["ae_ci"].notna().any():
         showlegend=False,
     )
     st.plotly_chart(fig_g, use_container_width=True)
-    st.caption("Error bars show the 95% Poisson CI (FR-1A-25). Grey bars: credibility Z < 0.5.")
+    st.caption("Error bars show the 95% Poisson CI. Grey bars: credibility Z < 0.5.")
 
 # ── Drill-through: underlying exposure records ────────────────────────────────
 

@@ -14,7 +14,8 @@ from src.data_quality.runner import override_quarantine_record
 from src.governance.audit import record_ae_event
 from src.governance.auth import current_user
 
-st.set_page_config(page_title="Data Quality", layout="wide")
+from ui.theme import page_setup
+page_setup("Data Quality")
 
 from ui.config import require_auth
 _user = require_auth()

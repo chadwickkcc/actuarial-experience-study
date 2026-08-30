@@ -37,7 +37,8 @@ from src.governance.workflow import (
 )
 from src.utils.types import ArtifactType, Decision
 
-st.set_page_config(page_title="Study Run Sign-Off", layout="wide")
+from ui.theme import page_setup
+page_setup("Study Run Sign-Off")
 
 _user = require_auth()
 st.title("Study Run Sign-Off")
@@ -45,7 +46,7 @@ st.markdown(
     "Approve an A/E **study run** through the configured governance chain "
     "(junior → senior → chief). A run must be submitted by a proposer and then "
     "signed off at every level before it is **fit for assumption-setting** "
-    "(FR-4-14). Proposer ≠ approver is enforced (FR-4-05)."
+    "Proposer ≠ approver is enforced."
 )
 
 GOV_CONFIG = str(CONFIG_DIR / "governance_config.yaml")

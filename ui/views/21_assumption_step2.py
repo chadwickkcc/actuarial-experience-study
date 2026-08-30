@@ -33,7 +33,8 @@ from src.assumptions.workflow import (
     transition_assumption_set_status,
 )
 
-st.set_page_config(page_title="Step 2 — Edit & Submit", layout="wide")
+from ui.theme import page_setup
+page_setup("Step 2 — Edit & Submit")
 
 from ui.config import require_auth, user_can
 from src.governance.rbac import Action, PermissionDenied, require

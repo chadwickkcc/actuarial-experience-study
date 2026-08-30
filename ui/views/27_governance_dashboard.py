@@ -24,12 +24,13 @@ from src.utils.types import ArtifactType
 
 _CONFIG_PATH = str(CONFIG_DIR / "governance_config.yaml")
 
-st.set_page_config(page_title="Governance Dashboard", layout="wide")
+from ui.theme import page_setup
+page_setup("Governance Dashboard")
 st.title("📊 Governance Dashboard")
 st.caption(
     "State of every assumption set and submitted study run, the live set per "
     "lineage, the pending-approvals queue, and recent governance activity "
-    "(FR-4-23) — plus the exportable compliance pack (FR-4-24)."
+    "— plus the exportable compliance pack."
 )
 
 _user = require_auth()
@@ -148,5 +149,5 @@ _ret = retention_policy(config_path=_CONFIG_PATH)
 st.caption(
     f"Retention policy: hard deletes {'enabled' if _ret['hard_delete'] else 'disabled'}; "
     f"archive after {_ret['archive_after_days']} days. Governance records are never "
-    "hard-deleted (FR-4-25)."
+    "hard-deleted."
 )

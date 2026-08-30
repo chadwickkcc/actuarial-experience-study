@@ -23,11 +23,12 @@ from src.governance.audit import (
 )
 from src.utils.types import AuditFilter, ArtifactType, Role
 
-st.set_page_config(page_title="Governance & Audit", layout="wide")
+from ui.theme import page_setup
+page_setup("Governance & Audit")
 st.title("🛡️ Governance & Audit")
 st.caption(
     "Unified read layer over the three separate governance logs — sign-offs, "
-    "A/E governance events, and the AI audit log (FR-4-19..22). Storage stays "
+    "A/E governance events, and the AI audit log. Storage stays "
     "separate; this is a unified *view*."
 )
 
@@ -136,7 +137,7 @@ st.markdown("---")
 st.subheader("Tamper-evidence — chain integrity")
 st.caption(
     "Recomputes each hash-chained governance log and reports the first divergence "
-    "(FR-4-21). A log with no hashed rows verifies clean (chain begins at the first "
+    "A log with no hashed rows verifies clean (chain begins at the first "
     "hashed row)."
 )
 if st.button("Verify integrity", type="primary"):
