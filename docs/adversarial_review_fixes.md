@@ -1,7 +1,8 @@
 # Adversarial Review — Fix Log (2026-08-31)
 
 Companion to `adversarial_review_2026-08-31.md` (findings) and
-`adversarial_review_handoff.md` (plan). Records what was fixed, how it was
+`adversarial_review_handoff.md` (plan). **Paused 2026-08-31 — start from
+`adversarial_review_resume.md`.** Records what was fixed, how it was
 verified, and one **new finding discovered during the work**.
 
 **Owner-approved batch:** B-1…B-5, the four demo-facing items, M-10, and five
