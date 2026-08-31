@@ -8,6 +8,7 @@ identical on re-run with the same seed.
 from __future__ import annotations
 
 from collections import defaultdict
+import logging
 from dataclasses import replace
 
 import numpy as np
@@ -20,6 +21,9 @@ from src.ai.glm.fit import (
     _fit_from_fitting_cells,
     _factors_at_output_grain,
 )
+
+logger = logging.getLogger(__name__)
+
 
 
 def _grain_id(grain_key: dict) -> tuple:
@@ -60,20 +64,42 @@ def bootstrap_cis(
     mu = np.clip(base["_predicted_events"].to_numpy(dtype=float), 0.0, None)
     exposure = base["_exposure"].to_numpy(dtype=float)
 
+    # A diverged base fit yields non-finite or astronomically large predicted
+    # counts. Sampling from it raised "lam value too large" out of numpy and took
+    # the whole run down; worse, a diverged fit must never be published as a
+    # proposal at all. Report the standard loud "no proposal" state instead
+    # (FR-3A-29) — adversarial review M-20.
+    _MAX_CREDIBLE_EVENTS = 1e12
+    if not np.all(np.isfinite(mu)) or (mu.size and float(np.max(mu)) > _MAX_CREDIBLE_EVENTS):
+        return replace(
+            fitted,
+            converged=False,
+            factors=[],
+            message=(
+                "No AI proposal available: the GLM diverged (predicted event counts "
+                "are non-finite or implausibly large), so no factor or interval can "
+                "be published."
+            ),
+        )
+
     master = np.random.default_rng(seed)
     child_seeds = master.integers(0, 2 ** 63 - 1, size=n_resamples)
 
     samples: dict[tuple, list[float]] = defaultdict(list)
     for child in child_seeds:
         rng_i = np.random.default_rng(int(child))
-        if decrement is DecrementType.MORTALITY:
-            new_actual = rng_i.poisson(mu).astype(float)
-        else:
-            n = np.maximum(1, np.round(exposure).astype(np.int64))
-            with np.errstate(divide="ignore", invalid="ignore"):
-                p = np.where(exposure > 0, mu / exposure, 0.0)
-            p = np.clip(p, 0.0, 1.0)
-            new_actual = rng_i.binomial(n, p).astype(float)
+        try:
+            if decrement is DecrementType.MORTALITY:
+                new_actual = rng_i.poisson(mu).astype(float)
+            else:
+                n = np.maximum(1, np.round(exposure).astype(np.int64))
+                with np.errstate(divide="ignore", invalid="ignore"):
+                    p = np.where(exposure > 0, mu / exposure, 0.0)
+                p = np.clip(p, 0.0, 1.0)
+                new_actual = rng_i.binomial(n, p).astype(float)
+        except (ValueError, OverflowError):
+            # An undrawable resample is dropped, exactly like a degenerate refit.
+            continue
 
         resampled = base.copy()
         resampled[actual_col] = new_actual
@@ -89,12 +115,25 @@ def bootstrap_cis(
     lo_pct = (1.0 - ci_level) / 2.0 * 100.0
     hi_pct = 100.0 - lo_pct
     new_factors = []
+    unbounded = 0
     for fc in fitted.factors:
         vals = samples.get(_grain_id(fc.grain_key), [])
-        if vals:
-            lo = float(np.percentile(vals, lo_pct))
-            hi = float(np.percentile(vals, hi_pct))
-        else:
-            lo = hi = float("nan")
+        if not vals:
+            # FR-3A-19: a published factor must carry a bootstrap interval. A cell
+            # that appears in no resample (a degenerate near-zero-exposure cell,
+            # e.g. expected_events ~ 1e-05 with credibility_z = 0) cannot be
+            # bounded, so publishing it would mean publishing a point estimate no
+            # interval stands behind. Withhold it instead — fail loudly, never
+            # emit an indefensible number (FR-3A-29).
+            unbounded += 1
+            continue
+        lo = float(np.percentile(vals, lo_pct))
+        hi = float(np.percentile(vals, hi_pct))
         new_factors.append(replace(fc, ci_low=lo, ci_high=hi))
+
+    if unbounded:
+        logger.info(
+            "bootstrap: withheld %d of %d factor cells with no resample support "
+            "(no interval estimable)", unbounded, len(fitted.factors),
+        )
     return replace(fitted, factors=new_factors)

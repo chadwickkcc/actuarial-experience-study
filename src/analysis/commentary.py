@@ -200,18 +200,27 @@ def classify_trends(
     Fits a straight line (``numpy.polyfit`` degree 1) through the last
     ``trend.window_years`` calendar-year A/E points. A/E rising above the
     stable band = "worsening" (experience deteriorating vs expectation);
-    falling = "improving". Fewer than the window's years of data →
+    falling = "improving". Fewer than the window's years of data, or fewer than
+    ``trend.min_actual_claims`` actual claims across the window →
     "insufficient_data".
+
+    The volume floor matters: without it, products with literally zero claims were
+    classified "stable" (slope 0.0) and products with two claims "improving", and
+    those rows reached the AI fact pack as fact (adversarial review M-8).
     """
     cfg = load_commentary_config(config_path)
     window = int(cfg["trend"]["window_years"])
     threshold = float(cfg["trend"]["stable_slope_threshold"])
+    min_claims = int(cfg["trend"].get("min_actual_claims", 0))
 
     yoy = compute_yoy_movement(db_path, run_id, decrement, product)
     if len(yoy) < window:
         return {"classification": "insufficient_data", "slope": None,
                 "years_used": [r["year"] for r in yoy]}
     tail = yoy[-window:]
+    if sum(int(r["actual"]) for r in tail) < min_claims:
+        return {"classification": "insufficient_data", "slope": None,
+                "years_used": [int(r["year"]) for r in tail]}
     years = np.array([r["year"] for r in tail], dtype=float)
     aes = np.array([r["ae"] for r in tail], dtype=float)
     slope = float(np.polyfit(years, aes, 1)[0])

@@ -22,6 +22,16 @@ from src.fraud.rules import (
     rule_similar_claims_same_claimant,
 )
 from src.fraud.runner import load_fraud_config, run_fraud_scan
+from src.utils.types import Role, User
+
+# run_fraud_scan is a governed write and requires the `propose` right (M-10).
+_PYTEST_ACTOR = User(
+    user_id="u-pytest",
+    username="pytest",
+    display_name="pytest",
+    role=Role.ANALYST,
+    active=True,
+)
 
 _DB = Path("data/experience_study.duckdb")
 _CFG_PATH = Path("config/fraud_config.yaml")
@@ -187,7 +197,7 @@ def live_scan(prod_db):
         ).fetchone()[0]
     finally:
         con.close()
-    return run_fraud_scan(prod_db, run_id, run_by="pytest", persist=False)
+    return run_fraud_scan(prod_db, run_id, user=_PYTEST_ACTOR, persist=False)
 
 
 @_needs_db
@@ -252,7 +262,7 @@ def test_fraud_fact_pack_carries_no_person_identifiers(prod_db):
             ).fetchone()[0]
         finally:
             con.close()
-        _scan(prod_db, run_id, run_by="pytest", persist=True)
+        _scan(prod_db, run_id, user=_PYTEST_ACTOR, persist=True)
         scan = latest_scan(prod_db)
     facts = assemble_fraud_facts(prod_db, scan["fraud_run_id"])
     blob = json.dumps(facts)

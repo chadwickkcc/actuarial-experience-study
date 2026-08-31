@@ -33,6 +33,24 @@ from src.governance.lineage import approve_and_supersede  # noqa: E402
 from src.governance.users import get_user_by_username  # noqa: E402
 from src.governance.workflow import reopen  # noqa: E402
 
+def _make_publishable(db, set_id):
+    """Promote a set to STAGE3_APPROVED so it may be published.
+
+    ``approve_and_supersede`` refuses a DRAFT/PROPOSED set (adversarial review B-1).
+    These harnesses exercise lineage mechanics, so they promote the target set
+    rather than driving a full sign-off chain.
+    """
+    con = duckdb.connect(str(db))
+    try:
+        con.execute(
+            "UPDATE gold_assumption_sets SET status = 'STAGE3_APPROVED' "
+            "WHERE assumption_set_id = ? AND status NOT IN ('STAGE3_APPROVED', 'APPROVED')",
+            [set_id],
+        )
+    finally:
+        con.close()
+
+
 LIVE_DB = ROOT_DIR / "data" / "experience_study.duckdb"
 
 _results: list[tuple[str, bool, str]] = []
@@ -76,6 +94,8 @@ def run() -> int:
 
         analyst = get_user_by_username("a.analyst", db_path=db)
         assert analyst is not None, "seed user a.analyst missing"
+        chief = get_user_by_username("c.chief", db_path=db)
+        assert chief is not None, "seed user c.chief missing"
 
         # --- Precondition: get an APPROVED set to re-open ---------------------
         con = duckdb.connect(db, read_only=True)
@@ -86,7 +106,10 @@ def run() -> int:
         before = _row(db, set_id)
         if before[0] != "APPROVED":
             # Approve via the lineage-approve path purely to set up the precondition.
-            approve_and_supersede(set_id, dt.date(2026, 1, 1), dt.date(2026, 12, 31), db_path=db)
+            _make_publishable(db, set_id)
+            approve_and_supersede(
+                set_id, dt.date(2026, 1, 1), dt.date(2026, 12, 31), user=chief, db_path=db
+            )
         approved = _row(db, set_id)
         print(f"target set {set_id} status={approved[0]} version={approved[2]}")
         assert approved[0] == "APPROVED", "precondition setup failed (set not APPROVED)"

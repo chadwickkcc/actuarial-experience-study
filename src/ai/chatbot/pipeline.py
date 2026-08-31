@@ -763,14 +763,48 @@ def validate_sql(
 _PER_CELL_STAT_RE = re.compile(r"^(credibility_z|se_ae)", re.IGNORECASE)
 
 
+def _tainted_aliases(tree: exp.Expression) -> set[str]:
+    """Alias names that ultimately resolve to a per-cell stat column.
+
+    ``SELECT credibility_z_lapse AS z`` taints ``z``; a second hop
+    ``SELECT z AS z2`` taints ``z2``. Iterated to a fixpoint so any depth of
+    CTE/derived-table renaming is covered.
+    """
+    tainted: set[str] = set()
+    aliases = list(tree.find_all(exp.Alias))
+    for _ in range(len(aliases) + 1):
+        grew = False
+        for alias in aliases:
+            name = alias.alias_or_name
+            if not name or name in tainted:
+                continue
+            for col in alias.this.find_all(exp.Column) if alias.this else []:
+                col_name = col.name or ""
+                if _PER_CELL_STAT_RE.match(col_name) or col_name in tainted:
+                    tainted.add(name)
+                    grew = True
+                    break
+        if not grew:
+            break
+    return tainted
+
+
 def aggregates_per_cell_stat(sql: str) -> bool:
     """True if ``sql`` applies an aggregate (AVG/SUM/MIN/MAX/MEDIAN, not COUNT) to a
-    per-cell ``credibility_z*`` / ``se_ae*`` column.
+    per-cell ``credibility_z*`` / ``se_ae*`` column — directly OR through an alias.
 
     Deterministic backstop for the FR-1A-24 antipattern: averaging per-cell
     credibility collapses it toward 0 (e.g. ``AVG(credibility_z_lapse) ≈ 0.0015``
     instead of the true ~0.39). The prompt forbids it; this catches a model that
     does it anyway, so a wrong credibility can never reach the user's prose.
+
+    Alias-aware since 2026-08-31: matching bare column names let a one-line
+    projection alias defeat the check —
+    ``WITH t AS (SELECT credibility_z_lapse AS z ...) SELECT AVG(z) FROM t``
+    passed every gate and returned 0.00106 against a true 0.6485, and was
+    *traceable*, so the numeric post-check could not catch it either
+    (adversarial review M-14).
+
     Parse failures return False — the boundary gates already reject unparseable SQL.
     """
     try:
@@ -779,11 +813,14 @@ def aggregates_per_cell_stat(sql: str) -> bool:
         return False
     if tree is None:
         return False
+
+    tainted = _tainted_aliases(tree)
     for agg in tree.find_all(exp.AggFunc):
         if isinstance(agg, exp.Count):  # COUNT(credibility_z) is harmless
             continue
         for col in agg.find_all(exp.Column):
-            if _PER_CELL_STAT_RE.match(col.name or ""):
+            name = col.name or ""
+            if _PER_CELL_STAT_RE.match(name) or name in tainted:
                 return True
     return False
 

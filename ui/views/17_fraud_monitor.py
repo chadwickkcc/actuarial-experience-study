@@ -67,7 +67,9 @@ if run_clicked:
         st.error("No COMPLETE study run — run a study first.")
         st.stop()
     with st.spinner("Scoring claims against the six indicators…"):
-        res = run_fraud_scan(DB_PATH, row[0], run_by=_user.username)
+        # Authorisation is enforced engine-side (FR-4-04); this call is the gate,
+        # not the disabled button above.
+        res = run_fraud_scan(DB_PATH, row[0], user=_user)
     st.success(
         f"Scan complete: {res.n_claims_scored:,} claims scored, "
         f"{res.n_claims_flagged} flagged (threshold {res.composite_threshold})."

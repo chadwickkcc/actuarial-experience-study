@@ -283,3 +283,40 @@ def test_management_commentary_blocks_empty():
         _FACTS, cfg, "claude-sonnet-4-6", provider=_stub("  ")
     )
     assert out["blocked"] is True
+
+
+# ---------------------------------------------------------------------------
+# Trend classification needs a volume floor (adversarial review M-8)
+# ---------------------------------------------------------------------------
+
+class TestTrendVolumeGuard:
+    """A trend badge asserts something about experience. With no claims there is
+    no experience to have a trend, yet the classifier reported "DA lapse: stable"
+    for products with literally zero lapses ever, and "DA_VA mortality: improving"
+    off two claims — and those rows reached the AI fact pack as fact."""
+
+    def test_zero_experience_is_insufficient_data(self, tiny_db):
+        # three years of real exposure, but not a single claim
+        _seed(tiny_db, [
+            (2021, "M", 0, 100.0), (2022, "M", 0, 100.0), (2023, "M", 0, 100.0),
+        ])
+        res = classify_trends(tiny_db, _RUN, "MORTALITY")
+        assert res["classification"] == "insufficient_data", (
+            f'zero claims must not yield a confident badge, got {res["classification"]!r}'
+        )
+        assert res["slope"] is None
+
+    def test_below_floor_experience_is_insufficient_data(self, tiny_db):
+        _seed(tiny_db, [
+            (2021, "M", 1, 10.0), (2022, "M", 1, 10.0), (2023, "M", 0, 10.0),
+        ])
+        res = classify_trends(tiny_db, _RUN, "MORTALITY")
+        assert res["classification"] == "insufficient_data"
+
+    def test_ample_experience_still_classifies(self, tiny_db):
+        _seed(tiny_db, [
+            (2021, "M", 60, 100.0), (2022, "M", 80, 100.0), (2023, "M", 100, 100.0),
+        ])
+        res = classify_trends(tiny_db, _RUN, "MORTALITY")
+        assert res["classification"] == "worsening"
+        assert res["slope"] is not None

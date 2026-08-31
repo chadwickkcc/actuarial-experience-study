@@ -23,3 +23,8 @@ trend:
   # |slope| at/below this is "stable"; direction of a larger slope decides
   # improving (A/E falling toward expectation) vs worsening (A/E rising).
   stable_slope_threshold: 0.02
+  # A trend badge asserts something about experience, so it needs experience to
+  # rest on. Below this many actual claims across the window the classification is
+  # "insufficient_data" rather than a confident improving/worsening/stable —
+  # products with zero lapses were being reported as "stable" (review M-8).
+  min_actual_claims: 20

@@ -17,9 +17,9 @@ import pytest
 from src.assumptions.workflow import (
     get_next_iteration_number,
     get_workflow_iterations,
-    log_workflow_iteration,
     transition_assumption_set_status,
 )
+from src.governance.audit import log_workflow_iteration
 from src.utils.db_init import init_database
 
 

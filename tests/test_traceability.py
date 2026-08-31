@@ -10,6 +10,8 @@ or echoed from the user's own message.
 """
 from __future__ import annotations
 
+import pytest
+
 from src.ai.chatbot.traceability import verify_traceability
 from src.utils.types import TraceabilityResult
 
@@ -112,3 +114,42 @@ def test_recursive_extraction_over_nested_and_columns_rows():
     rs = {"columns": ["ae_count", "n"], "rows": [[0.92, 41], [1.10, 7]]}
     assert verify_traceability("0.92, 41, 1.10, 7.", rs).passed
     assert not verify_traceability("0.92 and 5.5", rs).passed
+
+
+# ---------------------------------------------------------------------------
+# Typographic minus signs must not slip past the check (review M-13)
+# ---------------------------------------------------------------------------
+
+class TestUnicodeSigns:
+    """``_NUMBER_RE``'s sign class was ASCII ``[-+]`` only. A well-typeset LLM
+    writes U+2212 MINUS SIGN, so ``−0.6561`` was tokenised as ``0.6561``: the
+    checker validated ``+0.6561`` while the reader saw ``−0.6561``. In an
+    experience study that turns deterioration into improvement."""
+
+    RESULT = {"columns": ["delta"], "rows": [[0.6561]]}
+
+    @pytest.mark.parametrize("minus", ["−", "–", "—"])
+    def test_typographic_minus_is_not_silently_dropped(self, minus):
+        answer = f"The A/E moved by {minus}0.6561 this year."
+        res = verify_traceability(answer, self.RESULT, "")
+        assert not res.passed, (
+            f"{minus!r}0.6561 must NOT trace to +0.6561 — the sign is the finding"
+        )
+
+    def test_ascii_negative_still_blocks_against_a_positive_value(self):
+        res = verify_traceability("Moved by -0.6561.", self.RESULT, "")
+        assert not res.passed
+
+    def test_genuine_negative_still_traces(self):
+        res = verify_traceability(
+            "Moved by −0.6561.", {"columns": ["d"], "rows": [[-0.6561]]}, ""
+        )
+        assert res.passed, "a correctly-signed negative must still trace"
+
+    def test_range_labels_still_parse_as_two_positives(self):
+        """The round-1 en-dash fix must survive: a band label is a range, not a
+        negative."""
+        res = verify_traceability(
+            "Ages 25–29 drove it.", {"columns": ["band"], "rows": [["25-29"]]}, ""
+        )
+        assert res.passed

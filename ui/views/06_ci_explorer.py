@@ -267,12 +267,28 @@ c2.metric("Expected CI Claims", f"{total_expected:,.1f}")
 c3.metric("Aggregate CI A/E", f"{agg_ae:.3f}" if not np.isnan(agg_ae) else "—")
 c4.metric("CI Exposure Years", f"{ci_exposure:,.0f}")
 
-spec_low, spec_high = 0.90, 1.10
+# Experience above the expected basis is a finding to explain, not a fault in the
+# tool — presenting it as a ⚠ warning made the study's own headline result read as
+# an error (adversarial review m-14).
+_EXPECTED_LOW, _EXPECTED_HIGH = 0.90, 1.10
 if not np.isnan(agg_ae):
-    if spec_low <= agg_ae <= spec_high:
-        st.success(f"CI A/E {agg_ae:.3f} is within specification range {spec_low}–{spec_high}.")
+    if _EXPECTED_LOW <= agg_ae <= _EXPECTED_HIGH:
+        st.success(
+            f"Aggregate CI A/E {agg_ae:.3f} is in line with the expected basis "
+            f"({_EXPECTED_LOW}–{_EXPECTED_HIGH})."
+        )
+    elif agg_ae > _EXPECTED_HIGH:
+        st.info(
+            f"Aggregate CI A/E {agg_ae:.3f} is **above** the expected basis "
+            f"({_EXPECTED_LOW}–{_EXPECTED_HIGH}) — incidence is running heavier than "
+            f"the reference table. See Management Commentary for the drivers."
+        )
     else:
-        st.warning(f"CI A/E {agg_ae:.3f} is outside specification range {spec_low}–{spec_high}.")
+        st.info(
+            f"Aggregate CI A/E {agg_ae:.3f} is **below** the expected basis "
+            f"({_EXPECTED_LOW}–{_EXPECTED_HIGH}) — incidence is running lighter than "
+            f"the reference table. See Management Commentary for the drivers."
+        )
 
 # Note: CI claims from products not in this study run (e.g. IUL when run covers TERM/WL/UL only)
 # are counted in exposure segments but excluded from A/E results. Counts here reflect study scope.
@@ -465,7 +481,8 @@ if not age_band_df.empty and age_band_df["ae_ci"].notna().any():
     )
     st.plotly_chart(fig_age, use_container_width=True)
 else:
-    st.info("No age band data available. Re-run the study after updating the A/E engine.")
+    st.info("No critical-illness cover on the selected product(s), so there is no "
+            "age-band experience to show.")
 
 # ── Heat map: age band × illness code ────────────────────────────────────────
 

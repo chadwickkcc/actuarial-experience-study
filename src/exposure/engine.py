@@ -474,17 +474,17 @@ def _load_silver_policies(
     """).df()
 
 
-def _run_reconciliation(
-    con: duckdb.DuckDBPyConnection,
+def _reconcile_one_product(
     policies_df: pd.DataFrame,
     product_code: str,
     study_run_id: str,
     study_start: date,
     study_end: date,
-) -> bool:
-    """Compute and persist in-force reconciliation rows for each calendar year.
+) -> tuple[list[dict], bool]:
+    """Build the per-calendar-year reconciliation rows for ONE product.
 
-    Returns True if every year passes within ±0.01% tolerance.
+    ``policies_df`` must already be scoped to that product (see
+    ``_run_reconciliation``). Returns (rows, all_pass).
     """
     all_pass = True
     recon_rows: list[dict] = []
@@ -589,11 +589,58 @@ def _run_reconciliation(
             "recon_passes":       passes,
         })
 
-    recon_df = pd.DataFrame(recon_rows)
+    return recon_rows, all_pass
+
+
+def _run_reconciliation(
+    con: duckdb.DuckDBPyConnection,
+    policies_df: pd.DataFrame,
+    product_code: str,
+    study_run_id: str,
+    study_start: date,
+    study_end: date,
+) -> bool:
+    """Compute and persist in-force reconciliation rows for each calendar year.
+
+    ``_load_silver_policies`` returns the whole product FAMILY for any member
+    (UL/ULSG/IUL share a Silver table; DA covers DA_FIXED/DA_FIA/DA_VA). Rows are
+    therefore attributed to each policy's OWN ``product_code`` — the same rule the
+    segment writer uses — rather than to the invoked one. Stamping the invoked code
+    on the whole family made every UL-family label carry all 4,500 family policies,
+    overstating portfolio deaths by 50% while each row's arithmetic still closed, so
+    nothing alerted (adversarial review B-3).
+
+    A frame with no ``product_code`` column is attributed wholly to ``product_code``.
+
+    Returns True if every year of every emitted product passes within ±0.01%.
+    """
+    if "product_code" in policies_df.columns and not policies_df.empty:
+        groups = [
+            (str(code), frame)
+            for code, frame in policies_df.groupby("product_code", dropna=False)
+        ]
+    else:
+        groups = [(product_code, policies_df)]
+
+    all_rows: list[dict] = []
+    all_pass = True
+    for code, frame in groups:
+        rows, passes = _reconcile_one_product(
+            frame, code, study_run_id, study_start, study_end
+        )
+        all_rows.extend(rows)
+        all_pass = all_pass and passes
+
+    if not all_rows:
+        return all_pass
+
+    recon_df = pd.DataFrame(all_rows)
+    emitted = sorted({r["product_code"] for r in all_rows})
+    placeholders = ",".join(["?"] * len(emitted))
     con.execute(
         "DELETE FROM gold_inforce_reconciliation "
-        "WHERE study_run_id = ? AND product_code = ?",
-        [study_run_id, product_code],
+        f"WHERE study_run_id = ? AND product_code IN ({placeholders})",
+        [study_run_id] + emitted,
     )
     con.execute("INSERT INTO gold_inforce_reconciliation SELECT * FROM recon_df")
 

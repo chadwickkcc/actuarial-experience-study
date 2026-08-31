@@ -211,7 +211,10 @@ def _add_stat_columns(
     ae = df[ae_col].astype(float)
     se = np.where((n > 0) & ~np.isnan(ae), ae / np.sqrt(n), np.nan)
     df[f"se_ae_{suffix}"] = se
-    df[f"ci_lower_{suffix}"] = ae - _Z95 * se
+    # Floor the lower bound at zero: an A/E ratio cannot be negative, and a sparse
+    # cell (n=1) otherwise stored e.g. -129.59. Matches ui/stats_helpers.poisson_ci,
+    # which already floors (adversarial review m-3).
+    df[f"ci_lower_{suffix}"] = np.maximum(0.0, ae - _Z95 * se)
     df[f"ci_upper_{suffix}"] = ae + _Z95 * se
     df[f"credibility_z_{suffix}"] = _vectorised_z(df[n_col], method, threshold)
 
@@ -236,8 +239,12 @@ def _insert_ae_results(
         if col not in df.columns:
             df[col] = None
 
-    # Only keep columns that exist in the gold_ae_results DDL (excludes anti_selection_flag)
-    _DDL_COLS = [c for c in _GOLD_COLS if c != "anti_selection_flag"]
+    # gold_ae_results carries every column in _GOLD_COLS, anti_selection_flag
+    # included (db_init: BOOLEAN NOT NULL DEFAULT FALSE). It used to be excluded
+    # here on the stale premise that the DDL lacked it, so FR-1B-10 was computed
+    # and then silently dropped — every row read FALSE while 809 cells qualified
+    # (adversarial review M-7).
+    _DDL_COLS = list(_GOLD_COLS)
     subset = df[[c for c in _DDL_COLS if c in df.columns or c == "_created_ts"]].copy()
     for col in _DDL_COLS:
         if col not in subset.columns:
@@ -280,8 +287,12 @@ def _build_ci_illness_rows(
     if ci_mask.sum() == 0:
         return pd.DataFrame()
 
+    # calendar_year is carried so CI can be reported year-on-year like every other
+    # decrement; without it CI had no YoY, trend or driver attribution at all
+    # (adversarial review M-5).
     ci_segs = exp_df[ci_mask][
-        ["gender", "attained_age_band", "product_code", "plan_code", "exposure_years"]
+        ["gender", "attained_age_band", "product_code", "plan_code",
+         "exposure_years", "calendar_year"]
     ].copy()
 
     # Cross-join segments with illness code table on (gender, attained_age_band)
@@ -298,7 +309,8 @@ def _build_ci_illness_rows(
     # the UI can filter and chart by gender and age without re-querying exposure segments.
     # ci_events_df is pre-grouped on the same four keys so actual counts are correctly
     # matched without duplication.
-    grp_dims = ["product_code", "illness_code", "gender", "attained_age_band"]
+    grp_dims = ["product_code", "illness_code", "gender", "attained_age_band",
+                "calendar_year"]
     agg = expanded.groupby(grp_dims, dropna=False).agg(
         ci_exposure_count=("exposure_years", "sum"),
         expected_ci_claims=("expected_ci_by_code", "sum"),
@@ -307,15 +319,18 @@ def _build_ci_illness_rows(
     # Actual CI claims from event table, matched by (product_code, illness_code, gender, attained_age_band)
     if len(ci_events_df) > 0 and "illness_code" in ci_events_df.columns:
         valid_events = ci_events_df.dropna(subset=["illness_code"])
+        match_keys = ["product_code", "illness_code", "gender", "attained_age_band"]
+        if "calendar_year" in valid_events.columns:
+            match_keys.append("calendar_year")
         actual_by_code = (
-            valid_events.groupby(["product_code", "illness_code", "gender", "attained_age_band"])["cnt"]
+            valid_events.groupby(match_keys)["cnt"]
             .sum()
             .reset_index()
             .rename(columns={"cnt": "actual_ci_claims"})
         )
         agg["illness_code"] = agg["illness_code"].astype(str)
         actual_by_code["illness_code"] = actual_by_code["illness_code"].astype(str)
-        agg = agg.merge(actual_by_code, on=["product_code", "illness_code", "gender", "attained_age_band"], how="left")
+        agg = agg.merge(actual_by_code, on=match_keys, how="left")
     else:
         agg["actual_ci_claims"] = 0
 
@@ -341,7 +356,7 @@ def _build_ci_illness_rows(
     for col in [
         "plan_code", "smoker_status", "risk_class",
         "issue_age_band", "duration_band",
-        "policy_year", "calendar_year",
+        "policy_year",
         "is_plt_flag", "premium_jump_ratio_band", "distribution_channel",
         "exposure_count", "exposure_amount",
         "actual_deaths_count", "actual_deaths_amount",
@@ -636,14 +651,19 @@ def calculate_ae(
         # Include gender and attained_age_band so per-illness rows retain those dimensions.
         ci_seg_counts = (
             exp_df[exp_df["decrement_type"] == "CI_CLAIM"]
-            .groupby(["product_code", "illness_code", "gender", "attained_age_band"], dropna=False)
+            .groupby(
+                ["product_code", "illness_code", "gender", "attained_age_band",
+                 "calendar_year"],
+                dropna=False,
+            )
             .size()
             .reset_index(name="cnt")
         )
         ci_events_df = (
             ci_seg_counts.dropna(subset=["illness_code"])
             if len(ci_seg_counts) > 0
-            else pd.DataFrame(columns=["product_code", "illness_code", "gender", "attained_age_band", "cnt"])
+            else pd.DataFrame(columns=["product_code", "illness_code", "gender",
+                                       "attained_age_band", "calendar_year", "cnt"])
         )
         total_ci_from_events = int(ci_events_df["cnt"].sum()) if len(ci_events_df) > 0 else 0
 
@@ -689,7 +709,11 @@ def calculate_ae(
             agg["ae_amount"].astype(float) / np.sqrt(agg["actual_deaths_count"].astype(float)),
             np.nan,
         )
-        agg["ci_lower_amount"] = agg["ae_amount"].astype(float) - _Z95 * agg["se_ae_amount"]
+        # Floored at zero for the same reason as the count basis (m-3): an A/E
+        # ratio cannot be negative.
+        agg["ci_lower_amount"] = np.maximum(
+            0.0, agg["ae_amount"].astype(float) - _Z95 * agg["se_ae_amount"]
+        )
         agg["ci_upper_amount"] = agg["ae_amount"].astype(float) + _Z95 * agg["se_ae_amount"]
 
         # Lapse stats

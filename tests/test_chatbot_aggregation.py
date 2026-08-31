@@ -416,3 +416,82 @@ def test_handle_turn_blocks_aggregated_credibility_with_hint():
     assert result.block_reason == "credibility_aggregate"
     assert "averaged" in result.response_text.lower()
     assert "0.0015" not in result.response_text
+
+
+# ---------------------------------------------------------------------------
+# The credibility backstop must survive aliasing (adversarial review M-14)
+# ---------------------------------------------------------------------------
+
+class TestCredibilityBackstopAliasEvasion:
+    """``aggregates_per_cell_stat`` matched column NAMES inside an aggregate, so a
+    one-line projection alias defeated it:
+
+        WITH t AS (SELECT credibility_z_lapse AS z FROM gold_ae_results ...)
+        SELECT AVG(z) FROM t
+
+    passed every gate and returned 0.00106 where the true aggregate Z is 0.6485 —
+    a 610x understatement, and *traceable* (it came from the data), so the numeric
+    post-check would not catch it either. This is the round-6 defect the backstop
+    was built for, resurrected by a rename."""
+
+    @staticmethod
+    def _f(sql):
+        from src.ai.chatbot.pipeline import aggregates_per_cell_stat
+        return aggregates_per_cell_stat(sql)
+
+    def test_cte_alias_is_caught(self):
+        sql = (
+            "WITH t AS (SELECT credibility_z_lapse AS z FROM gold_ae_results "
+            "WHERE product_code='UL') SELECT AVG(z) AS credibility FROM t"
+        )
+        assert self._f(sql)
+
+    def test_derived_table_alias_is_caught(self):
+        sql = (
+            "SELECT AVG(zz) FROM (SELECT se_ae_count AS zz FROM gold_ae_results) s"
+        )
+        assert self._f(sql)
+
+    def test_double_alias_hop_is_caught(self):
+        sql = (
+            "WITH a AS (SELECT credibility_z AS z1 FROM gold_ae_results), "
+            "b AS (SELECT z1 AS z2 FROM a) SELECT AVG(z2) FROM b"
+        )
+        assert self._f(sql)
+
+    def test_manual_average_via_sum_is_caught(self):
+        sql = (
+            "WITH t AS (SELECT credibility_z_lapse AS z FROM gold_ae_results) "
+            "SELECT SUM(z) / COUNT(*) FROM t"
+        )
+        assert self._f(sql)
+
+    def test_window_aggregate_over_alias_is_caught(self):
+        sql = (
+            "WITH t AS (SELECT credibility_z_lapse AS z FROM gold_ae_results) "
+            "SELECT AVG(z) OVER () FROM t"
+        )
+        assert self._f(sql)
+
+    def test_direct_form_still_caught(self):
+        assert self._f(
+            "SELECT AVG(credibility_z_lapse) FROM gold_ae_results"
+        )
+
+    def test_legitimate_queries_are_not_blocked(self):
+        # A single-cell read of credibility is fine.
+        assert not self._f(
+            "SELECT credibility_z_lapse FROM gold_ae_results WHERE product_code='UL' LIMIT 1"
+        )
+        # COUNT is harmless.
+        assert not self._f(
+            "SELECT COUNT(credibility_z_lapse) FROM gold_ae_results"
+        )
+        # Aggregating the actual/expected components is the CORRECT pattern.
+        assert not self._f(
+            "SELECT SUM(actual_lapses)/SUM(expected_lapses) FROM gold_ae_results"
+        )
+        # An unrelated alias must not be tainted.
+        assert not self._f(
+            "WITH t AS (SELECT actual_lapses AS z FROM gold_ae_results) SELECT AVG(z) FROM t"
+        )

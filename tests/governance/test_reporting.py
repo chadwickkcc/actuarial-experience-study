@@ -34,7 +34,43 @@ from src.assumptions.assumption_set import (
     DecrementMultiplier,
     save_assumption_set,
 )
-from src.utils.types import ArtifactType, AssumptionSetStatus, Decision, User
+from src.utils.types import ArtifactType, AssumptionSetStatus, Decision, Role, User
+
+def _submit(db: str, set_id: str) -> None:
+    """Promote a set to STAGE3_APPROVED so it may be published.
+
+    ``approve_and_supersede`` refuses to publish a DRAFT/PROPOSED set (adversarial
+    review B-1) — publishing a set that never went through the sign-off chain would
+    make unreviewed assumptions live. These lineage tests exercise the *mechanics*
+    of supersession and effective-dating, so they promote the set under test rather
+    than driving a full chain. Only the target set is touched.
+    """
+    con = duckdb.connect(db)
+    try:
+        con.execute(
+            "UPDATE gold_assumption_sets SET status = ? "
+            "WHERE assumption_set_id = ? AND status NOT IN (?, ?)",
+            [
+                AssumptionSetStatus.STAGE3_APPROVED.value,
+                set_id,
+                AssumptionSetStatus.STAGE3_APPROVED.value,
+                AssumptionSetStatus.APPROVED.value,
+            ],
+        )
+    finally:
+        con.close()
+
+
+def _approver() -> User:
+    """A user with the sign_off right — publishing is an approver action (FR-4-04)."""
+    return User(
+        user_id="u-chief",
+        username="c.chief",
+        display_name="C. Chief",
+        role=Role.CHIEF_ACTUARY,
+        active=True,
+    )
+
 
 _PERMISSIONS = {
     "analyst":        ["propose", "view"],
@@ -380,8 +416,10 @@ def test_dashboard_live_set_and_supersession(gov_env, cfg):
     root = _seed_set(db, multiplier=1.0)
     child = _seed_set(db, multiplier=1.1)
     _set_parent(db, child, root, version=2)
-    approve_and_supersede(root, date(2020, 1, 1), date(2023, 12, 31), db_path=db)
-    approve_and_supersede(child, date(2024, 1, 1), date(2030, 12, 31), db_path=db)  # contains today
+    _submit(db, root)
+    approve_and_supersede(root, date(2020, 1, 1), date(2023, 12, 31), user=_approver(), db_path=db)
+    _submit(db, child)
+    approve_and_supersede(child, date(2024, 1, 1), date(2030, 12, 31), user=_approver(), db_path=db)  # contains today
 
     data = dashboard_data(db_path=db, config_path=cfg)
     superseded_ids = {e["assumption_set_id"] for e in data["sets_by_state"]["SUPERSEDED"]}
@@ -410,7 +448,8 @@ def test_pack_no_effective_warning_once_published(gov_env, cfg, tmp_path):
     """Publishing (approve_and_supersede sets the effective range) clears the banner."""
     db = gov_env["db"]
     s = _seed_set(db, multiplier=1.0, source_run="run-1")
-    approve_and_supersede(s, date(2024, 1, 1), date(2030, 12, 31), db_path=db)
+    _submit(db, s)
+    approve_and_supersede(s, date(2024, 1, 1), date(2030, 12, 31), user=_approver(), db_path=db)
     html = Path(export_compliance_pack(
         ArtifactType.ASSUMPTION_SET, s, db_path=db, config_path=cfg, output_dir=tmp_path,
     )).read_text(encoding="utf-8")

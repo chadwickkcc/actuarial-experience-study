@@ -27,11 +27,11 @@ from src.assumptions.assumption_set import (
 )
 from src.utils.types import AssumptionSetStatus
 from src.assumptions.workflow import (
-    log_workflow_iteration,
     get_next_iteration_number,
     get_workflow_iterations,
     transition_assumption_set_status,
 )
+from src.governance.audit import log_workflow_iteration
 
 from ui.theme import page_setup
 page_setup("Step 2 — Edit & Submit")

@@ -8,7 +8,8 @@ lineage), effective-dating with a live-set resolver, cross-version comparison
 Governance is ordinary application code outside ``src/ai/``: all DB access here
 uses the standard parameterized DuckDB write path (NOT ``src/utils/sql_boundary``,
 which is the AI layer's read-only boundary). Lineage functions are pure data
-operations — RBAC enforcement is the Session-25 workflow engine's responsibility.
+operations, with one exception: ``approve_and_supersede`` publishes a set as the
+live basis, so it enforces authorisation server-side itself (FR-4-04 / NFR-G-02).
 """
 
 from __future__ import annotations
@@ -27,6 +28,8 @@ from src.assumptions.assumption_set import (
     load_assumption_set,
     save_assumption_set,
 )
+from src.governance.audit import log_workflow_iteration
+from src.governance.rbac import Action, require
 from src.utils.db_init import DEFAULT_DB_PATH
 from src.utils.types import AssumptionSetStatus, User, VersionDiff
 
@@ -116,20 +119,42 @@ def lineage_root(assumption_set_id: str, *, db_path: str = DEFAULT_DB_PATH) -> s
 # approve_and_supersede (FR-4-08; NFR-G-05)
 # ---------------------------------------------------------------------------
 
+# A set may only be published once it has been submitted for, or completed, the
+# sign-off chain. Publishing a DRAFT would make unreviewed assumptions live.
+_PUBLISHABLE_STATUSES = frozenset({
+    AssumptionSetStatus.STAGE3_APPROVED.value,
+    AssumptionSetStatus.APPROVED.value,
+})
+
+
 def approve_and_supersede(
     assumption_set_id: str,
     effective_from: date,
     effective_to: date,
     *,
+    user: User,
     db_path: str = DEFAULT_DB_PATH,
 ) -> None:
-    """Approve a set, set its effective range, and supersede the prior approved
-    set in the same lineage (FR-4-08/09).
+    """Publish a set: approve it, set its effective range, and supersede the prior
+    approved set in the same lineage (FR-4-08/09).
+
+    Authorisation is enforced HERE, server-side (FR-4-04 / NFR-G-02). Publishing
+    decides which assumptions are live, so it requires the ``sign_off`` right and a
+    set that has already been submitted for sign-off; a UI that merely disables the
+    button is not a control. The action is recorded in the governance trail.
 
     Enforces non-overlapping effective ranges within the lineage and ≤1
-    APPROVED-current per lineage. Raises ``OverlappingEffectiveRange`` (before any
-    write) if the requested range overlaps an existing range in the lineage.
+    APPROVED-current per lineage.
+
+    Raises:
+        PermissionDenied:          if ``user`` may not sign off (no write).
+        ValueError:                if the set is unknown, or its status is not
+                                   publishable, or the range is inverted (no write).
+        OverlappingEffectiveRange: if the range overlaps another in the lineage
+                                   (before any write).
     """
+    require(user, Action.SIGN_OFF)
+
     if effective_from > effective_to:
         raise ValueError("effective_from must be on or before effective_to")
 
@@ -137,6 +162,19 @@ def approve_and_supersede(
 
     con = duckdb.connect(str(db_path))
     try:
+        row = con.execute(
+            "SELECT status FROM gold_assumption_sets WHERE assumption_set_id = ?",
+            [assumption_set_id],
+        ).fetchone()
+        if row is None:
+            raise ValueError(f"Unknown assumption set {assumption_set_id}")
+        if row[0] not in _PUBLISHABLE_STATUSES:
+            raise ValueError(
+                f"Assumption set {assumption_set_id} has status {row[0]}; only a set "
+                f"that has been submitted for sign-off "
+                f"({' or '.join(sorted(_PUBLISHABLE_STATUSES))}) may be published."
+            )
+
         members = _lineage_members(con, root)
         # Overlap check against every OTHER member that already carries a range.
         for mid, _status, m_from, m_to in members:
@@ -169,8 +207,26 @@ def approve_and_supersede(
                     "SET status = ?, superseded_by = ? WHERE assumption_set_id = ?",
                     [AssumptionSetStatus.SUPERSEDED.value, assumption_set_id, mid],
                 )
+        next_iter = int(con.execute(
+            "SELECT COALESCE(MAX(iteration_number), 0) + 1 FROM gold_workflow_iterations "
+            "WHERE assumption_set_id = ?",
+            [assumption_set_id],
+        ).fetchone()[0])
     finally:
         con.close()
+
+    # Publishing changes the live basis: record it in the governance trail so the
+    # action is attributable (the review found it left no trace at all).
+    log_workflow_iteration(
+        db_path=Path(db_path),
+        workflow_session_id=str(uuid.uuid4()),
+        iteration_number=next_iter,
+        assumption_set_id=assumption_set_id,
+        stage=4,
+        action="PUBLISHED",
+        actuary_id=user.username,
+        actuary_comment=f"Published effective {effective_from} → {effective_to}.",
+    )
 
 
 # ---------------------------------------------------------------------------

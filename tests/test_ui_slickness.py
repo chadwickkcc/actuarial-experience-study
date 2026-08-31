@@ -85,3 +85,14 @@ def test_views_use_shared_page_setup():
         if "st.set_page_config(" in f.read_text(encoding="utf-8")
     ]
     assert offenders == [], f"views still call st.set_page_config: {offenders}"
+
+
+def test_ci_explorer_does_not_present_experience_as_a_fault() -> None:
+    """The demo's own headline CI story (A/E 1.2325) must not render as a warning,
+    and no page may tell a client to update the engine (adversarial review m-14)."""
+    from pathlib import Path as _P
+    src = _P("ui/views/06_ci_explorer.py").read_text()
+    assert "outside specification range" not in src, (
+        "elevated experience is a finding to explain, not an out-of-spec fault"
+    )
+    assert "updating the A/E engine" not in src, "developer-facing copy in client UI"

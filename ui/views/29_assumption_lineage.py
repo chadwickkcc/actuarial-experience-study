@@ -32,7 +32,7 @@ from src.governance.lineage import (
     approve_and_supersede,
     compare_versions,
 )
-from src.governance.rbac import Action
+from src.governance.rbac import Action, PermissionDenied
 from src.governance.workflow import reopen
 
 from ui.theme import page_setup
@@ -178,11 +178,13 @@ else:
             "(sign-off) action."
         )
     if publish_btn:
-        if not _can_signoff:  # UI is the only gate (approve_and_supersede has no engine RBAC)
+        try:
+            # Authorisation and the status precondition are enforced engine-side
+            # (FR-4-04); this call is the gate, not the disabled button above.
+            approve_and_supersede(set_id, eff_from, eff_to, user=_user, db_path=DB)
+        except PermissionDenied:
             st.error("You do not have permission to publish a version.")
             st.stop()
-        try:
-            approve_and_supersede(set_id, eff_from, eff_to, db_path=DB)
         except OverlappingEffectiveRange as exc:
             st.error(f"Effective range overlaps another version in the lineage: {exc}")
             st.stop()

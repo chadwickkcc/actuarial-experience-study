@@ -20,55 +20,10 @@ import duckdb
 # Workflow iteration logging
 # ---------------------------------------------------------------------------
 
-def log_workflow_iteration(
-    db_path: Path,
-    workflow_session_id: str,
-    iteration_number: int,
-    assumption_set_id: str,
-    stage: int,
-    action: str,
-    actuary_id: str,
-    actuary_comment: str = "",
-) -> str:
-    """Insert a row into gold_workflow_iterations.
-
-    Args:
-        db_path:                  DuckDB path.
-        workflow_session_id:      UUID identifying this workflow session.
-        iteration_number:         Monotonically increasing counter within the session.
-        assumption_set_id:        UUID of the assumption set being worked on.
-        stage:                    2 (edit) or 3 (submit) or 4 (governance).
-        action:                   One of SAVED, RETURNED_TO_S2, SUBMITTED_S4, APPROVED.
-        actuary_id:               Identifier of the actuary performing the action.
-        actuary_comment:          Free-text comment (optional).
-
-    Returns:
-        The new iteration_id (UUID string).
-    """
-    iteration_id = str(uuid.uuid4())
-    con = duckdb.connect(str(db_path))
-    try:
-        con.execute("""
-            INSERT INTO gold_workflow_iterations (
-                iteration_id, workflow_session_id, iteration_number,
-                assumption_set_id, stage, action,
-                actuary_id, actuary_comment, iteration_ts
-            ) VALUES (?,?,?,?,?,?,?,?,?)
-        """, [
-            iteration_id,
-            workflow_session_id,
-            iteration_number,
-            assumption_set_id,
-            stage,
-            action,
-            actuary_id,
-            actuary_comment,
-            datetime.utcnow(),
-        ])
-    finally:
-        con.close()
-    return iteration_id
-
+# ``log_workflow_iteration`` moved to ``src/governance/audit.py`` on 2026-08-31:
+# the workflow-iteration log is a hash-chained GOVERNANCE log, and the core
+# engine (this package) must not import ``src/governance`` — the one-way
+# boundary enforced by tests/governance/test_regression.py.
 
 # ---------------------------------------------------------------------------
 # Assumption set status transitions

@@ -32,6 +32,24 @@ import duckdb  # noqa: E402
 
 from src.governance import lineage  # noqa: E402
 from src.governance.users import get_user_by_username  # noqa: E402
+
+def _make_publishable(db, set_id):
+    """Promote a set to STAGE3_APPROVED so it may be published.
+
+    ``approve_and_supersede`` refuses a DRAFT/PROPOSED set (adversarial review B-1).
+    These harnesses exercise lineage mechanics, so they promote the target set
+    rather than driving a full sign-off chain.
+    """
+    con = duckdb.connect(str(db))
+    try:
+        con.execute(
+            "UPDATE gold_assumption_sets SET status = 'STAGE3_APPROVED' "
+            "WHERE assumption_set_id = ? AND status NOT IN ('STAGE3_APPROVED', 'APPROVED')",
+            [set_id],
+        )
+    finally:
+        con.close()
+
 from src.utils.types import VersionDiff  # noqa: E402
 
 LIVE_DB = ROOT_DIR / "data" / "experience_study.duckdb"
@@ -93,6 +111,7 @@ def run() -> int:
         print(f"Working on an isolated copy under {work} (live DB never written)")
 
         analyst = get_user_by_username("a.analyst", db_path=db)
+        chief = get_user_by_username("c.chief", db_path=db)
         assert analyst is not None, "seed user a.analyst missing"
         _clear_ranges(db)
         root_set, study_run = _pick_root(db)
@@ -111,8 +130,14 @@ def run() -> int:
                f"child={child} status={crow[0]} parent={crow[1]} version={crow[2]}")
 
         # --- 2.2 + 2.3: supersession + effective dating + live-set resolve ----
-        lineage.approve_and_supersede(root_set, dt.date(2026, 1, 1), dt.date(2026, 6, 30), db_path=db)
-        lineage.approve_and_supersede(child, dt.date(2026, 7, 1), dt.date(2026, 12, 31), db_path=db)
+        _make_publishable(db, root_set)
+        lineage.approve_and_supersede(
+            root_set, dt.date(2026, 1, 1), dt.date(2026, 6, 30), user=chief, db_path=db
+        )
+        _make_publishable(db, child)
+        lineage.approve_and_supersede(
+            child, dt.date(2026, 7, 1), dt.date(2026, 12, 31), user=chief, db_path=db
+        )
         root_after = _row(db, root_set)
         child_after = _row(db, child)
         root_id = lineage.lineage_root(child, db_path=db)
@@ -131,14 +156,17 @@ def run() -> int:
             child, study_run, analyst, db_path=db, output_yaml_dir=str(work)
         )
         try:
+            _make_publishable(db, grandchild)
             lineage.approve_and_supersede(
-                grandchild, dt.date(2026, 10, 1), dt.date(2027, 3, 31), db_path=db
+                grandchild, dt.date(2026, 10, 1), dt.date(2027, 3, 31), user=chief, db_path=db
             )
             record("2.4 (overlapping range rejected, no write)", False, "overlap was NOT rejected")
         except lineage.OverlappingEffectiveRange as e:
             gc = _row(db, grandchild)
             ch = _row(db, child)
-            ok_24 = gc[0] == "DRAFT" and ch[0] == "APPROVED"
+            # The grandchild must NOT have been approved by the rejected publish;
+            # it stays at whatever pre-publish status it held (STAGE3_APPROVED here).
+            ok_24 = gc[0] != "APPROVED" and ch[0] == "APPROVED"
             record("2.4 (overlapping range rejected, no write)", ok_24,
                    f"raised OverlappingEffectiveRange; grandchild={gc[0]} child={ch[0]}")
 

@@ -49,19 +49,37 @@ _MEASURES = {
 # Static SELECTs (no value interpolation): detail rows (illness NULL) carry
 # mortality + lapse; CI rows carry illness_code. Filtering by run/product is
 # applied in pandas after the boundary read.
+#
+# The explicit ORDER BY is load-bearing, not cosmetic: without it DuckDB returns
+# rows in physical order, so the same data laid out differently produced a
+# DIFFERENT fit — the mortality GLM flips between converging and diverging purely
+# on row order (adversarial review M-20). FR-3A-24 requires a re-fit on identical
+# inputs to reproduce identical coefficients, which cannot hold if the row order
+# is arbitrary. Ordering on every selected column makes the read deterministic up
+# to genuinely identical rows, which the fit is invariant to.
 _SQL_DETAIL = (
     "SELECT study_run_id, product_code, gender, smoker_status, risk_class, "
     "attained_age_band, duration_band, premium_jump_ratio_band, illness_code, "
     "exposure_count, expected_deaths_count, actual_deaths_count, "
     "lapse_exposure_count, expected_lapses, actual_lapses "
-    "FROM gold_ae_results WHERE illness_code IS NULL LIMIT 2000000"
+    "FROM gold_ae_results WHERE illness_code IS NULL "
+    "ORDER BY study_run_id, product_code, gender, smoker_status, risk_class, "
+    "attained_age_band, duration_band, premium_jump_ratio_band "
+    "LIMIT 2000000"
 )
 _SQL_CI = (
     "SELECT study_run_id, product_code, gender, smoker_status, "
     "attained_age_band, illness_code, "
     "ci_exposure_count, expected_ci_claims, actual_ci_claims "
-    "FROM gold_ae_results WHERE illness_code IS NOT NULL LIMIT 2000000"
+    "FROM gold_ae_results WHERE illness_code IS NOT NULL "
+    "ORDER BY study_run_id, product_code, gender, smoker_status, "
+    "attained_age_band, illness_code "
+    "LIMIT 2000000"
 )
+
+#: Pearson chi2 / df above this means the fit has diverged rather than fitted
+#: (a sound Poisson/binomial fit here sits around 0.5-1.5). Adversarial review M-20.
+_MAX_CREDIBLE_DISPERSION = 1e6
 
 # Output-grain token -> gold_ae_results column.
 _GRAIN_TOKEN_TO_COLUMN = {"product": "product_code", "sex": "gender", "smoker": "smoker_status"}
@@ -316,6 +334,21 @@ def fit_glm(
         return _no_proposal(f"No AI proposal available: GLM fit failed ({err}).")
     if not core["converged"]:
         return _no_proposal("No AI proposal available: GLM did not converge.")
+
+    # statsmodels can report convergence on a numerically degenerate solution:
+    # separation in a sparse Poisson cell drives the dispersion to ~1e41 and the
+    # factors to ~1e-41. Such a fit is not a proposal — publishing it would put an
+    # indefensible number in front of an actuary — so report the standard loud
+    # "no proposal" state instead (FR-3A-29). A sound fit here runs ~0.5-1.5.
+    # See adversarial review M-20: the fit is order-sensitive, so this guard is
+    # what keeps a diverged solution from being published when it lands badly.
+    dispersion = core["dispersion"]
+    if math.isfinite(dispersion) and dispersion > _MAX_CREDIBLE_DISPERSION:
+        return _no_proposal(
+            "No AI proposal available: the GLM converged to a numerically "
+            f"degenerate solution (dispersion {dispersion:.3g}); no defensible "
+            "factor can be published."
+        )
 
     factors = _factors_at_output_grain(core["fit_cells"], output_grain)
     return GLMFitResult(

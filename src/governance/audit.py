@@ -34,6 +34,7 @@ import hashlib
 import json
 import uuid
 from datetime import date, datetime, timezone
+from pathlib import Path
 from typing import Optional
 
 import duckdb
@@ -55,14 +56,6 @@ _AE_EVENT_COLUMNS = [
     "detail", "event_ts", "prev_hash", "entry_hash",
 ]
 
-# WRITE allowlist: the only tables ``append_event`` may write. Kept minimal on
-# purpose (prototype simplicity) — the Phase-2 logs are NOT here, so append_event
-# can never open an unintended write path into them.
-_HASH_CHAINED_TABLES: dict[str, list[str]] = {
-    "gold_governance_signoffs": _SIGNOFF_COLUMNS,
-    "gold_ae_governance_events": _AE_EVENT_COLUMNS,
-}
-
 # Full ordered column list for the Phase-2 workflow-iterations log, with the §G.5
 # migrated hash-chain columns appended (physical order is cosmetic — _canonical_row
 # sorts keys — but the SELECT reads them in this order).
@@ -72,11 +65,24 @@ _WORKFLOW_ITER_COLUMNS = [
     "seq", "prev_hash", "entry_hash",
 ]
 
+# WRITE allowlist: the only tables ``append_event`` may write. Kept minimal on
+# purpose (prototype simplicity) — the Phase-2 logs are NOT here, so append_event
+# can never open an unintended write path into them.
+_HASH_CHAINED_TABLES: dict[str, list[str]] = {
+    "gold_governance_signoffs": _SIGNOFF_COLUMNS,
+    "gold_ae_governance_events": _AE_EVENT_COLUMNS,
+    # Routed through append_event from 2026-08-31: it was in the VERIFY registry
+    # and the UI's "Verify integrity" list while its writer did a plain INSERT, so
+    # verify_chain checked zero rows and reported a green "intact ✓" over a log
+    # with no integrity protection (adversarial review M-9).
+    "gold_workflow_iterations": _WORKFLOW_ITER_COLUMNS,
+}
+
 # VERIFY registry: tables ``verify_chain`` may recompute. A superset of the write
 # allowlist — it also covers the Phase-2 logs (§G.5: hashed from Phase 4 onward;
 # the verifier begins each chain at the first row that carries an entry_hash, so a
-# log with no hashed rows verifies as ok / rows_checked=0). Registered here for
-# verification only; its writer is NOT routed through append_event.
+# log with no hashed rows verifies as ok / rows_checked=0, which is why rows
+# written before 2026-08-31 are skipped rather than failing the chain).
 _VERIFIABLE_CHAINS: dict[str, list[str]] = {
     "gold_governance_signoffs": _SIGNOFF_COLUMNS,
     "gold_ae_governance_events": _AE_EVENT_COLUMNS,
@@ -498,3 +504,51 @@ def artifact_timeline(
     rows = [r for r in rows if r["artifact_type"] == at]
     rows.sort(key=lambda r: (r["ts"] is None, r["ts"]))  # ascending; undated last
     return rows
+
+
+def log_workflow_iteration(
+    db_path: Path,
+    workflow_session_id: str,
+    iteration_number: int,
+    assumption_set_id: str,
+    stage: int,
+    action: str,
+    actuary_id: str,
+    actuary_comment: str = "",
+) -> str:
+    """Insert a row into gold_workflow_iterations.
+
+    Args:
+        db_path:                  DuckDB path.
+        workflow_session_id:      UUID identifying this workflow session.
+        iteration_number:         Monotonically increasing counter within the session.
+        assumption_set_id:        UUID of the assumption set being worked on.
+        stage:                    2 (edit) or 3 (submit) or 4 (governance).
+        action:                   One of SAVED, RETURNED_TO_S2, SUBMITTED_S4, APPROVED.
+        actuary_id:               Identifier of the actuary performing the action.
+        actuary_comment:          Free-text comment (optional).
+
+    Returns:
+        The new iteration_id (UUID string).
+    """
+    # Written through the hash-chained append path so the governance trail is
+    # tamper-evident. Previously a plain INSERT left seq/prev_hash/entry_hash NULL,
+    # so verify_chain checked zero rows and still reported the log "intact"
+    # (adversarial review M-9).
+    iteration_id = str(uuid.uuid4())
+    append_event(
+        "gold_workflow_iterations",
+        {
+            "iteration_id": iteration_id,
+            "workflow_session_id": workflow_session_id,
+            "iteration_number": iteration_number,
+            "assumption_set_id": assumption_set_id,
+            "stage": stage,
+            "action": action,
+            "actuary_id": actuary_id,
+            "actuary_comment": actuary_comment,
+            "iteration_ts": datetime.utcnow(),
+        },
+        db_path=str(db_path),
+    )
+    return iteration_id

@@ -7,6 +7,7 @@ exactly matching the interface contract in Technical Specification Section B.7.
 from __future__ import annotations
 
 import json
+import copy
 import uuid
 from dataclasses import dataclass, field
 from datetime import date, datetime
@@ -184,11 +185,19 @@ class AssumptionSet:
             }
         }
 
+    def to_yaml_str(self) -> str:
+        """Serialise to the exact YAML text ``save_yaml`` would write.
+
+        Used to compare a proposed save against the stored artifact without
+        touching disk (the locked-set content guard, adversarial review B-2).
+        """
+        return yaml.dump(self.to_yaml_dict(), default_flow_style=False, sort_keys=False)
+
     def save_yaml(self, output_path: Path) -> None:
         """Write the assumption set to a YAML file."""
         output_path.parent.mkdir(parents=True, exist_ok=True)
         with open(output_path, "w") as fh:
-            yaml.dump(self.to_yaml_dict(), fh, default_flow_style=False, sort_keys=False)
+            fh.write(self.to_yaml_str())
         self.yaml_file_path = str(output_path)
 
     @classmethod
@@ -578,6 +587,11 @@ def _insert_assumption_set_metadata(db_path: Path, aset: AssumptionSet) -> None:
     _PRESERVED_COLS = [
         "ai_proposed_value", "ai_model_id",
         "parent_set_id", "effective_from", "effective_to",
+        # Approval attribution and the supersession pointer are NOT in the INSERT
+        # column list either; without them a permitted re-save silently erased who
+        # approved the set and when, and orphaned the supersession link
+        # (adversarial review B-2).
+        "approved_by", "approved_ts", "superseded_by",
     ]
     con = duckdb.connect(str(db_path))
     try:
@@ -601,7 +615,9 @@ def _insert_assumption_set_metadata(db_path: Path, aset: AssumptionSet) -> None:
             if row is not None:
                 prior_vals = {col: row[i] for i, col in enumerate(preserved)}
 
-        # Lock guard: a completed (APPROVED) set is immutable. A plain re-save must
+        # Lock guard (defence in depth — save_assumption_set calls _assert_saveable
+        # BEFORE writing the YAML; this repeats the check for any direct caller).
+        # A completed (APPROVED) set is immutable. A plain re-save must
         # never silently revert it to a non-terminal status (the Stage-2 editor forces
         # status=PROPOSED before saving), which would unlock it while leaving the stale
         # approved_by/approved_ts on the row. This mirrors the guard in
@@ -700,11 +716,79 @@ def load_assumption_set(assumption_set_id: str, db_path: Path) -> AssumptionSet:
     return aset
 
 
+# Excluded from the "did the content change?" comparison:
+#   created_ts — regenerated on every serialisation.
+#   status     — the DB row is authoritative (approve_and_supersede and
+#                record_signoff update the row, not the YAML), so a legitimate
+#                re-save of an approved set always differs here. A status
+#                DOWNGRADE is guarded separately, above.
+#   approved_* — set on the DB row at approval, likewise not mirrored into YAML.
+_VOLATILE_YAML_KEYS = ("created_ts", "status", "approved_by", "approved_ts")
+
+
+def _comparable_content(doc: dict) -> dict:
+    """The assumption-set payload with volatile fields stripped, for equality tests."""
+    body = copy.deepcopy((doc or {}).get("assumption_set", {}))
+    for key in _VOLATILE_YAML_KEYS:
+        body.pop(key, None)
+    return body
+
+
+def _assert_saveable(db_path: Path, aset: AssumptionSet, yaml_path: Path) -> None:
+    """Raise ``LockedStatusTransition`` if this save would mutate a locked set.
+
+    Called BEFORE any disk write. The review (B-2) found the YAML was written
+    first, so a save the guard correctly rejected had *already* overwritten the
+    approved artifact — and because multipliers load from YAML while status loads
+    from the DB, the set then read as APPROVED with the caller's assumptions.
+
+    Two conditions are refused for an APPROVED set:
+      * a status downgrade (the original guard), and
+      * a re-save whose YAML content differs from what is on disk — the
+        "idempotent" APPROVED re-save was an unguarded content-rewrite door.
+    """
+    con = duckdb.connect(str(db_path))
+    try:
+        row = con.execute(
+            "SELECT status FROM gold_assumption_sets WHERE assumption_set_id = ?",
+            [aset.id],
+        ).fetchone()
+    finally:
+        con.close()
+    if row is None or row[0] != "APPROVED":
+        return
+
+    from src.assumptions.workflow import LockedStatusTransition
+
+    if aset.status.value not in ("APPROVED", "SUPERSEDED"):
+        raise LockedStatusTransition(
+            f"assumption set {aset.id!r} is APPROVED (locked) and cannot be "
+            f"re-saved with status {aset.status.value!r}; re-open it via the "
+            f"lineage 'new version' path to make further changes"
+        )
+
+    # Permitted status, but the content must be identical.
+    if aset.status.value == "APPROVED" and yaml_path.exists():
+        try:
+            on_disk = yaml.safe_load(yaml_path.read_text())
+        except Exception:  # noqa: BLE001 - unreadable YAML: fall through to the write
+            return
+        if _comparable_content(aset.to_yaml_dict()) != _comparable_content(on_disk):
+            raise LockedStatusTransition(
+                f"assumption set {aset.id!r} is APPROVED (locked); its content "
+                f"cannot be changed by a re-save. Re-open it via the lineage "
+                f"'new version' path to make further changes"
+            )
+
+
 def save_assumption_set(assumption_set: AssumptionSet, db_path: Path) -> str:
     """Persist an AssumptionSet: writes YAML and upserts the DB metadata row.
 
     If yaml_file_path is empty, derives the path from
     ``data/assumption_sets/{id}.yaml`` relative to db_path's parent.
+
+    Validation runs BEFORE the YAML write, so a rejected save leaves the stored
+    artifact untouched (adversarial review B-2).
 
     Args:
         assumption_set: The AssumptionSet to save.
@@ -712,12 +796,17 @@ def save_assumption_set(assumption_set: AssumptionSet, db_path: Path) -> str:
 
     Returns:
         The assumption_set_id.
+
+    Raises:
+        LockedStatusTransition: if the save would mutate an APPROVED (locked) set.
     """
     if not assumption_set.yaml_file_path:
         yaml_dir = db_path.parent.parent / "data" / "assumption_sets"
         yaml_path = yaml_dir / f"{assumption_set.id}.yaml"
     else:
         yaml_path = Path(assumption_set.yaml_file_path)
+
+    _assert_saveable(db_path, assumption_set, yaml_path)
 
     assumption_set.save_yaml(yaml_path)
     _insert_assumption_set_metadata(db_path, assumption_set)

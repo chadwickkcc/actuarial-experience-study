@@ -19,6 +19,8 @@ import pandas as pd
 import yaml
 
 from src.fraud.rules import ALL_RULES, FraudRuleResult, build_claims_frame
+from src.governance.rbac import Action, require
+from src.utils.types import User
 
 DEFAULT_FRAUD_CONFIG = Path("config/fraud_config.yaml")
 
@@ -63,23 +65,34 @@ def run_fraud_scan(
     db_path: Path,
     study_run_id: str,
     *,
+    user: User,
     config_path: Path = DEFAULT_FRAUD_CONFIG,
-    run_by: str = "system",
     persist: bool = True,
 ) -> FraudRunResult:
     """Score every claim against the six rules; optionally persist the results.
+
+    Running a scan writes the three ``gold_fraud_*`` tables, so it is a governed
+    action and authorisation is enforced HERE, server-side (FR-4-04 / NFR-G-02) —
+    a disabled button in the UI is not a control.
 
     Args:
         db_path:      DuckDB path (claims are read from the Silver tables).
         study_run_id: The study run this scan is associated with (context only —
                       the claims universe is the current Silver book).
+        user:         The actor; requires the ``propose`` right. Recorded as
+                      ``run_by`` on the summary row.
         config_path:  Fraud config YAML (thresholds/weights/lists).
-        run_by:       Username recorded on the summary row.
         persist:      When True, write the three gold_fraud_* tables.
 
     Returns:
         FraudRunResult with the per-claim score frame and per-rule results.
+
+    Raises:
+        PermissionDenied: if ``user`` lacks the ``propose`` right (no scan, no write).
     """
+    require(user, Action.PROPOSE)
+    run_by = user.username
+
     cfg = load_fraud_config(config_path)
     claims = build_claims_frame(db_path)
 

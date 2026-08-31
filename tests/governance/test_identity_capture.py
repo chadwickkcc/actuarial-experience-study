@@ -22,7 +22,7 @@ import duckdb
 import pytest
 
 from src.governance.audit import unified_audit_query
-from src.assumptions.workflow import log_workflow_iteration
+from src.governance.audit import log_workflow_iteration
 
 
 _VIEWS = pathlib.Path("ui/views")

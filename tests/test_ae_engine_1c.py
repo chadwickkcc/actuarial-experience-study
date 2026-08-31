@@ -262,7 +262,7 @@ class TestReferenceTableDistinction:
     @pytest.fixture(scope="class")
     def vbt_table(self) -> pd.DataFrame:
         """Load 2015 VBT reference table."""
-        path = self.REF_DIR / "mortality_vbt2015.parquet"
+        path = self.REF_DIR / "mortality_2015vbt.parquet"
         if not path.exists():
             pytest.skip(f"VBT table not found at {path}")
         return pd.read_parquet(path)
@@ -270,7 +270,7 @@ class TestReferenceTableDistinction:
     @pytest.fixture(scope="class")
     def iar_table(self) -> pd.DataFrame:
         """Load 2012 IAR reference table."""
-        path = self.REF_DIR / "mortality_iar2012.parquet"
+        path = self.REF_DIR / "mortality_2012iar.parquet"
         if not path.exists():
             pytest.skip(f"IAR table not found at {path}")
         return pd.read_parquet(path)

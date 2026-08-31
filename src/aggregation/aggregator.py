@@ -162,7 +162,14 @@ def aggregate_ae(
             df.groupby([r for r in row_dims if r in df.columns], dropna=False)[[num_col, den_col]]
             .sum()
         )
-        pivot["Total"] = (row_totals[num_col] / row_totals[den_col].replace(0, np.nan)).values
+        # Align by index, never by position: row_totals is grouped dropna=False over
+        # the full frame while pivot_table drops all-NaN rows, so the two differ in
+        # length whenever a dimension is sparse (premium_jump_ratio_band is Term-only).
+        # A positional .values assignment raised ValueError on those pairings, and
+        # would silently misalign totals wherever the lengths happened to match
+        # (adversarial review B-4).
+        row_total_vals = row_totals[num_col] / row_totals[den_col].replace(0, np.nan)
+        pivot["Total"] = row_total_vals.reindex(pivot.index)
         # Column totals
         col_totals_num = df.groupby([c for c in col_dims if c in df.columns], dropna=False)[num_col].sum()
         col_totals_den = df.groupby([c for c in col_dims if c in df.columns], dropna=False)[den_col].sum()
@@ -177,6 +184,13 @@ def aggregate_ae(
         pivot["Total"] = pivot.sum(axis=1)
         total_row_series = pivot.sum(axis=0)
         total_row_series.name = "Total"
+
+    # Align the totals row to the pivot's own columns. col_totals is grouped
+    # dropna=False, so a sparse column dimension otherwise contributes a column
+    # literally headed "NaN" — previously invisible because the pivot crashed
+    # first (adversarial review B-4).
+    total_row_series = total_row_series.reindex(pivot.columns)
+    total_row_series.name = "Total"
 
     pivot = pd.concat([pivot, total_row_series.to_frame().T])
     return pivot

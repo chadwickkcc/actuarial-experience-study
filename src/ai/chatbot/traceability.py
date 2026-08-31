@@ -43,7 +43,13 @@ from src.utils.types import TraceabilityResult
 #: POSITIVE numbers, not ``[25, -29]``. This keeps a band/date label parsed the
 #: same whether written with ``-``, an en-dash, or "to", while a genuine leading
 #: negative (``-0.05``, ``-4,480,000``) still parses as negative.
-_NUMBER_RE = re.compile(r"(?<!\d)[-+]?\$?\d[\d,]*(?:\.\d+)?%?")
+#: The sign class includes the typographic minus U+2212 and en/em dashes: a
+#: well-typeset model writes ``−0.6561``, which an ASCII-only class tokenised as
+#: ``0.6561`` — the checker validated ``+0.6561`` while the reader saw ``−0.6561``,
+#: inverting deterioration into improvement (adversarial review M-13). The
+#: lookbehind still makes a dash *between* digits a range separator.
+_MINUS_CHARS = "-\u2212\u2013\u2014"
+_NUMBER_RE = re.compile(rf"(?<!\d)[+{_MINUS_CHARS}]?\$?\d[\d,]*(?:\.\d+)?%?")
 
 
 def _parse_token(token: str) -> tuple[float, int] | None:
@@ -54,6 +60,11 @@ def _parse_token(token: str) -> tuple[float, int] | None:
     a higher-precision allowed value can be rounded to the token's precision.
     """
     cleaned = token.replace("$", "").replace(",", "").replace("%", "").lstrip("+")
+    # Normalise a typographic minus to ASCII so float() sees the sign (M-13).
+    for ch in ("\u2212", "\u2013", "\u2014"):
+        if cleaned.startswith(ch):
+            cleaned = "-" + cleaned[len(ch):]
+            break
     if cleaned in ("", "-", "+", "."):
         return None
     try:

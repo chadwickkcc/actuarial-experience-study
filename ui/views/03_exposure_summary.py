@@ -51,13 +51,13 @@ def _load_recon(run_id: str) -> pd.DataFrame:
     try:
         return conn.execute(
             """
-            SELECT calendar_year, beg_if_count, new_issues_count,
+            SELECT product_code, calendar_year, beg_if_count, new_issues_count,
                    deaths_count, lapses_count, surrenders_count,
                    other_decrements, end_if_count, recon_diff_count,
                    beg_if_amount, end_if_amount, recon_diff_amount, recon_passes
             FROM gold_inforce_reconciliation
             WHERE study_run_id = ?
-            ORDER BY calendar_year
+            ORDER BY product_code, calendar_year
             """,
             [run_id],
         ).df()
@@ -178,16 +178,33 @@ else:
     if all_pass:
         st.success("In-force reconciliation PASSED for all years (diff = 0).")
     else:
-        fail_yrs = recon_df[~recon_df["recon_passes"]]["calendar_year"].tolist()
-        st.error(f"Reconciliation FAILED for years: {fail_yrs}")
+        failed = recon_df[~recon_df["recon_passes"]]
+        detail = ", ".join(
+            f"{r.product_code} {r.calendar_year}" for r in failed.itertuples()
+        )
+        st.error(f"Reconciliation FAILED for: {detail}")
+
+    recon_products = sorted(recon_df["product_code"].dropna().unique().tolist())
+    if len(recon_products) > 1:
+        chosen = st.multiselect(
+            "Products", recon_products, default=recon_products,
+            key="recon_products",
+            help="Reconciliation is reported per product per calendar year.",
+        )
+        recon_df = recon_df[recon_df["product_code"].isin(chosen)]
+        if recon_df.empty:
+            st.info("Select at least one product to see the reconciliation.")
+            st.stop()
 
     disp = recon_df.copy()
     disp["recon_passes"] = disp["recon_passes"].map({True: "✓", False: "✗"})
     disp = disp[
-        ["calendar_year", "beg_if_count", "new_issues_count", "deaths_count",
-         "lapses_count", "surrenders_count", "other_decrements", "end_if_count",
-         "recon_diff_count", "beg_if_amount", "end_if_amount", "recon_passes"]
+        ["product_code", "calendar_year", "beg_if_count", "new_issues_count",
+         "deaths_count", "lapses_count", "surrenders_count", "other_decrements",
+         "end_if_count", "recon_diff_count", "beg_if_amount", "end_if_amount",
+         "recon_passes"]
     ].rename(columns={
+        "product_code":     "Product",
         "calendar_year":    "Year",
         "beg_if_count":     "Beg IF",
         "new_issues_count": "New",

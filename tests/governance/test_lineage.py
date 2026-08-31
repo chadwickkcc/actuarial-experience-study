@@ -52,6 +52,42 @@ def _user() -> User:
     )
 
 
+def _approver() -> User:
+    """A user with the sign_off right — publishing is an approver action (FR-4-04)."""
+    return User(
+        user_id="u-chief",
+        username="c.chief",
+        display_name="C. Chief",
+        role=Role.CHIEF_ACTUARY,
+        active=True,
+    )
+
+
+def _submit(db: str, set_id: str) -> None:
+    """Promote a set to STAGE3_APPROVED so it may be published.
+
+    ``approve_and_supersede`` refuses to publish a DRAFT/PROPOSED set (adversarial
+    review B-1) — publishing a set that never went through the sign-off chain would
+    make unreviewed assumptions live. These lineage tests exercise the *mechanics*
+    of supersession and effective-dating, so they promote the set under test rather
+    than driving a full chain. Only the target set is touched.
+    """
+    con = duckdb.connect(db)
+    try:
+        con.execute(
+            "UPDATE gold_assumption_sets SET status = ? "
+            "WHERE assumption_set_id = ? AND status NOT IN (?, ?)",
+            [
+                AssumptionSetStatus.STAGE3_APPROVED.value,
+                set_id,
+                AssumptionSetStatus.STAGE3_APPROVED.value,
+                AssumptionSetStatus.APPROVED.value,
+            ],
+        )
+    finally:
+        con.close()
+
+
 def _mult(multiplier: float = 1.0, rationale: str = "") -> DecrementMultiplier:
     return DecrementMultiplier(
         product="TERM",
@@ -90,7 +126,7 @@ def _seed_aset(
     *,
     set_id: str | None = None,
     version: int = 1,
-    status: AssumptionSetStatus = AssumptionSetStatus.DRAFT,
+    status: AssumptionSetStatus = AssumptionSetStatus.STAGE3_APPROVED,
     source_run: str = "run-1",
     mort: list[DecrementMultiplier] | None = None,
     lapse: list[DecrementMultiplier] | None = None,
@@ -216,7 +252,8 @@ def test_create_root_version_seeds_draft_with_no_parent(gov_env, tmp_path):
 def test_approve_sets_approved_status_and_range(gov_env):
     db = gov_env["db"]
     root = _seed_aset(db, source_run="run-1")
-    approve_and_supersede(root, date(2024, 1, 1), date(2024, 12, 31), db_path=db)
+    _submit(db, root)
+    approve_and_supersede(root, date(2024, 1, 1), date(2024, 12, 31), user=_approver(), db_path=db)
     con = duckdb.connect(db, read_only=True)
     try:
         row = con.execute(
@@ -235,9 +272,11 @@ def test_approve_sets_approved_status_and_range(gov_env):
 def test_second_approval_supersedes_first(gov_env):
     db = gov_env["db"]
     root = _seed_aset(db, source_run="run-1")
-    approve_and_supersede(root, date(2024, 1, 1), date(2024, 12, 31), db_path=db)
+    _submit(db, root)
+    approve_and_supersede(root, date(2024, 1, 1), date(2024, 12, 31), user=_approver(), db_path=db)
     child = create_version(root, "run-1", _user(), db_path=db)
-    approve_and_supersede(child, date(2025, 1, 1), date(2025, 12, 31), db_path=db)
+    _submit(db, child)
+    approve_and_supersede(child, date(2025, 1, 1), date(2025, 12, 31), user=_approver(), db_path=db)
     con = duckdb.connect(db, read_only=True)
     try:
         r = con.execute(
@@ -260,11 +299,13 @@ def test_second_approval_supersedes_first(gov_env):
 def test_overlapping_effective_range_rejected(gov_env):
     db = gov_env["db"]
     root = _seed_aset(db, source_run="run-1")
-    approve_and_supersede(root, date(2024, 1, 1), date(2024, 12, 31), db_path=db)
+    _submit(db, root)
+    approve_and_supersede(root, date(2024, 1, 1), date(2024, 12, 31), user=_approver(), db_path=db)
     child = create_version(root, "run-1", _user(), db_path=db)
     with pytest.raises(OverlappingEffectiveRange):
-        approve_and_supersede(child, date(2024, 6, 1), date(2025, 6, 1), db_path=db)
-    # No partial mutation: child stays DRAFT, root stays APPROVED.
+        _submit(db, child)
+        approve_and_supersede(child, date(2024, 6, 1), date(2025, 6, 1), user=_approver(), db_path=db)
+    # No partial mutation: the child is NOT approved, root stays APPROVED.
     con = duckdb.connect(db, read_only=True)
     try:
         c_status = con.execute(
@@ -275,7 +316,7 @@ def test_overlapping_effective_range_rejected(gov_env):
             [root]).fetchone()[0]
     finally:
         con.close()
-    assert c_status == "DRAFT"
+    assert c_status == "STAGE3_APPROVED"   # unchanged by the rejected publish
     assert r_status == "APPROVED"
 
 
@@ -286,7 +327,8 @@ def test_overlapping_effective_range_rejected(gov_env):
 def test_resolve_live_set_returns_set_in_range(gov_env):
     db = gov_env["db"]
     root = _seed_aset(db, source_run="run-1")
-    approve_and_supersede(root, date(2024, 1, 1), date(2024, 12, 31), db_path=db)
+    _submit(db, root)
+    approve_and_supersede(root, date(2024, 1, 1), date(2024, 12, 31), user=_approver(), db_path=db)
     assert resolve_live_set(root, date(2024, 6, 15), db_path=db) == root
     assert resolve_live_set(root, date(2023, 1, 1), db_path=db) is None
 
@@ -294,9 +336,11 @@ def test_resolve_live_set_returns_set_in_range(gov_env):
 def test_resolve_live_set_ignores_superseded(gov_env):
     db = gov_env["db"]
     root = _seed_aset(db, source_run="run-1")
-    approve_and_supersede(root, date(2024, 1, 1), date(2024, 12, 31), db_path=db)
+    _submit(db, root)
+    approve_and_supersede(root, date(2024, 1, 1), date(2024, 12, 31), user=_approver(), db_path=db)
     child = create_version(root, "run-1", _user(), db_path=db)
-    approve_and_supersede(child, date(2025, 1, 1), date(2025, 12, 31), db_path=db)
+    _submit(db, child)
+    approve_and_supersede(child, date(2025, 1, 1), date(2025, 12, 31), user=_approver(), db_path=db)
     # root is now SUPERSEDED → not live for its old window
     assert resolve_live_set(root, date(2024, 6, 15), db_path=db) is None
     # child is the live set for its window
@@ -363,7 +407,8 @@ def test_plain_resave_preserves_parent_and_effective_dates(gov_env):
     db = gov_env["db"]
     root = _seed_aset(db, source_run="run-1")
     child = create_version(root, "run-1", _user(), db_path=db)
-    approve_and_supersede(child, date(2025, 1, 1), date(2025, 12, 31), db_path=db)
+    _submit(db, child)
+    approve_and_supersede(child, date(2025, 1, 1), date(2025, 12, 31), user=_approver(), db_path=db)
     # Simulate a later plain save (e.g. a Stage-2 editor re-save).
     cset = load_assumption_set(child, Path(db))
     save_assumption_set(cset, Path(db))
@@ -407,7 +452,8 @@ def test_draft_resave_preserves_parent_link(gov_env):
 def test_resolve_live_set_boundary_dates_inclusive(gov_env):
     db = gov_env["db"]
     root = _seed_aset(db, source_run="run-1")
-    approve_and_supersede(root, date(2024, 1, 1), date(2024, 12, 31), db_path=db)
+    _submit(db, root)
+    approve_and_supersede(root, date(2024, 1, 1), date(2024, 12, 31), user=_approver(), db_path=db)
     # Both endpoints are inclusive.
     assert resolve_live_set(root, date(2024, 1, 1), db_path=db) == root
     assert resolve_live_set(root, date(2024, 12, 31), db_path=db) == root
@@ -420,9 +466,11 @@ def test_resolve_live_set_accepts_any_member_id(gov_env):
     """Passing any lineage member (not just the root) resolves the live set."""
     db = gov_env["db"]
     root = _seed_aset(db, source_run="run-1")
-    approve_and_supersede(root, date(2024, 1, 1), date(2024, 12, 31), db_path=db)
+    _submit(db, root)
+    approve_and_supersede(root, date(2024, 1, 1), date(2024, 12, 31), user=_approver(), db_path=db)
     child = create_version(root, "run-1", _user(), db_path=db)
-    approve_and_supersede(child, date(2025, 1, 1), date(2025, 12, 31), db_path=db)
+    _submit(db, child)
+    approve_and_supersede(child, date(2025, 1, 1), date(2025, 12, 31), user=_approver(), db_path=db)
     # Query via the child id; it is normalised to the lineage root.
     assert resolve_live_set(child, date(2025, 6, 1), db_path=db) == child
     assert resolve_live_set(child, date(2024, 6, 1), db_path=db) is None
@@ -435,30 +483,37 @@ def test_overlap_check_includes_superseded_ranges(gov_env):
     now-SUPERSEDED set's window."""
     db = gov_env["db"]
     root = _seed_aset(db, source_run="run-1")
-    approve_and_supersede(root, date(2024, 1, 1), date(2024, 12, 31), db_path=db)
+    _submit(db, root)
+    approve_and_supersede(root, date(2024, 1, 1), date(2024, 12, 31), user=_approver(), db_path=db)
     v2 = create_version(root, "run-1", _user(), db_path=db)
-    approve_and_supersede(v2, date(2025, 1, 1), date(2025, 12, 31), db_path=db)
+    _submit(db, v2)
+    approve_and_supersede(v2, date(2025, 1, 1), date(2025, 12, 31), user=_approver(), db_path=db)
     # root is now SUPERSEDED with window 2024; a new version overlapping it is rejected.
     v3 = create_version(v2, "run-1", _user(), db_path=db)
     with pytest.raises(OverlappingEffectiveRange):
-        approve_and_supersede(v3, date(2024, 6, 1), date(2024, 9, 30), db_path=db)
+        _submit(db, v3)
+        approve_and_supersede(v3, date(2024, 6, 1), date(2024, 9, 30), user=_approver(), db_path=db)
 
 
 def test_approve_rejects_inverted_range(gov_env):
     db = gov_env["db"]
     root = _seed_aset(db, source_run="run-1")
     with pytest.raises(ValueError):
-        approve_and_supersede(root, date(2024, 12, 31), date(2024, 1, 1), db_path=db)
+        _submit(db, root)
+        approve_and_supersede(root, date(2024, 12, 31), date(2024, 1, 1), user=_approver(), db_path=db)
 
 
 def test_three_version_lineage_single_approved(gov_env):
     db = gov_env["db"]
     root = _seed_aset(db, source_run="run-1")
-    approve_and_supersede(root, date(2023, 1, 1), date(2023, 12, 31), db_path=db)
+    _submit(db, root)
+    approve_and_supersede(root, date(2023, 1, 1), date(2023, 12, 31), user=_approver(), db_path=db)
     v2 = create_version(root, "run-1", _user(), db_path=db)
-    approve_and_supersede(v2, date(2024, 1, 1), date(2024, 12, 31), db_path=db)
+    _submit(db, v2)
+    approve_and_supersede(v2, date(2024, 1, 1), date(2024, 12, 31), user=_approver(), db_path=db)
     v3 = create_version(v2, "run-1", _user(), db_path=db)
-    approve_and_supersede(v3, date(2025, 1, 1), date(2025, 12, 31), db_path=db)
+    _submit(db, v3)
+    approve_and_supersede(v3, date(2025, 1, 1), date(2025, 12, 31), user=_approver(), db_path=db)
     con = duckdb.connect(db, read_only=True)
     try:
         approved = con.execute(

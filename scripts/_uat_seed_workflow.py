@@ -24,9 +24,9 @@ import duckdb
 from src.assumptions.assumption_set import create_assumption_set_from_ae_run
 from src.assumptions.workflow import (
     get_next_iteration_number,
-    log_workflow_iteration,
     transition_assumption_set_status,
 )
+from src.governance.audit import log_workflow_iteration
 from src.governance.users import get_user_by_username, seed_users_from_config
 from src.governance.workflow import record_signoff
 from src.utils.db_init import DEFAULT_DB_PATH

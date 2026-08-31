@@ -3,7 +3,7 @@
 **Audience:** actuaries evaluating "the art of the possible" for an AI-enabled
 experience-study platform.
 **Setup before the session:** `streamlit run ui/app.py` on the shipped demo DB
-(seed-42 dataset, run `d5f56adb…`). Optionally `export ANTHROPIC_API_KEY=…`
+(seed-42 dataset, run `70f2ee85…`). Optionally `export ANTHROPIC_API_KEY=…`
 (and/or `DEEPSEEK_API_KEY`) to run the live AI drafting beats; without a key
 the AI pages still render and the buttons explain what they would do.
 **Sign-ins used:** `a.analyst` (proposer) and the three approvers `j.junior`,
@@ -76,8 +76,12 @@ If you regenerate the data, refresh them from `docs/demo_refresh_progress.md`.
 
 ## 6 · AI assistance (4 min)
 
-1. **AI Assumption Proposals** — select the run, Mortality, WL → **Fit AI
-   models**. Comparison table: A/E-derived factor vs **GLM proposal with 95%
+1. **AI Assumption Proposals** — select the run, Mortality, **WL** → **Fit AI
+   models**. (Use WL: on this build the Term mortality GLM converges to a
+   degenerate solution and is correctly withheld with a "no proposal" reason —
+   see the M-20 note in `docs/adversarial_review_2026-08-31.md`. Showing the
+   withheld state is itself a good talking point: the tool refuses to publish a
+   factor it cannot defend.) Comparison table: A/E-derived factor vs **GLM proposal with 95%
    CIs** vs GBM challenger; SHAP explainability below. **No adopt button
    exists on this page** — proposals are advisory.
 2. **AI Analyst** — ask: *"What is the overall mortality A/E for Whole
@@ -122,7 +126,7 @@ If you regenerate the data, refresh them from `docs/demo_refresh_progress.md`.
 
 ---
 
-### Expected-figure quick reference (seed-42 demo DB, run `d5f56adb…`)
+### Expected-figure quick reference (seed-42 demo DB, run `70f2ee85…`)
 
 | Beat | Figure |
 |---|---|
@@ -136,4 +140,4 @@ If you regenerate the data, refresh them from `docs/demo_refresh_progress.md`.
 | WL mortality (AI Analyst answer) | 0.6561 = 611 / 931.26 |
 | Fraud scan | 1,808 scored · 32 flagged · max 1.20 |
 | Ring entities | OFF-013 · HOSP-066 · CLM-424242 ×4 · SOUTHWEST |
-| AI models / proposed factors | 16 registry rows · 332 factors |
+| AI models / proposed factors | 14 registry rows · 224 factors |
