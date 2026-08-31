@@ -67,3 +67,29 @@ VUL_SOURCE_CSV = str(SYNTHETIC_DATA_DIR / "vul_policies.csv")
 VUL_MAPPING_YAML = str(CONFIG_DIR / "products" / "vul.yaml")
 DA_SOURCE_CSV = str(SYNTHETIC_DATA_DIR / "annuity_contracts.csv")
 DA_MAPPING_YAML = str(CONFIG_DIR / "products" / "annuity.yaml")
+
+
+def export_button(*args, **kwargs):
+    """``st.download_button`` gated on the ``export`` permission (m-2).
+
+    The permission was enforced on only 2 of 9 download surfaces, so an analyst
+    denied the compliance pack could still download claim-level fraud data, both
+    actuary reports, the AI memo and the factors CSV. Either the right means
+    something everywhere or the two gates that existed were theatre.
+
+    Renders a disabled button with the reason when the role lacks the right, so
+    the affordance stays visible and the refusal is explained.
+    """
+    import streamlit as st
+
+    from src.governance.auth import current_user
+    from src.governance.rbac import Action
+
+    user = current_user()
+    if user is None or not user_can(user, Action.EXPORT):
+        role = getattr(getattr(user, "role", None), "value", "your role")
+        kwargs = dict(kwargs)
+        kwargs["disabled"] = True
+        kwargs.setdefault("help", f"{role} does not have the `export` permission.")
+        return st.download_button(*args, **kwargs)
+    return st.download_button(*args, **kwargs)

@@ -239,7 +239,11 @@ def get_drill_through_records(
     def _hash(pid: str) -> str:
         return hashlib.sha256(str(pid).encode()).hexdigest()[:12]
 
-    df["policy_id"] = df["policy_id"].apply(_hash)
+    # Rename as well as mask: the values are 12-char SHA-256 prefixes, so a column
+    # still headed "policy_id" invites a reader to treat them as identifiers — and
+    # this is the column a client scrutinises (adversarial review m-18).
+    df["policy_hash"] = df["policy_id"].apply(_hash)
+    df = df.drop(columns=["policy_id"])
 
     # Also bin face amounts to bands to reduce PII risk
     if "face_amount_wtd_avg" in df.columns:

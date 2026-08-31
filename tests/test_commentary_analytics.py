@@ -17,6 +17,7 @@ from src.analysis import (
     classify_trends,
     compute_yoy_movement,
     load_commentary_config,
+    movement_legs,
 )
 from src.utils.db_init import init_database
 
@@ -320,3 +321,64 @@ class TestTrendVolumeGuard:
         res = classify_trends(tiny_db, _RUN, "MORTALITY")
         assert res["classification"] == "worsening"
         assert res["slope"] is not None
+
+
+class TestReturnedContributionsSumExactly:
+    """m-5: the maths was exact but the ROUNDED payload was not — independent
+    per-segment rounding drifted by up to n x 5e-7, exceeding the 1e-9 the
+    docstring, the progress notes and the page caption all promised."""
+
+    @_needs_db
+    @pytest.mark.parametrize("decrement,dimension", [
+        ("MORTALITY", "attained_age_band"),
+        ("MORTALITY", "gender"),
+        ("LAPSE", "product_code"),
+        ("LAPSE", "policy_year"),
+    ])
+    def test_payload_sums_to_the_returned_delta(self, decrement, dimension):
+        import duckdb
+
+        con = duckdb.connect(str(_DB), read_only=True)
+        try:
+            run = con.execute(
+                "SELECT run_id FROM gold_study_runs WHERE status='COMPLETE' "
+                "ORDER BY run_ts DESC LIMIT 1"
+            ).fetchone()[0]
+            years = [r[0] for r in con.execute(
+                "SELECT DISTINCT calendar_year FROM gold_ae_results "
+                "WHERE calendar_year IS NOT NULL ORDER BY 1"
+            ).fetchall()]
+        finally:
+            con.close()
+
+        checked = 0
+        for year in years[1:]:
+            attr = attribute_drivers(_DB, run, decrement, year, dimension)
+            if attr["delta_ae"] is None or not attr["contributions"]:
+                continue
+            total = sum(c["contribution"] for c in attr["contributions"])
+            assert abs(total - attr["delta_ae"]) < 1e-9, (
+                f"{decrement}/{dimension}/{year}: returned contributions sum to "
+                f"{total!r}, delta_ae is {attr['delta_ae']!r}"
+            )
+            checked += 1
+        assert checked, "no transitions exercised"
+
+
+class TestCommentaryInputGuards:
+    """m-16: an unknown decrement raised a bare KeyError where the dimension guard
+    raised a descriptive ValueError, and ``years=[]`` silently returned everything."""
+
+    def test_unknown_decrement_raises_a_clear_error(self, tiny_db):
+        for fn, args in (
+            (compute_yoy_movement, (tiny_db, _RUN, "NOT_A_DECREMENT")),
+            (classify_trends, (tiny_db, _RUN, "NOT_A_DECREMENT")),
+        ):
+            with pytest.raises(ValueError, match="not recognised"):
+                fn(*args)
+
+    def test_empty_year_filter_means_no_years(self, tiny_db):
+        assert movement_legs(tiny_db, _RUN, years=[]) == []
+
+    def test_none_year_filter_means_all_years(self, tiny_db):
+        assert movement_legs(tiny_db, _RUN, years=None) == []

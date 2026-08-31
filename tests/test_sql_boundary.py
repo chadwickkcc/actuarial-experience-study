@@ -310,3 +310,62 @@ def test_validate_select_is_deterministic(allowlist):
     first = validate_select(sql, allowlist).sql
     second = validate_select(sql, allowlist).sql
     assert first == second
+
+
+# ---------------------------------------------------------------------------
+# Row-cap: a windowed aggregate is NOT a single-row aggregate (review M-15)
+# ---------------------------------------------------------------------------
+
+class TestWindowAggregateRowCap:
+    """``_is_fully_aggregated`` saw an aggregate in the projection and no bare
+    column, so it declared the statement single-row. But a WINDOWED aggregate
+    returns one row per INPUT row: ``SELECT SUM(ae_count) OVER () FROM
+    gold_ae_results`` passed the boundary and returned 159,568 rows against a cap
+    of 500, which then rendered a 2.4 MB answer through the {{table:}} slot."""
+
+    @pytest.mark.parametrize("sql", [
+        "SELECT SUM(ae_count) OVER () FROM gold_ae_results",
+        "SELECT AVG(ae_count) OVER () FROM gold_ae_results",
+        "SELECT SUM(ae_count) OVER (PARTITION BY product_code) FROM gold_ae_results",
+        "SELECT product_code, SUM(ae_count) OVER () FROM gold_ae_results",
+    ])
+    def test_windowed_aggregate_without_limit_is_rejected(self, sql, allowlist):
+        res = validate_select(sql, allowlist, row_cap=500)
+        assert res.outcome is SQLGateOutcome.REJECT_ROWCAP, (
+            f"a windowed aggregate returns one row per input row: {sql}"
+        )
+
+    def test_windowed_aggregate_with_a_limit_is_allowed(self, allowlist):
+        res = validate_select(
+            "SELECT SUM(ae_count) OVER () FROM gold_ae_results LIMIT 100",
+            allowlist, row_cap=500,
+        )
+        assert res.outcome is SQLGateOutcome.PASS
+
+    def test_plain_aggregate_is_still_single_row(self, allowlist):
+        res = validate_select(
+            "SELECT SUM(ae_count) FROM gold_ae_results", allowlist, row_cap=500,
+        )
+        assert res.outcome is SQLGateOutcome.PASS
+
+
+class TestBoundaryNeverRaisesOnUserSql:
+    """m-15: the boundary's contract is that bad user SQL is RETURNED as a
+    rejection, never raised. SQL that passed the gates but was invalid in DuckDB
+    escaped as a raw duckdb.ParserException."""
+
+    def test_gate_passing_but_invalid_sql_is_returned_not_raised(self, tmp_path):
+        from src.utils.db_init import init_database
+
+        db = tmp_path / "b.duckdb"
+        init_database(db)
+        sql = (
+            "SELECT ae_count FROM gold_ae_results LIMIT 5 "
+            "UNION ALL SELECT ae_count FROM gold_ae_results LIMIT 5"
+        )
+        al = {"gold_ae_results": {"ae_count"}}
+        try:
+            result, df = execute_safe_select(db, sql, al, row_cap=500)
+        except Exception as exc:  # noqa: BLE001 - the point of the test
+            pytest.fail(f"boundary raised instead of returning a rejection: {exc!r}")
+        assert result.outcome is not SQLGateOutcome.PASS or df is not None

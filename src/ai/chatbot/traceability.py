@@ -102,13 +102,41 @@ def _extract_values(obj) -> list[float]:
     return out
 
 
-def _traces(value: float, decimals: int, allowed: list[float], rel_tol: float) -> bool:
-    """True if ``value`` matches some allowed value rounded to ``decimals``."""
+def _traces(
+    value: float,
+    decimals: int,
+    allowed: list[float],
+    rel_tol: float,
+    is_percent: bool = False,
+) -> bool:
+    """True if ``value`` is a valid rendering of some allowed value.
+
+    Matching is by *displayed precision*: a candidate traces when it lies within
+    half a unit of the token's last shown digit. Comparing ``round(cand, decimals)``
+    instead made the boundary asymmetric — against 0.68515 the token 0.6852 traced
+    while 0.6851 blocked, purely a binary-``round()`` artifact, though both are
+    valid renderings at 4 dp (adversarial review m-13). The window is the same
+    width as before, just free of the artifact.
+
+    A ``%``-suffixed token is additionally allowed to be the percentage rendering
+    of a ratio (``65.61%`` for 0.6561), which previously blocked. Note this checks
+    the VALUE is data-sourced, not that the unit is right: an ill-chosen ``%`` on a
+    ratio is a formatting error, not an invented number, and is not what this
+    guardrail exists to catch.
+    """
+    half_ulp = 0.5 * (10.0 ** -decimals)
+    # (probe value, half-ulp on that probe's scale). Dividing by 100 divides the
+    # displayed precision too — reusing the undivided tolerance would let e.g.
+    # "999.99%" match a stored 10.0.
+    probes: list[tuple[float, float]] = [(value, half_ulp)]
+    if is_percent:
+        probes.append((value / 100.0, half_ulp / 100.0))
+
     for cand in allowed:
-        rounded = round(cand, decimals)
-        tol = max(rel_tol * abs(rounded), 1e-9)
-        if abs(value - rounded) <= tol:
-            return True
+        for probe, ulp in probes:
+            tol = ulp + max(rel_tol * abs(cand), 1e-9)
+            if abs(cand - probe) <= tol:
+                return True
     return False
 
 
@@ -139,7 +167,7 @@ def verify_traceability(
         if parsed is None:
             continue
         value, decimals = parsed
-        if not _traces(value, decimals, allowed, rel_tol):
+        if not _traces(value, decimals, allowed, rel_tol, is_percent="%" in token):
             untraceable.append(token)
 
     return TraceabilityResult(passed=not untraceable, untraceable_nums=untraceable)

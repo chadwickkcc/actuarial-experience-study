@@ -265,8 +265,13 @@ def _build_segments_for_policy(
         attained_age_start = _compute_attained_age(dob, seg_start)
         attained_age_end = _compute_attained_age(dob, seg_end)
 
-        # CI rider in-force: True unless policy terminated as a CI claim
-        ci_in_force = ci_rider_flag and not (is_decrement_seg and decrement_type == "CI_CLAIM")
+        # CI rider in-force for the whole segment, INCLUDING the segment in which
+        # the CI claim occurs. Excluding it counted the claim in the numerator
+        # while dropping its exposure from the denominator — inconsistent with the
+        # Annual/Balducci treatment of deaths (FR-1A-10), which give a decrement
+        # full-year exposure. It also left 71% of CI claims in cells whose
+        # expected_ci_claims was 0, so their A/E read NULL (review m-4).
+        ci_in_force = bool(ci_rider_flag)
         ci_sa = float(ci_rider_sum_assured) if (ci_rider_flag and ci_rider_sum_assured is not None) else None
 
         # PLT fields — for TERM only
@@ -871,9 +876,17 @@ def build_exposure_file(
         face_col = "face_amount" if "face_amount" in policies_df.columns else "specified_amount"
         total_face = float(policies_df[face_col].sum())
 
+        # Scoped to the products this call actually wrote: summing the whole run
+        # made a product's reported diff include every other product's
+        # (adversarial review m-17). Harmless while everything reconciles, but
+        # correct-by-accident is not correct.
+        seg_products = sorted(segments_df["product_code"].dropna().unique().tolist())
+        ph_recon = ",".join(["?"] * len(seg_products)) if seg_products else "NULL"
         recon_diff = int(con.execute(
-            "SELECT COALESCE(SUM(ABS(recon_diff_count)), 0) FROM gold_inforce_reconciliation WHERE study_run_id = ?",
-            [study_run_id],
+            "SELECT COALESCE(SUM(ABS(recon_diff_count)), 0) "
+            "FROM gold_inforce_reconciliation "
+            f"WHERE study_run_id = ? AND product_code IN ({ph_recon})",
+            [study_run_id] + seg_products,
         ).fetchone()[0])
 
         if not recon_passes:

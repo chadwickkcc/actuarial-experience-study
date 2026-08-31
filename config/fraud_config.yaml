@@ -23,19 +23,40 @@ rules:
 
   agency_office_concentration:
     weight: 0.20
-    min_multiple_of_median: 3     # office first-policy-year claim count vs office median
+    # An office's early-claim count is Poisson-ish around the book mean (3.55 on
+    # the shipped data), so a bare 3x-median threshold is EXPECTED to catch an
+    # innocent office roughly half the time — it did (M-17). Volume alone is not
+    # evidence; require a second signal within the office, and flag only the
+    # corroborated claims rather than all of the office's early claims.
+    min_multiple_of_median: 4     # office first-policy-year claim count vs office median
     min_claims: 5                 # and at least this many early claims at the office
+    min_corroboration_share: 0.5  # >= this share of the office's early claims share a value
+    corroboration_dimensions:     # ...in any ONE of these dimensions
+      - hospital_id
+      - illness_code
 
   similar_claims_same_claimant:
     weight: 0.35
     amount_tolerance_pct: 10      # amounts within +/-10% of the claimant-group mean
+    # A person legitimately holding two policies can produce two honest claims:
+    # one death settling across two contracts, or one illness triggering two
+    # accelerated riders. Those arrive together and in pairs. Repeatedly claiming
+    # the SAME illness months apart is the fraud signature (m-11).
+    min_cluster_size: 3           # two claims is an ordinary multi-policy payout
+    min_days_between_claims: 30   # claims must be distinct events, not one settlement
+    exclude_death_clusters: true  # two deaths for one person is a data defect, not fraud
 
-  high_risk_region_or_hospital:
+  unknown_or_captive_facility:
     weight: 0.25
-    hospitals:
-      - HOSP-066                  # ghost facility (outside the 60-hospital roster)
-    regions:
-      - SOUTHWEST
+    # Replaces the old "high risk region or hospital" list, which was a pure
+    # membership test naming the one facility already known to be planted — it
+    # demonstrated nothing and would not catch an unknown facility (M-18). The
+    # roster below is the set of legitimate facilities; anything off it flags.
+    # Swappable per client, like every other reference table.
+    roster_file: config/reference_tables/facility_roster.csv
+    # The bare region clause was dropped: SOUTHWEST is the rarest region by
+    # construction (one state), not by risk, and it flagged 3 innocent claims on
+    # geography alone. Every planted-ring claim is caught by the roster instead.
 
 scoring:
   flag_threshold: 0.50            # composite score at/above which a claim is flagged

@@ -193,3 +193,70 @@ def test_local_override_replaces_password(tmp_path):
 def test_current_user_is_none_pre_auth():
     # Outside a Streamlit runtime there is no session identity.
     assert current_user() is None
+
+
+# ---------------------------------------------------------------------------
+# Seeding must not govern existing users (adversarial review M-16)
+# ---------------------------------------------------------------------------
+
+class TestSeedingDoesNotOverrideTheDatabase:
+    """`ui/app.py` re-seeds on every boot. That silently reinstated a deactivated
+    account, undid a demotion, and re-derived every password hash."""
+
+    def test_deactivation_survives_a_reseed(self, gov_env):
+        import duckdb
+        from src.governance.users import get_user_by_username, seed_users_from_config
+
+        db, cfg = gov_env["db"], gov_env["config_path"]
+        con = duckdb.connect(db)
+        try:
+            con.execute("UPDATE gold_users SET active = FALSE WHERE username = 'c.chief'")
+        finally:
+            con.close()
+
+        seed_users_from_config(cfg, db)
+        assert get_user_by_username("c.chief", db_path=db) is None or \
+            get_user_by_username("c.chief", db_path=db).active is False, (
+                "a boot must not reinstate a deactivated account"
+            )
+
+    def test_role_change_survives_a_reseed(self, gov_env):
+        import duckdb
+        from src.governance.users import seed_users_from_config
+
+        db, cfg = gov_env["db"], gov_env["config_path"]
+        con = duckdb.connect(db)
+        try:
+            con.execute("UPDATE gold_users SET role = 'analyst' WHERE username = 'c.chief'")
+        finally:
+            con.close()
+
+        seed_users_from_config(cfg, db)
+        con = duckdb.connect(db, read_only=True)
+        try:
+            role = con.execute(
+                "SELECT role FROM gold_users WHERE username = 'c.chief'"
+            ).fetchone()[0]
+        finally:
+            con.close()
+        assert role == "analyst", "a boot must not undo a demotion"
+
+    def test_credentials_are_not_rederived_on_reseed(self, gov_env):
+        import duckdb
+        from src.governance.users import seed_users_from_config
+
+        db, cfg = gov_env["db"], gov_env["config_path"]
+
+        def _creds():
+            con = duckdb.connect(db, read_only=True)
+            try:
+                return con.execute(
+                    "SELECT username, password_hash, password_salt FROM gold_users "
+                    "ORDER BY username"
+                ).fetchall()
+            finally:
+                con.close()
+
+        before = _creds()
+        seed_users_from_config(cfg, db)
+        assert _creds() == before, "credentials must not churn on every boot"

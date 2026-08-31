@@ -3,7 +3,7 @@
 **Audience:** actuaries evaluating "the art of the possible" for an AI-enabled
 experience-study platform.
 **Setup before the session:** `streamlit run ui/app.py` on the shipped demo DB
-(seed-42 dataset, run `c0c86c2f…`). Optionally `export ANTHROPIC_API_KEY=…`
+(seed-42 dataset, run `5d09d306…`). Optionally `export ANTHROPIC_API_KEY=…`
 (and/or `DEEPSEEK_API_KEY`) to run the live AI drafting beats; without a key
 the AI pages still render and the buttons explain what they would do.
 **Sign-ins used:** `a.analyst` (proposer) and the three approvers `j.junior`,
@@ -48,7 +48,7 @@ If you regenerate the data, refresh them from `docs/demo_refresh_progress.md`.
    so they now contribute properly; the portfolio figure is 1.1461, not the
    0.8753 that used to be diluted by a zero numerator.)*
 4. **Critical Illness A/E** — **589 CI claims across all 10 illness codes**,
-   aggregate CI A/E **1.2325**; heat map by age × illness.
+   aggregate CI A/E **1.2237**; heat map by age × illness.
 
 ## 4 · Management commentary with driver attribution (4 min)
 
@@ -68,12 +68,20 @@ If you regenerate the data, refresh them from `docs/demo_refresh_progress.md`.
 ## 5 · Fraud screening — the ring reveal (4 min)
 
 1. **Fraud Monitor** → **Run fraud scan** (as a.analyst).
-2. Headline: **1,808 claims scored, 32 flagged**, max composite score **1.20**.
+2. Headline: **1,808 claims scored, 22 flagged**, max composite score **1.20**.
 3. Concentration tables: office **OFF-013**, hospital **HOSP-066**, region
    **SOUTHWEST** dominate the flags.
-4. Drill into a top claim: CI-001, **policy-year-1 claim**, ghost hospital,
-   shared claimant cluster — the classic ring pattern, surfaced by six
-   configurable rules (weights/thresholds in `config/fraud_config.yaml`).
+4. Drill into a top claim: CI-001, **policy-year-1 claim**, a facility that is
+   not on the roster, and a repeat-claimant cluster — the classic ring pattern,
+   surfaced by six configurable rules (weights/thresholds in
+   `config/fraud_config.yaml`). The **ring is the top 15 flags contiguously**,
+   then a clean break to 0.55.
+5. Worth saying out loud: the office rule needs *corroboration*, not just volume —
+   a busy but organic office does not flag. The facility rule checks a
+   **roster** (`config/reference_tables/facility_roster.csv`), so a facility
+   nobody has on file is caught even though it was never named in advance. And
+   the repeat-claimant rule tolerates **178 people in this book who genuinely
+   hold more than one policy** — it fires only on the ring.
 5. *(With an API key)* **Draft fraud narrative (AI)** — emphasise: the model
    receives **aggregates and institutional ids only**; no policyholder or
    claimant identity ever reaches it.
@@ -128,18 +136,18 @@ If you regenerate the data, refresh them from `docs/demo_refresh_progress.md`.
 
 ---
 
-### Expected-figure quick reference (seed-42 demo DB, run `c0c86c2f…`)
+### Expected-figure quick reference (seed-42 demo DB, run `5d09d306…`)
 
 | Beat | Figure |
 |---|---|
 | Policies / runtime | 25,000 / ~10 s |
 | Deaths, portfolio mortality A/E | 1,206 · 0.6852 |
 | Discontinuances, portfolio A/E | 6,733 · 1.1461 |
-| CI claims, CI A/E | 589 (10 codes) · 1.2325 |
+| CI claims, CI A/E | 589 (10 codes) · 1.2237 |
 | DQ quarantine | UL 41 (98.0%) · ULSG 128 (93.6%) · IUL 7 (98.6%) |
 | Mortality story (Term+WL, 2020→23) | 0.603 → 0.612 → 0.754 → 0.880 |
 | Lapse story (Term+UL fam, 2022/23) | 1.194 / 1.881 |
 | WL mortality (AI Analyst answer) | 0.6561 = 611 / 931.26 |
-| Fraud scan | 1,808 scored · 32 flagged · max 1.20 |
+| Fraud scan | 1,808 scored · 22 flagged · max 1.20 |
 | Ring entities | OFF-013 · HOSP-066 · CLM-424242 ×4 · SOUTHWEST |
 | AI models / proposed factors | 16 registry rows · 324 factors |

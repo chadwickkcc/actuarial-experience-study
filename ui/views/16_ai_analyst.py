@@ -18,7 +18,7 @@ import streamlit as st
 
 from src.ai.chatbot.session import SessionState
 from ui import ai_analyst_logic as logic
-from ui.config import DB_PATH, require_auth
+from ui.config import DB_PATH, require_auth, export_button
 
 require_auth()
 
@@ -192,7 +192,7 @@ if prompt:
 
 # --- Export (FR-3B-43) ------------------------------------------------------
 if state.turns:
-    st.download_button(
+    export_button(
         "Export conversation (Markdown)",
         data=logic.export_conversation_markdown(state).encode("utf-8"),
         file_name=f"ai_analyst_{state.session_id[:8]}.md",

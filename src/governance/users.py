@@ -65,12 +65,17 @@ def seed_users_from_config(
 ) -> int:
     """Idempotently upsert ``gold_users`` from config; return the count processed.
 
+    Config SEEDS users that do not exist; it does not govern them afterwards.
+    An existing row keeps its ``role``, ``active`` flag and password — so
+    deactivating or demoting someone in the database STICKS, where previously
+    every app boot silently reinstated them from config, and re-derived all four
+    password hashes into the bargain (adversarial review M-16).
+
     For each configured user (committed entries overridden by the git-ignored
-    local file by username): a real ``bootstrap_password`` is hashed with a fresh
-    per-user salt and the plaintext discarded; the ``<set at first run>``
-    placeholder yields the UNUSABLE_HASH sentinel on first insert and leaves any
-    existing password untouched on re-seed. Re-running converges display_name,
-    role, and active to config (FR-4-01 / §I.2).
+    local file by username): on FIRST insert a real ``bootstrap_password`` is
+    hashed with a fresh per-user salt and the plaintext discarded; the
+    ``<set at first run>`` placeholder yields the UNUSABLE_HASH sentinel.
+    ``display_name`` is the one field still synced, being cosmetic.
     """
     entries = _merged_user_entries(Path(path))
     con = duckdb.connect(str(db_path))
@@ -100,20 +105,14 @@ def seed_users_from_config(
                         pw_hash, pw_salt, True, datetime.utcnow(),
                     ],
                 )
-            elif is_placeholder:
-                # Preserve any existing (possibly real) password; sync metadata only.
-                con.execute(
-                    "UPDATE gold_users SET display_name = ?, role = ?, active = ? "
-                    "WHERE username = ?",
-                    [display_name, role, True, username],
-                )
             else:
-                pw_hash, pw_salt = hash_password(raw_pw)
+                # The row already exists: the DATABASE is authoritative for role,
+                # active and password. Only the cosmetic display name is synced,
+                # so a boot can never resurrect a deactivated account, undo a
+                # demotion, or churn credentials at rest.
                 con.execute(
-                    "UPDATE gold_users SET display_name = ?, role = ?, "
-                    "password_hash = ?, password_salt = ?, active = ? "
-                    "WHERE username = ?",
-                    [display_name, role, pw_hash, pw_salt, True, username],
+                    "UPDATE gold_users SET display_name = ? WHERE username = ?",
+                    [display_name, username],
                 )
     finally:
         con.close()

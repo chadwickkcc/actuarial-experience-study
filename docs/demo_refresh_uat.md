@@ -2,7 +2,7 @@
 
 **Scope:** owner acceptance of the 2026-08-30 demo refresh (P0–P8 + the
 verification sweep; see `demo_refresh_progress.md`). Run against the shipped
-seed-42 demo DB (run `c0c86c2f…`) with `streamlit run ui/app.py`. Sections 1–8 mirror the
+seed-42 demo DB (run `5d09d306…`) with `streamlit run ui/app.py`. Sections 1–8 mirror the
 scripted demo (`docs/demo_walkthrough.md`) — run it beat-by-beat and tick.
 Expected figures are the walkthrough's quick-reference table.
 
@@ -31,14 +31,14 @@ Expected figures are the walkthrough's quick-reference table.
 | 2.2 | Management Commentary, Mortality | trend badge 🔴 Worsening; A/E 0.603→0.612→0.754→0.880 (2020–23) | |
 | 2.3 | Driver waterfall 2023 × age band | bars sum exactly to the +0.0722 total | |
 | 2.4 | Discontinuance YoY | 2022 ≈ 1.194, 2023 ≈ 1.881; portfolio A/E 1.1461 | |
-| 2.5 | CI Explorer | 589 claims, 10 illness codes, aggregate A/E 1.2325 | |
+| 2.5 | CI Explorer | 589 claims, 10 illness codes, aggregate A/E 1.2237 | |
 
 ## 3 · Fraud
 
 | # | Step | Expect | ✓ |
 |---|------|--------|---|
-| 3.1 | Run fraud scan | 1,808 scored; 32 flagged; max score 1.20 | |
-| 3.2 | Concentrations | OFF-013 / HOSP-066 / SOUTHWEST top the flagged tables | |
+| 3.1 | Run fraud scan | 1,808 scored; 22 flagged; max score 1.20 | |
+| 3.2 | Concentrations | OFF-013 / HOSP-066 top the flagged tables (region is no longer a rule) | |
 | 3.3 | Drill a shared-claimant claim | policy-year-1 CI-001, cluster of 4, evidence per rule | |
 | 3.4 | (key set) Draft fraud narrative | AI-DRAFT banner; figures match the scan; no policy/claimant ids in the text | |
 

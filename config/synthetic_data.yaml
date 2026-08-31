@@ -50,6 +50,12 @@ stories:
 
 # Institutional entities stamped onto every policy / claim.
 entities:
+  # A share of claimants hold more than one policy, so the fraud rule that
+  # looks for repeat claimants has a real population to discriminate against
+  # rather than only the planted ring (adversarial review m-11). Drawn from a
+  # dedicated RNG so no other generated figure moves.
+  claimant_reuse_fraction: 0.20
+  claimant_reuse_seed: 4242
   n_offices: 40          # OFF-001 … OFF-040
   agents_per_office: 8   # AGT-<office#><1-8>
   n_hospitals: 60        # HOSP-001 … HOSP-060

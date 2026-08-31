@@ -13,6 +13,7 @@ import pandas as pd
 import streamlit as st
 
 from ui.config import (
+    export_button,
     DA_MAPPING_YAML,
     DA_SOURCE_CSV,
     DB_PATH,
@@ -534,7 +535,7 @@ if col_r1.button("Generate Working Actuary Report"):
         out_path = REPORTS_DIR / f"working_actuary_{selected_run[:8]}.html"
         generate_working_actuary_report(selected_run, DB_PATH, out_path)
         st.success(f"Report generated: `{out_path.name}`")
-        col_r1.download_button(
+        export_button(
             "Download Working Actuary Report (HTML)",
             data=out_path.read_bytes(), file_name=out_path.name,
             mime="text/html", key="dl_wa_report",
@@ -549,7 +550,7 @@ if col_r2.button("Generate Chief Actuary Summary"):
         out_path = REPORTS_DIR / f"chief_actuary_{selected_run[:8]}.html"
         generate_chief_actuary_summary(selected_run, DB_PATH, out_path)
         st.success(f"Report generated: `{out_path.name}`")
-        col_r2.download_button(
+        export_button(
             "Download Chief Actuary Summary (HTML)",
             data=out_path.read_bytes(), file_name=out_path.name,
             mime="text/html", key="dl_ca_report",

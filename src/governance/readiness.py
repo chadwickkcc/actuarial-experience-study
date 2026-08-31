@@ -29,6 +29,17 @@ import yaml
 from src.governance.users import DEFAULT_CONFIG_PATH
 
 _GOV_DIR = "src/governance"
+
+#: Every package whose single-org assumptions a tenancy retrofit would have to
+#: touch. The scanner covered only src/governance, so the assumption lifecycle
+#: (moved to src/assumptions in P1) and the modules the refresh added were never
+#: scanned at all (adversarial review m-10).
+_SCANNED_DIRS = (
+    "src/governance",
+    "src/assumptions",
+    "src/fraud",
+    "src/analysis",
+)
 _DB_INIT_PATH = "src/utils/db_init.py"
 
 # Third-party SSO / SAML / OAuth libraries that would indicate a login integration
@@ -41,7 +52,16 @@ _SSO_MODULES = {
 
 def _gov_py_files(gov_dir: str = _GOV_DIR) -> list:
     """All governance source files (sorted for stable output)."""
-    return sorted(str(p) for p in Path(gov_dir).glob("*.py"))
+    paths: list[str] = []
+    for directory in _SCANNED_DIRS:
+        base = Path(directory)
+        if directory == gov_dir or base.exists():
+            paths.extend(str(p) for p in base.glob("*.py"))
+    # Preserve the caller-supplied directory even if it is not one of the defaults
+    # (tests point this at a temp tree).
+    if gov_dir not in _SCANNED_DIRS:
+        paths = [str(p) for p in Path(gov_dir).glob("*.py")]
+    return sorted(set(paths))
 
 
 def _is_tenant_id_const(node) -> bool:

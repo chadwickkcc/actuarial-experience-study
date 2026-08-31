@@ -370,6 +370,10 @@ def sample_offices_and_agents(rng: np.random.Generator, n: int) -> tuple[list[st
     return offices, agents
 
 
+#: Keeps each product's reuse stream distinct while staying reproducible.
+_PREFIX_SALT = {"TRM": 0, "WL": 1, "UL": 2, "VUL": 3, "DA": 4}
+
+
 def assign_claim_fields(
     df: pd.DataFrame, rng: np.random.Generator, id_prefix: str
 ) -> pd.DataFrame:
@@ -387,10 +391,34 @@ def assign_claim_fields(
     hosp_ix = rng.integers(1, n_hosp + 1, size=n)
 
     df = df.copy()
-    df["claimant_id"] = [
+    # A claimant id per policy makes a repeat claimant structurally impossible, so
+    # the "similar claims, same claimant" rule could only ever fire on the planted
+    # ring — a plant-detector, not a detector (adversarial review m-11). Real books
+    # have cross-holding: a share of people hold more than one policy.
+    #
+    # The reuse map is drawn from a DEDICATED generator, never the shared ``rng``.
+    # ``generate_all`` threads one rng sequentially through all five products, so
+    # taking even one extra draw here would reshuffle every later product's
+    # decrements and move every demo figure. This way only claimant_id changes.
+    reuse_frac = float(ent.get("claimant_reuse_fraction", 0.0))
+    person_seed = int(ent.get("claimant_reuse_seed", 4242))
+
+    claimants = [
         f"CLM-{id_prefix}-{i + 1:06d}" if flag else None
         for i, flag in enumerate(is_claim)
     ]
+    if reuse_frac > 0:
+        prng = np.random.default_rng(person_seed + _PREFIX_SALT.get(id_prefix, 0))
+        idx = [i for i, c in enumerate(claimants) if c is not None]
+        # Pair up a fraction of claimants: the second of each pair takes the
+        # first's identity, i.e. one person holding two policies.
+        n_pairs = int(len(idx) * reuse_frac / 2)
+        if n_pairs > 0 and len(idx) >= 2:
+            chosen = prng.choice(len(idx), size=min(2 * n_pairs, len(idx)),
+                                 replace=False)
+            for a, b in zip(chosen[0::2], chosen[1::2]):
+                claimants[idx[b]] = claimants[idx[a]]
+    df["claimant_id"] = claimants
     df["hospital_id"] = [
         f"HOSP-{int(h):03d}" if flag else None for h, flag in zip(hosp_ix, is_claim)
     ]

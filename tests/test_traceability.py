@@ -153,3 +153,43 @@ class TestUnicodeSigns:
             "Ages 25–29 drove it.", {"columns": ["band"], "rows": [["25-29"]]}, ""
         )
         assert res.passed
+
+
+class TestPercentAndRoundingSymmetry:
+    """m-13: the check was one-directional on units and had a float artifact.
+
+    * ``65.61%`` against data ``0.6561`` BLOCKED — a correctly rendered percentage
+      of a ratio was treated as an invented number.
+    * Rounding was asymmetric: against data ``0.68515`` the answer ``0.6852``
+      traced but ``0.6851`` blocked, purely a binary-``round()`` artifact — both
+      are valid renderings at 4 dp.
+    """
+
+    RATIO = {"columns": ["ae"], "rows": [[0.6561]]}
+
+    def test_percentage_rendering_of_a_ratio_traces(self):
+        res = verify_traceability("Lapse experience ran at 65.61%.", self.RATIO, "")
+        assert res.passed, f"untraceable: {res.untraceable_nums}"
+
+    def test_bare_ratio_still_traces(self):
+        assert verify_traceability("A/E was 0.6561.", self.RATIO, "").passed
+
+    def test_percentage_data_rendered_as_a_percentage_traces(self):
+        pct = {"columns": ["dq"], "rows": [[98.0]]}
+        assert verify_traceability("Data quality was 98.0%.", pct, "").passed
+
+    def test_an_invented_number_still_blocks_with_a_percent_sign(self):
+        res = verify_traceability("Lapse ran at 42.42%.", self.RATIO, "")
+        assert not res.passed, "a percent sign must not launder an invented number"
+
+    @pytest.mark.parametrize("token", ["0.6852", "0.6851", "0.685", "0.69"])
+    def test_rounding_boundary_is_symmetric(self, token):
+        data = {"columns": ["ae"], "rows": [[0.68515]]}
+        res = verify_traceability(f"The ratio was {token}.", data, "")
+        assert res.passed, (
+            f"{token} is a valid rendering of 0.68515 at its displayed precision"
+        )
+
+    def test_a_value_outside_the_displayed_precision_still_blocks(self):
+        data = {"columns": ["ae"], "rows": [[0.68515]]}
+        assert not verify_traceability("The ratio was 0.6799.", data, "").passed

@@ -16,7 +16,7 @@ import pandas as pd
 import plotly.graph_objects as go
 import streamlit as st
 
-from ui.config import DB_PATH, CONFIG_DIR
+from ui.config import DB_PATH, CONFIG_DIR, export_button
 from ui import skills_logic as skills
 from src.ai.llm.base import LLMProviderError
 from src.ai.llm.client import load_llm_config
@@ -236,7 +236,7 @@ else:
             st.error(msg)
         else:
             st.markdown(_out["markdown"])
-            st.download_button(
+            export_button(
                 "Download commentary (.md)",
                 data=_out["markdown"].encode("utf-8"),
                 file_name="management_commentary.md", mime="text/markdown",

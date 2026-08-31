@@ -27,6 +27,8 @@ the chain.
 
 from __future__ import annotations
 
+import logging
+
 import uuid
 from datetime import datetime
 from pathlib import Path
@@ -51,6 +53,9 @@ from src.utils.types import (
     SignoffRecord,
     User,
 )
+
+logger = logging.getLogger(__name__)
+
 
 _SIGNOFF_TABLE = "gold_governance_signoffs"
 
@@ -113,6 +118,11 @@ def required_final_level(materiality_value: Optional[float], cfg: dict) -> int:
         raise ValueError("No approval_chain configured.")
     last_level = chain[-1].level  # the final level (robust to non-contiguous numbering)
     if materiality_value is None:
+        return last_level
+    # NaN compares False against everything, so `abs(nan) > threshold` used to read
+    # as "immaterial" and let a senior sign alone. An unknown materiality is not a
+    # small one — fail to the full chain (adversarial review m-9).
+    if materiality_value != materiality_value:  # NaN
         return last_level
     mat = cfg.get("materiality") or {}
     threshold = float(mat.get("max_multiplier_delta_threshold", 0.05))
@@ -320,8 +330,14 @@ def _emit_study_run_event(
     try:
         detail = f"level {level}: {comment.strip()}" if comment else f"level {level}"
         record_ae_event(event_type, run_id, user.user_id, detail, db_path=db_path)
-    except Exception:  # pragma: no cover - defensive; audit event is non-critical
-        pass
+    except Exception:  # noqa: BLE001 - never let an audit failure break a sign-off
+        # Still a non-fatal path (the sign-off itself must commit), but a lost
+        # governance event is not nothing: log it loudly so the gap is visible
+        # rather than silent (adversarial review m-9).
+        logger.exception(
+            "governance audit event could not be written; the primary action "
+            "committed but the trail is incomplete"
+        )
 
 
 def record_signoff(

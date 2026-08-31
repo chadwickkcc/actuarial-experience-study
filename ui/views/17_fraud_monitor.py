@@ -17,7 +17,7 @@ import plotly.express as px
 import plotly.graph_objects as go
 import streamlit as st
 
-from ui.config import DB_PATH, CONFIG_DIR
+from ui.config import DB_PATH, CONFIG_DIR, export_button
 from ui import fraud_logic
 from ui import skills_logic as skills
 from src.ai.llm.base import LLMProviderError
@@ -165,7 +165,7 @@ st.dataframe(
         "composite_score": st.column_config.NumberColumn("Score", format="%.2f"),
     },
 )
-st.download_button(
+export_button(
     "Download flagged claims (CSV)",
     data=flagged[show_cols].to_csv(index=False).encode("utf-8"),
     file_name="fraud_flagged_claims.csv", mime="text/csv",
@@ -233,7 +233,7 @@ else:
             st.error(msg)
         else:
             st.markdown(_out["markdown"])
-            st.download_button(
+            export_button(
                 "Download narrative (.md)",
                 data=_out["markdown"].encode("utf-8"),
                 file_name="fraud_narrative.md", mime="text/markdown",

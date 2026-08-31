@@ -67,6 +67,21 @@ def _connect(db_path: Path) -> duckdb.DuckDBPyConnection:
     return duckdb.connect(str(db_path), read_only=True)
 
 
+def _decrement_columns(decrement: str) -> tuple:
+    """Column triple for a decrement, or a clear error naming the valid ones.
+
+    The dimension guard already raised a descriptive ``ValueError``; an unknown
+    decrement raised a bare ``KeyError`` from four call sites (m-16).
+    """
+    try:
+        return _DECREMENT_COLS[decrement]
+    except KeyError:
+        raise ValueError(
+            f"decrement {decrement!r} not recognised; expected one of "
+            f"{sorted(_DECREMENT_COLS)}"
+        ) from None
+
+
 def compute_yoy_movement(
     db_path: Path,
     run_id: str,
@@ -79,7 +94,7 @@ def compute_yoy_movement(
     Ratios are ratio-of-sums (never averaged cells). Years with no expected
     experience are skipped.
     """
-    actual_col, expected_col, illness_pred = _DECREMENT_COLS[decrement]
+    actual_col, expected_col, illness_pred = _decrement_columns(decrement)
     sql = (
         f"SELECT calendar_year, SUM({actual_col}) AS a, SUM({expected_col}) AS e "
         f"FROM gold_ae_results WHERE study_run_id = ? AND {illness_pred} "
@@ -132,7 +147,7 @@ def attribute_drivers(
     """
     if dimension not in _ALLOWED_DIMENSIONS:
         raise ValueError(f"dimension {dimension!r} not permitted")
-    actual_col, expected_col, illness_pred = _DECREMENT_COLS[decrement]
+    actual_col, expected_col, illness_pred = _decrement_columns(decrement)
 
     sql = (
         f"SELECT calendar_year, CAST({dimension} AS VARCHAR) AS segment, "
@@ -166,22 +181,48 @@ def attribute_drivers(
     ae_curr = sum(a for a, _ in by_year[year].values()) / e_curr
 
     segments = sorted(set(by_year[year - 1]) | set(by_year[year]))
-    contributions = []
+    raw = []
     for seg in segments:
         a_prev = by_year[year - 1].get(seg, (0.0, 0.0))[0]
         a_curr = by_year[year].get(seg, (0.0, 0.0))[0]
-        contrib = a_curr / e_curr - a_prev / e_prior
-        contributions.append({
+        raw.append((seg, a_curr / e_curr - a_prev / e_prior, a_curr, a_prev))
+
+    # Round with a largest-remainder pass so the RETURNED contributions still sum
+    # to the returned delta. Rounding each independently let the payload drift by
+    # up to n x 5e-7 — it exceeded the documented 1e-9 in 12 of 35 combinations,
+    # while the docstring, the progress notes and the page caption all promised an
+    # exact sum (adversarial review m-5). The maths was always exact; only the
+    # rounded payload was not.
+    _DP = 6
+    delta_ae = round(ae_curr - ae_prior, _DP)
+    scale = 10 ** _DP
+    scaled = [c * scale for _, c, _, _ in raw]
+    floored = [int(round(v)) for v in scaled]
+    residual = int(round(delta_ae * scale)) - sum(floored)
+    # Hand the residual to the segments with the largest rounding remainder, so no
+    # single contribution moves by more than one unit in the last place.
+    order = sorted(
+        range(len(raw)), key=lambda i: abs(scaled[i] - floored[i]), reverse=True
+    )
+    for k in range(abs(residual)):
+        if not order:
+            break
+        floored[order[k % len(order)]] += 1 if residual > 0 else -1
+
+    contributions = [
+        {
             "segment": seg,
-            "contribution": round(contrib, 6),
+            "contribution": floored[i] / scale,
             "actual": int(a_curr),
             "prior_actual": int(a_prev),
-        })
+        }
+        for i, (seg, _c, a_curr, a_prev) in enumerate(raw)
+    ]
     contributions.sort(key=lambda c: abs(c["contribution"]), reverse=True)
     return {
         "year": year,
         "prior_year": year - 1,
-        "delta_ae": round(ae_curr - ae_prior, 6),
+        "delta_ae": delta_ae,
         "dimension": dimension,
         "contributions": contributions,
     }
@@ -253,7 +294,7 @@ def justification_metrics(
     """
     from src.calculation.ae_engine import compute_credibility_z
 
-    actual_col, expected_col, illness_pred = _DECREMENT_COLS[decrement]
+    actual_col, expected_col, illness_pred = _decrement_columns(decrement)
     con = _connect(db_path)
     try:
         row = con.execute(
@@ -310,7 +351,11 @@ def movement_legs(
         "FROM gold_inforce_reconciliation WHERE study_run_id = ? "
     )
     params: list = [run_id]
-    if years:
+    if years is not None:
+        # An explicit empty list means "no years", not "every year" — the falsy
+        # check silently ignored the filter and returned the whole table (m-16).
+        if not years:
+            return []
         sql += f"AND calendar_year IN ({', '.join('?' for _ in years)}) "
         params.extend(years)
     sql += "ORDER BY product_code, calendar_year"

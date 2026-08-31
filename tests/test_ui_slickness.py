@@ -37,8 +37,9 @@ def test_nav_has_five_groups():
 
 
 def test_run_log_reports_have_download_buttons():
+    """Both reports must be downloadable, via the export-gated helper (m-2)."""
     src = (_VIEWS / "07_run_log.py").read_text(encoding="utf-8")
-    assert src.count("download_button") >= 2, (
+    assert src.count("export_button(") >= 2, (
         "the two generated reports must be downloadable, not just written to disk"
     )
 
@@ -96,3 +97,24 @@ def test_ci_explorer_does_not_present_experience_as_a_fault() -> None:
         "elevated experience is a finding to explain, not an out-of-spec fault"
     )
     assert "updating the A/E engine" not in src, "developer-facing copy in client UI"
+
+
+def test_every_download_surface_gates_on_export() -> None:
+    """m-2: the `export` right was enforced on only 2 of 9 download surfaces, so an
+    analyst denied the compliance pack could still download claim-level fraud data,
+    both actuary reports, the AI memo and the factors CSV."""
+    import pathlib as _pl
+
+    offenders = []
+    for view in sorted(_pl.Path("ui/views").glob("*.py")):
+        src = view.read_text()
+        if "download_button(" not in src:
+            continue
+        # Either the page gates the whole block on EXPORT, or it uses the gated helper.
+        gated = "Action.EXPORT" in src or "export_button" in src
+        if not gated:
+            offenders.append(view.name)
+        # A raw st.download_button must not survive on a page using the helper.
+        if "export_button" in src and "st.download_button(" in src:
+            offenders.append(f"{view.name} (mixed raw/gated)")
+    assert not offenders, f"ungated download surfaces: {offenders}"

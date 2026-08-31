@@ -378,8 +378,14 @@ class TestDimensionalFields:
             else:
                 assert s["face_amount_at_decrement"] is None
 
-    def test_ci_rider_in_force_false_after_ci_claim(self):
-        """The CI_CLAIM decrement segment must have ci_rider_in_force_flag=False."""
+    def test_ci_claim_segment_still_carries_ci_exposure(self):
+        """The CI_CLAIM decrement segment must KEEP ci_rider_in_force_flag=True.
+
+        Excluding it counted the claim in the numerator while dropping its
+        exposure from the denominator — inconsistent with FR-1A-10, under which a
+        decrement receives full-year exposure (deaths already do). It also left
+        71% of CI claims in cells whose expected_ci_claims was 0, so their A/E
+        rendered as NULL (adversarial review m-4)."""
         segs = _segs(
             None,
             issue_date=date(2010, 1, 1),
@@ -392,11 +398,24 @@ class TestDimensionalFields:
         )
         ci_seg = [s for s in segs if s["decrement_flag"]]
         assert len(ci_seg) == 1
-        assert ci_seg[0]["ci_rider_in_force_flag"] is False
-        # Prior segments should have it True
-        prior = [s for s in segs if not s["decrement_flag"]]
-        for s in prior:
+        assert ci_seg[0]["ci_rider_in_force_flag"] is True, (
+            "the claim's own exposure belongs in the CI denominator"
+        )
+        for s in segs:
             assert s["ci_rider_in_force_flag"] is True
+
+    def test_policies_without_a_ci_rider_carry_no_ci_exposure(self):
+        """The flag still tracks rider cover, not merely 'any segment'."""
+        segs = _segs(
+            None,
+            issue_date=date(2010, 1, 1),
+            status_code="DEATH",
+            termination_date=date(2020, 5, 10),
+            termination_cause_code="DEATH_BENEFIT_CLAIM",
+            level_period_years=20,
+            ci_rider_flag=False,
+        )
+        assert segs and all(s["ci_rider_in_force_flag"] is False for s in segs)
 
 
 # ---------------------------------------------------------------------------

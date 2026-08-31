@@ -318,6 +318,13 @@ def _is_fully_aggregated(statement: exp.Expression) -> bool:
     if not projections:
         return False
 
+    # A WINDOWED aggregate (SUM(x) OVER (...)) returns one row per INPUT row, not
+    # one row overall, so it is not a single-row aggregate whatever else the
+    # projection contains. This shape passed the cap and returned 159,568 rows
+    # against a limit of 500 (adversarial review M-15).
+    if list(statement.find_all(exp.Window)):
+        return False
+
     has_aggregate = False
     for proj in projections:
         if list(proj.find_all(exp.AggFunc)):
@@ -456,6 +463,23 @@ def execute_safe_select(
 
     try:
         dataframe = conn.execute(result.sql).fetchdf()
+    except Exception as err:  # noqa: BLE001 - see below
+        # The boundary's contract is that bad user SQL is RETURNED as a rejection,
+        # never raised (rejections are data, not exceptions). SQL can pass all four
+        # static gates and still be invalid to DuckDB — e.g. a LIMIT on each arm of
+        # a UNION — and that used to escape as a raw duckdb.ParserException to every
+        # caller (adversarial review m-15). Report it as a boundary rejection with a
+        # safe message instead; SQLBoundaryError stays reserved for misuse of the
+        # boundary API itself.
+        return (
+            SQLValidationResult(
+                outcome=SQLGateOutcome.REJECT_BOUNDARY,
+                sql=result.sql,
+                gate_failed="gate_5_boundary",
+                detail=f"{type(err).__name__}: {err}",
+            ),
+            None,
+        )
     finally:
         conn.close()
     return result, dataframe

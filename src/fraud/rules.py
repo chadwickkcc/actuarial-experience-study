@@ -61,6 +61,10 @@ class FraudRuleResult:
     weight: float
     hit_claim_ids: list[str]
     evidence: dict[str, dict] = field(default_factory=dict)  # claim_id -> evidence
+    #: Claims this rule could not evaluate at all (no usable basis). Reported so a
+    #: rule that is inapplicable to a product family is visible as such, instead of
+    #: a NaN comparison silently reading as "no hit" (adversarial review M-19).
+    n_not_applicable: int = 0
 
     @property
     def hit_count(self) -> int:
@@ -74,7 +78,15 @@ def build_claims_frame(db_path: Path) -> pd.DataFrame:
         frames = []
         for table in _SILVER_TABLES:
             is_da = table == "silver_annuity_contracts"
-            premium = "0.0" if is_da else "COALESCE(p.annual_premium, 0.0)"
+            # Annuity contracts carry no annual_premium: a deferred annuity is a
+            # deposit, and its death benefit IS the account value. Hardcoding 0.0
+            # made the ratio NaN, and `NaN > 25` is silently False, so the whole
+            # family was reported as scored against six rules while actually being
+            # scored against five (adversarial review M-19).
+            premium = (
+                "COALESCE(p.account_value, 0.0)" if is_da
+                else "COALESCE(p.annual_premium, 0.0)"
+            )
             pid_col = "contract_id" if is_da else "policy_id"
             frames.append(
                 con.execute(
@@ -85,7 +97,14 @@ def build_claims_frame(db_path: Path) -> pd.DataFrame:
             )
     finally:
         con.close()
+    for frame, table in zip(frames, _SILVER_TABLES):
+        frame["premium_basis"] = (
+            "ACCOUNT_VALUE" if table == "silver_annuity_contracts" else "ANNUAL_PREMIUM"
+        )
     df = pd.concat(frames, ignore_index=True)
+    # A zero/absent basis means the leverage test cannot be evaluated at all —
+    # say so explicitly rather than letting a NaN comparison read as "no hit".
+    df.loc[df["annual_premium"].fillna(0.0) <= 0, "premium_basis"] = "NONE"
     # The UL CSV is loaded twice upstream (as UL and as ULSG), duplicating its
     # rows in silver_policy_events — a claim is one policy here, so de-dup.
     df = df.drop_duplicates(subset=["claim_event_id"], keep="first")
@@ -117,19 +136,35 @@ def rule_claim_exceeds_premiums(claims: pd.DataFrame, cfg: dict) -> FraudRuleRes
     """FR-RULE-02 — claim amount far exceeds the premiums paid to date."""
     rcfg = cfg["rules"]["claim_exceeds_premiums"]
     min_ratio = float(rcfg.get("min_ratio", 25))
+
+    basis = claims.get("premium_basis", pd.Series("ANNUAL_PREMIUM", index=claims.index))
+    applicable = basis != "NONE"
+
+    # A recurring premium accumulates with duration; a single deposit does not, so
+    # only the annual-premium basis is annualised. Annualising an account value
+    # would invent a payment history the contract never had.
     years_paid = (claims["policy_days"].clip(lower=1) / 365.25).clip(lower=1.0)
-    premiums_paid = claims["annual_premium"].fillna(0.0) * years_paid
-    ratio = claims["claim_amount"] / premiums_paid.replace(0, float("nan"))
-    hits = claims[ratio > min_ratio]
+    paid = claims["annual_premium"].fillna(0.0).where(
+        basis != "ANNUAL_PREMIUM", claims["annual_premium"].fillna(0.0) * years_paid
+    )
+    ratio = claims["claim_amount"] / paid.replace(0, float("nan"))
+
+    hits = claims[applicable & (ratio > min_ratio)]
     return FraudRuleResult(
         rule_id="FR-RULE-02",
         description="Claim amount exceeds premiums paid by the configured ratio",
         weight=float(rcfg["weight"]),
         hit_claim_ids=hits["claim_event_id"].tolist(),
         evidence={
-            cid: {"claim_to_premium_ratio": round(float(rt), 1)}
-            for cid, rt in zip(hits["claim_event_id"], ratio[hits.index])
+            cid: {
+                "claim_to_premium_ratio": round(float(rt), 1),
+                "premium_basis": str(basis.loc[cid_idx]),
+            }
+            for cid, rt, cid_idx in zip(
+                hits["claim_event_id"], ratio[hits.index], hits.index
+            )
         },
+        n_not_applicable=int((~applicable).sum()),
     )
 
 
@@ -177,20 +212,60 @@ def rule_agency_office_concentration(claims: pd.DataFrame, cfg: dict) -> FraudRu
     median = float(counts.median())
     threshold = max(multiple * max(median, 1.0), float(min_claims))
     hot_offices = set(counts[counts >= threshold].index)
-    hits = early[early["agency_office_id"].isin(hot_offices)]
+
+    # Volume alone is not evidence: with ~3.5 early claims per office, a 40-office
+    # book is EXPECTED to throw up an innocent office at the old threshold, and it
+    # did — one organic office contributed 7 of 32 flags (M-17). Require a second
+    # signal inside the office, and flag only the claims that carry it.
+    min_share = float(rcfg.get("min_corroboration_share", 0.0))
+    dims = list(rcfg.get("corroboration_dimensions") or [])
+
+    hit_rows = []
+    evidence: dict[str, dict] = {}
+    for office in sorted(hot_offices):
+        office_claims = early[early["agency_office_id"] == office]
+        n = len(office_claims)
+        if not n:
+            continue
+
+        best = None  # (share, dimension, value)
+        for dim in dims:
+            if dim not in office_claims.columns:
+                continue
+            vc = office_claims[dim].value_counts(dropna=True)
+            if vc.empty:
+                continue
+            share = float(vc.iloc[0]) / n
+            if best is None or share > best[0]:
+                best = (share, dim, vc.index[0])
+
+        if dims and (best is None or best[0] < min_share):
+            continue  # concentrated but uncorroborated — an ordinary busy office
+
+        if best is None:
+            corroborated = office_claims
+            share = dim_name = dim_value = None
+        else:
+            share, dim_name, dim_value = best
+            corroborated = office_claims[office_claims[dim_name] == dim_value]
+
+        for r in corroborated.itertuples():
+            hit_rows.append(r.claim_event_id)
+            evidence[r.claim_event_id] = {
+                "office": office,
+                "office_first_year_claims": int(counts[office]),
+                "office_median": median,
+                "corroborating_dimension": dim_name,
+                "corroborating_value": None if dim_value is None else str(dim_value),
+                "corroborating_share": None if share is None else round(share, 4),
+            }
+
     return FraudRuleResult(
         rule_id="FR-RULE-04",
         description="Early-claim concentration at an agency office",
         weight=float(rcfg["weight"]),
-        hit_claim_ids=hits["claim_event_id"].tolist(),
-        evidence={
-            r.claim_event_id: {
-                "office": r.agency_office_id,
-                "office_first_year_claims": int(counts[r.agency_office_id]),
-                "office_median": median,
-            }
-            for r in hits.itertuples()
-        },
+        hit_claim_ids=hit_rows,
+        evidence=evidence,
     )
 
 
@@ -202,22 +277,39 @@ def rule_similar_claims_same_claimant(claims: pd.DataFrame, cfg: dict) -> FraudR
     """
     rcfg = cfg["rules"]["similar_claims_same_claimant"]
     tol = float(rcfg.get("amount_tolerance_pct", 10)) / 100.0
+    min_cluster = int(rcfg.get("min_cluster_size", 2))
+    min_gap_days = int(rcfg.get("min_days_between_claims", 0))
+    exclude_deaths = bool(rcfg.get("exclude_death_clusters", False))
 
     hits: list[str] = []
     evidence: dict[str, dict] = {}
     with_claimant = claims[claims["claimant_id"].notna()]
     for claimant, grp in with_claimant.groupby("claimant_id"):
-        if len(grp) < 2:
+        if len(grp) < min_cluster:
             continue
         for illness, sub in grp.groupby("illness_code", dropna=False):
-            if len(sub) < 2:
+            if len(sub) < min_cluster:
+                continue
+            # A person holding two policies legitimately produces two honest
+            # claims: one death settling across both contracts, or one illness
+            # triggering two accelerated riders. Those arrive together, in pairs,
+            # and a death cluster is a data defect rather than fraud. What cannot
+            # happen is the SAME illness claimed repeatedly, months apart (m-11).
+            if exclude_deaths and pd.isna(illness):
                 continue
             mean_amt = float(sub["claim_amount"].mean())
             close = sub[
                 (sub["claim_amount"] - mean_amt).abs() <= tol * mean_amt
             ]
-            if len(close) < 2:
+            if len(close) < min_cluster:
                 continue
+            if min_gap_days > 0 and "event_date" in close.columns:
+                dates = pd.to_datetime(close["event_date"]).sort_values()
+                gaps = dates.diff().dropna().dt.days
+                # Every consecutive pair must be far enough apart to be a
+                # genuinely separate event, not one settlement paid twice.
+                if gaps.empty or float(gaps.min()) < min_gap_days:
+                    continue
             for r in close.itertuples():
                 hits.append(r.claim_event_id)
                 evidence[r.claim_event_id] = {
@@ -233,23 +325,53 @@ def rule_similar_claims_same_claimant(claims: pd.DataFrame, cfg: dict) -> FraudR
     )
 
 
-def rule_high_risk_region_or_hospital(claims: pd.DataFrame, cfg: dict) -> FraudRuleResult:
-    """FR-RULE-06 — claim from a configured high-risk region or hospital."""
-    rcfg = cfg["rules"]["high_risk_region_or_hospital"]
-    hospitals = set(rcfg.get("hospitals") or [])
-    regions = set(rcfg.get("regions") or [])
-    hits = claims[
-        claims["hospital_id"].isin(hospitals) | claims["claim_region"].isin(regions)
-    ]
+def load_facility_roster(roster_file: Path | str) -> set[str]:
+    """The set of legitimate facility ids from the configured roster.
+
+    A pluggable reference file like every other basis in the tool: point the
+    config at a different roster and the check follows, no code change.
+    """
+    path = Path(roster_file)
+    if not path.exists():
+        raise FileNotFoundError(
+            f"facility roster not found at {path}; FR-RULE-06 cannot identify an "
+            f"unknown facility without a roster of known ones"
+        )
+    frame = pd.read_csv(path)
+    if "hospital_id" not in frame.columns:
+        raise ValueError(f"facility roster {path} has no 'hospital_id' column")
+    return set(frame["hospital_id"].dropna().astype(str))
+
+
+def rule_unknown_facility(claims: pd.DataFrame, cfg: dict) -> FraudRuleResult:
+    """FR-RULE-06 — claim settled at a facility that is not on the roster.
+
+    This is the check the demo has always described: a claim routed through a
+    facility nobody has on file. The previous implementation was a membership
+    test against a YAML list naming the single facility already known to be
+    planted, so it demonstrated nothing and could not catch an unknown one
+    (adversarial review M-18).
+
+    The bare high-risk-REGION clause was dropped with it: the configured region
+    was the rarest in the book by construction rather than by risk, and it flagged
+    innocent claims on geography alone.
+    """
+    rcfg = cfg["rules"]["unknown_or_captive_facility"]
+    roster = load_facility_roster(rcfg["roster_file"])
+
+    known = claims["hospital_id"].notna()
+    off_roster = ~claims["hospital_id"].astype(str).isin(roster)
+    hits = claims[known & off_roster]
     return FraudRuleResult(
         rule_id="FR-RULE-06",
-        description="Claim from a high-risk region or hospital",
+        description="Claim settled at a facility not on the roster",
         weight=float(rcfg["weight"]),
         hit_claim_ids=hits["claim_event_id"].tolist(),
         evidence={
             r.claim_event_id: {
-                "hospital": r.hospital_id if r.hospital_id in hospitals else None,
-                "region": r.claim_region if r.claim_region in regions else None,
+                "hospital": r.hospital_id,
+                "reason": "not on the facility roster",
+                "roster_size": len(roster),
             }
             for r in hits.itertuples()
         },
@@ -262,5 +384,5 @@ ALL_RULES = [
     rule_claim_above_materiality,
     rule_agency_office_concentration,
     rule_similar_claims_same_claimant,
-    rule_high_risk_region_or_hospital,
+    rule_unknown_facility,
 ]

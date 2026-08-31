@@ -20,7 +20,7 @@ import pandas as pd
 import plotly.graph_objects as go
 import streamlit as st
 
-from ui.config import DB_PATH, CONFIG_DIR
+from ui.config import DB_PATH, CONFIG_DIR, export_button
 from ui import ai_comparison_logic as logic
 from ui import skills_logic as skills
 from src.ai.llm.base import LLMProviderError
@@ -155,7 +155,7 @@ rename = {
 }
 display = table.rename(columns=rename)
 st.dataframe(display, use_container_width=True)
-st.download_button(
+export_button(
     "Download factors (CSV)",
     data=display.to_csv(index=False).encode("utf-8"),
     file_name=f"ai_factors_{sel_decrement.value}_{sel_product}.csv",
@@ -291,7 +291,7 @@ def _render_skill_output(out: dict, file_stem: str) -> None:
         st.error(msg)
     else:
         st.markdown(out["markdown"])
-        st.download_button(
+        export_button(
             "Download draft (.md)",
             data=out["markdown"].encode("utf-8"),
             file_name=f"{file_stem}.md",

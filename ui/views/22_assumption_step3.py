@@ -17,7 +17,7 @@ import duckdb
 import pandas as pd
 import streamlit as st
 
-from ui.config import DB_PATH, CONFIG_DIR
+from ui.config import DB_PATH, CONFIG_DIR, export_button
 from ui import skills_logic as skills
 from src.ai.llm.base import LLMProviderError
 from src.ai.llm.client import load_llm_config
@@ -253,7 +253,7 @@ else:
             st.error(_msg)
         else:
             st.markdown(_memo["markdown"])
-            st.download_button(
+            export_button(
                 "Download memo (.md)", data=_memo["markdown"].encode("utf-8"),
                 file_name=f"ae_memo_{aset_id[:8]}.md", mime="text/markdown",
             )

@@ -55,13 +55,18 @@ def verify_password(plaintext: str, password_hash: str, salt: str) -> bool:
     Returns False for the UNUSABLE_HASH sentinel (no password set) and for any
     malformed salt, rather than raising.
     """
-    if password_hash == UNUSABLE_HASH:
+    if password_hash == UNUSABLE_HASH or not isinstance(password_hash, str):
+        return False
+    if not isinstance(plaintext, str):
+        # A non-str secret (None, bytes) is a failed authentication, not a crash:
+        # the comparison below is outside the try, so these used to raise straight
+        # out of the function (adversarial review m-17).
         return False
     try:
         candidate, _ = hash_password(plaintext, salt)
+        return hmac.compare_digest(candidate, password_hash)
     except (ValueError, TypeError):
         return False
-    return hmac.compare_digest(candidate, password_hash)
 
 
 def authenticate(

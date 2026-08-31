@@ -18,7 +18,7 @@ from src.fraud.rules import (
     rule_claim_above_materiality,
     rule_claim_exceeds_premiums,
     rule_first_policy_year_claim,
-    rule_high_risk_region_or_hospital,
+    rule_unknown_facility,
     rule_similar_claims_same_claimant,
 )
 from src.fraud.runner import load_fraud_config, run_fraud_scan
@@ -87,17 +87,40 @@ class TestRuleUnits:
         assert set(rr.hit_claim_ids) == {"BIGD", "BIGCI"}
 
     def test_office_concentration_first_year_cluster(self):
+        """Volume PLUS a corroborating signal: the hot office routes its early
+        claims through one facility (adversarial review M-17)."""
         rows = []
-        # Hot office: 6 first-year claims; five other offices with 1 each.
+        # Hot office: 6 first-year claims, all at one hospital.
         for i in range(6):
             rows.append({"claim_event_id": f"HOT-{i}", "policy_days": 100,
-                         "agency_office_id": "OFF-099"})
+                         "agency_office_id": "OFF-099", "hospital_id": "HOSP-099"})
         for i in range(5):
             rows.append({"claim_event_id": f"ORG-{i}", "policy_days": 100,
-                         "agency_office_id": f"OFF-00{i + 1}"})
+                         "agency_office_id": f"OFF-00{i + 1}",
+                         "hospital_id": f"HOSP-0{i + 10}"})
         rr = rule_agency_office_concentration(_claims(rows), _cfg())
         assert {c for c in rr.hit_claim_ids} == {f"HOT-{i}" for i in range(6)}
         assert rr.evidence["HOT-0"]["office"] == "OFF-099"
+        assert rr.evidence["HOT-0"]["corroborating_share"] == 1.0
+
+    def test_office_volume_without_corroboration_does_not_fire(self):
+        """A busy but organic office — every early claim at a different facility
+        and a different illness — must NOT flag. This is the false-positive
+        cluster the review found (7 of 32 flags from one innocent office)."""
+        rows = []
+        for i in range(8):
+            rows.append({"claim_event_id": f"BUSY-{i}", "policy_days": 100,
+                         "agency_office_id": "OFF-050",
+                         "hospital_id": f"HOSP-1{i:02d}",
+                         "illness_code": f"CI-00{i % 8 + 1}"})
+        for i in range(5):
+            rows.append({"claim_event_id": f"ORG-{i}", "policy_days": 100,
+                         "agency_office_id": f"OFF-00{i + 1}",
+                         "hospital_id": f"HOSP-0{i + 10}"})
+        rr = rule_agency_office_concentration(_claims(rows), _cfg())
+        assert rr.hit_claim_ids == [], (
+            "volume alone is not evidence — an organic office must not flag"
+        )
 
     def test_office_concentration_null_case(self):
         # Even spread: nobody clears max(3x median, min_claims).
@@ -110,11 +133,18 @@ class TestRuleUnits:
         assert rr.hit_claim_ids == []
 
     def test_similar_claims_same_claimant(self):
+        """Three+ near-identical claims for the same illness, months apart — a
+        person cannot contract the same terminal illness repeatedly."""
         rows = [
             {"claim_event_id": "A", "event_type": "CI_CLAIM", "claimant_id": "X",
-             "illness_code": "CI-001", "claim_amount": 60000.0},
+             "illness_code": "CI-001", "claim_amount": 60000.0,
+             "event_date": "2022-03-10"},
             {"claim_event_id": "B", "event_type": "CI_CLAIM", "claimant_id": "X",
-             "illness_code": "CI-001", "claim_amount": 62000.0},
+             "illness_code": "CI-001", "claim_amount": 62000.0,
+             "event_date": "2022-09-20"},
+            {"claim_event_id": "F", "event_type": "CI_CLAIM", "claimant_id": "X",
+             "illness_code": "CI-001", "claim_amount": 61000.0,
+             "event_date": "2023-04-15"},
             # different illness — not similar
             {"claim_event_id": "C", "event_type": "CI_CLAIM", "claimant_id": "X",
              "illness_code": "CI-004", "claim_amount": 61000.0},
@@ -125,18 +155,59 @@ class TestRuleUnits:
              "illness_code": "CI-002", "claim_amount": 90000.0},
         ]
         rr = rule_similar_claims_same_claimant(_claims(rows), _cfg())
-        assert set(rr.hit_claim_ids) == {"A", "B"}
-        assert rr.evidence["A"]["claims_in_cluster"] == 2
+        assert set(rr.hit_claim_ids) == {"A", "B", "F"}
+        assert rr.evidence["A"]["claims_in_cluster"] == 3
 
-    def test_high_risk_region_or_hospital(self):
+    def test_two_policy_payout_is_not_fraud(self):
+        """One person legitimately holding two policies produces two honest
+        claims. That must not flag (adversarial review m-11)."""
+        rows = [
+            {"claim_event_id": "L1", "event_type": "CI_CLAIM", "claimant_id": "Z",
+             "illness_code": "CI-003", "claim_amount": 50000.0,
+             "event_date": "2022-05-01"},
+            {"claim_event_id": "L2", "event_type": "CI_CLAIM", "claimant_id": "Z",
+             "illness_code": "CI-003", "claim_amount": 51000.0,
+             "event_date": "2022-05-08"},
+        ]
+        rr = rule_similar_claims_same_claimant(_claims(rows), _cfg())
+        assert rr.hit_claim_ids == []
+
+    def test_one_illness_settling_across_two_riders_is_not_fraud(self):
+        """Same illness, days apart — one event paid twice, not two events."""
+        rows = [
+            {"claim_event_id": f"S{i}", "event_type": "CI_CLAIM", "claimant_id": "W",
+             "illness_code": "CI-002", "claim_amount": 40000.0 + i,
+             "event_date": f"2022-06-0{i + 1}"}
+            for i in range(3)
+        ]
+        rr = rule_similar_claims_same_claimant(_claims(rows), _cfg())
+        assert rr.hit_claim_ids == [], "claims days apart are one settlement"
+
+    def test_death_cluster_is_a_data_defect_not_fraud(self):
+        rows = [
+            {"claim_event_id": f"DD{i}", "event_type": "DEATH", "claimant_id": "V",
+             "illness_code": None, "claim_amount": 100000.0,
+             "event_date": f"202{i + 1}-03-01"}
+            for i in range(3)
+        ]
+        rr = rule_similar_claims_same_claimant(_claims(rows), _cfg())
+        assert rr.hit_claim_ids == []
+
+    def test_unknown_facility_flags_off_roster_only(self):
+        """A facility nobody has on file — the check the demo always described.
+        Geography alone must NOT flag (adversarial review M-18)."""
         df = _claims([
-            {"claim_event_id": "H", "hospital_id": "HOSP-066"},
-            {"claim_event_id": "R", "claim_region": "SOUTHWEST"},
+            {"claim_event_id": "H", "hospital_id": "HOSP-066"},          # off roster
+            {"claim_event_id": "R", "hospital_id": "HOSP-001",
+             "claim_region": "SOUTHWEST"},                               # rare region only
             {"claim_event_id": "N", "hospital_id": "HOSP-001",
              "claim_region": "MIDWEST"},
         ])
-        rr = rule_high_risk_region_or_hospital(df, _cfg())
-        assert set(rr.hit_claim_ids) == {"H", "R"}
+        rr = rule_unknown_facility(df, _cfg())
+        assert set(rr.hit_claim_ids) == {"H"}, (
+            "only the off-roster facility flags; region is not a risk signal"
+        )
+        assert rr.evidence["H"]["reason"] == "not on the facility roster"
 
     def test_all_six_rules_registered(self):
         assert len(ALL_RULES) == 6
@@ -173,7 +244,7 @@ class TestConfigValidation:
         assert set(cfg["rules"]) >= {
             "first_policy_year_claim", "claim_exceeds_premiums",
             "claim_above_materiality", "agency_office_concentration",
-            "similar_claims_same_claimant", "high_risk_region_or_hospital",
+            "similar_claims_same_claimant", "unknown_or_captive_facility",
         }
 
 
@@ -231,7 +302,7 @@ def test_shared_claimant_cluster_scores_highest(live_scan):
         + r["claim_exceeds_premiums"]["weight"]
         + r["agency_office_concentration"]["weight"]
         + r["similar_claims_same_claimant"]["weight"]
-        + r["high_risk_region_or_hospital"]["weight"],
+        + r["unknown_or_captive_facility"]["weight"],
         6,
     )
     df = live_scan.scores_df
