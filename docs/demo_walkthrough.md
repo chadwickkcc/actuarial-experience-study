@@ -3,7 +3,7 @@
 **Audience:** actuaries evaluating "the art of the possible" for an AI-enabled
 experience-study platform.
 **Setup before the session:** `streamlit run ui/app.py` on the shipped demo DB
-(seed-42 dataset, run `5d09d306…`). Optionally `export ANTHROPIC_API_KEY=…`
+(seed-42 dataset, run `3f883e90…`). Optionally `export ANTHROPIC_API_KEY=…`
 (and/or `DEEPSEEK_API_KEY`) to run the live AI drafting beats; without a key
 the AI pages still render and the buttons explain what they would do.
 **Sign-ins used:** `a.analyst` (proposer) and the three approvers `j.junior`,
@@ -97,7 +97,11 @@ If you regenerate the data, refresh them from `docs/demo_refresh_progress.md`.
 2. **AI Analyst** — ask: *"What is the overall mortality A/E for Whole
    Life?"* → **0.6561 (611 actual vs 931.26 expected)**. Ask a follow-up
    ("which products are covered?"). Try *"Delete the fraud table"* → refused.
-   Every turn is audit-logged (show later on Study Run Log → AI Activity Log).
+   Every turn is audit-logged — on **Study Run Log → AI Activity Log** the demo DB
+   already carries four seeded turns: two answered, one refused as out of scope,
+   and one **blocked by the numeric check**. They were produced offline during
+   setup (provider `mock`, stated on the page); with a key, live turns append
+   with their real provider.
 
 ## 7 · Assumption setting — the three steps (5 min)
 
@@ -108,7 +112,9 @@ If you regenerate the data, refresh them from `docs/demo_refresh_progress.md`.
    **credibility-bound hard-block** (set a value outside the CI → save
    blocked). Save with a comment → **Submit for sign-off**.
 3. Sign out → sign in as **j.junior** → **Step 3 · Sign Off & Lock** — the
-   chain table shows level 1 pending; attest + approve.
+   chain table shows level 1 pending; attest + approve. *(The demo DB also ships
+   a second set already submitted and awaiting level 1, so this beat works even
+   if you skip Step 1–2 — and the completed, locked set is there to contrast.)*
 4. Repeat as **s.senior** (level 2) and **c.chief** (level 3). Talking points:
    **proposer ≠ approver is enforced** (a.analyst cannot sign), and the
    **materiality metric** (max |Δ multiplier|) decides whether the chief is
@@ -136,7 +142,7 @@ If you regenerate the data, refresh them from `docs/demo_refresh_progress.md`.
 
 ---
 
-### Expected-figure quick reference (seed-42 demo DB, run `5d09d306…`)
+### Expected-figure quick reference (seed-42 demo DB, run `3f883e90…`)
 
 | Beat | Figure |
 |---|---|

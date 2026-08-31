@@ -1,8 +1,16 @@
 """Headless demo-workflow seeding (demo refresh P8).
 
-Drives one assumption set through the full governed lifecycle on the LIVE demo
-DB — create (a.analyst) → save/submit → junior/senior/chief sign-offs → locked
-APPROVED — so a freshly rebuilt DB ships with a completed example workflow:
+Seeds TWO assumption sets on the LIVE demo DB:
+
+1. A COMPLETED one — create (a.analyst) → save/submit → junior/senior/chief
+   sign-offs → locked APPROVED.
+2. A PENDING one, left at STAGE3_APPROVED awaiting level 1, so the Step 3
+   sign-off chain, the attestation and the RETURN path can actually be
+   demonstrated. With only the approved set, Step 3 rendered "already APPROVED,
+   no further action required" and the whole governance beat was unreachable
+   (adversarial review OBS-4).
+
+So a freshly rebuilt DB ships with a completed example workflow:
 the UAT harnesses (sections 2 / 3.7 / 4.4) have their preconditions, the
 Lineage/Dashboard pages have content, and hash-chained sign-off rows exist for
 the tamper-evidence demo. Part of the live-DB rebuild sequence
@@ -54,12 +62,14 @@ def main() -> int:
     if run is None:
         print("No COMPLETE study run — run scripts/_uat_rerun.py first.")
         return 1
-    if existing:
-        print(f"An APPROVED assumption set already exists ({existing}) — nothing to seed.")
-        return 0
-
     analyst = get_user_by_username("a.analyst", db_path=str(db))
     assert analyst is not None, "seed user a.analyst missing"
+
+    if existing:
+        print(f"An APPROVED assumption set already exists ({existing}) — "
+              f"skipping the completed workflow.")
+        _ensure_pending_set(db, run[0], analyst)
+        return 0
 
     print("Creating the demo assumption set (author a.analyst)…")
     aset = create_assumption_set_from_ae_run(
@@ -111,7 +121,53 @@ def main() -> int:
         con.close()
     print(f"DONE: set {aset.id[:8]}… status={status}; "
           f"hash-chained sign-off rows={n_signoffs}")
+
+    _ensure_pending_set(db, run[0], analyst)
     return 0 if status == "APPROVED" else 1
+
+
+def _ensure_pending_set(db: Path, run_id: str, analyst) -> None:
+    """Seed the awaiting-sign-off set unless one is already there."""
+    con = duckdb.connect(str(db), read_only=True)
+    try:
+        pending = con.execute(
+            "SELECT COUNT(*) FROM gold_assumption_sets WHERE status='STAGE3_APPROVED'"
+        ).fetchone()[0]
+    finally:
+        con.close()
+    if pending:
+        print(f"      a set awaiting sign-off already exists ({pending}) — skipped.")
+        return
+    set_id = _seed_pending_set(db, run_id, analyst)
+    print(f"      pending set {set_id[:8]}… status=STAGE3_APPROVED "
+          f"(awaiting level 1 — Step 3 is demonstrable)")
+
+
+def _seed_pending_set(db: Path, run_id: str, analyst) -> str:
+    """A second set submitted but UNSIGNED, so Step 3 has something to act on."""
+    aset = create_assumption_set_from_ae_run(
+        study_run_id=run_id,
+        author_id=analyst.username,
+        db_path=db,
+        output_yaml_dir=db.parent / "assumption_sets",
+    )
+    session = aset.id
+    log_workflow_iteration(
+        db_path=db, workflow_session_id=session,
+        iteration_number=get_next_iteration_number(db, session),
+        assumption_set_id=aset.id, stage=2, action="SAVED",
+        actuary_id=analyst.username,
+        actuary_comment="Demo seed: second basis prepared for review.",
+    )
+    transition_assumption_set_status(db, aset.id, "STAGE3_APPROVED")
+    log_workflow_iteration(
+        db_path=db, workflow_session_id=session,
+        iteration_number=get_next_iteration_number(db, session),
+        assumption_set_id=aset.id, stage=3, action="SUBMITTED_S4",
+        actuary_id=analyst.username,
+        actuary_comment="Demo seed: submitted for sign-off, awaiting level 1.",
+    )
+    return aset.id
 
 
 if __name__ == "__main__":

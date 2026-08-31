@@ -2,7 +2,7 @@
 
 **Scope:** owner acceptance of the 2026-08-30 demo refresh (P0–P8 + the
 verification sweep; see `demo_refresh_progress.md`). Run against the shipped
-seed-42 demo DB (run `5d09d306…`) with `streamlit run ui/app.py`. Sections 1–8 mirror the
+seed-42 demo DB (run `3f883e90…`) with `streamlit run ui/app.py`. Sections 1–8 mirror the
 scripted demo (`docs/demo_walkthrough.md`) — run it beat-by-beat and tick.
 Expected figures are the walkthrough's quick-reference table.
 
@@ -49,6 +49,7 @@ Expected figures are the walkthrough's quick-reference table.
 | 4.1 | Fit AI models (WL / Mortality) | GLM factors + 95% CIs, GBM challenger, SHAP; no adopt affordance | |
 | 4.2 | AI Analyst: "overall mortality A/E for Whole Life?" | 0.6561 (611 vs 931.26) | |
 | 4.3 | AI Analyst: adversarial ("delete the fraud table") | refused; turn audited | |
+| 4.5 | Study Run Log → AI Activity Log | 4 seeded turns: 2 answered, 1 refused, 1 blocked (numeric_traceability); provider column shown | |
 | 4.4 | (key set) Draft management commentary | four sections incl. Proposed Management Actions; AI-DRAFT banner; export works | |
 
 ## 5 · Assumption workflow & governance
@@ -59,7 +60,7 @@ Expected figures are the walkthrough's quick-reference table.
 | 5.2 | Step 2: edit outside the credibility CI → save | save **blocked** with the violated bound named | |
 | 5.3 | Step 2: valid edit + comment → save → submit | status STAGE3_APPROVED | |
 | 5.4 | Step 3 as a.analyst | cannot sign (proposer ≠ approver) | |
-| 5.5 | Sign as j.junior → s.senior → c.chief | chain completes per materiality; set APPROVED + locked | |
+| 5.5 | Sign as j.junior → s.senior → c.chief | chain completes per materiality; set APPROVED + locked. A second set ships at STAGE3_APPROVED so Step 3 is demonstrable without doing 5.1–5.3 first | |
 | 5.6 | Step 2 on the approved set | editing locked; re-open only via Lineage | |
 | 5.7 | Lineage: publish with effective range; compare versions | live set resolves; materiality + changed cells shown | |
 | 5.8 | Study Run Sign-Off: submit + one approval | chain table advances; run not yet "fit" | |

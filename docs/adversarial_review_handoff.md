@@ -189,7 +189,8 @@ demonstrated bypass on one page and an identical unguarded path on another. It i
    the test passes and the full gate stays green.
 6. **B-3 changes `gold_inforce_reconciliation` content** — after it lands, rebuild the demo DB:
    ```
-   scripts/reset_for_testing.py → scripts/_uat_rerun.py → scripts/_uat_ai_fit.py → scripts/_uat_seed_workflow.py
+   scripts/reset_for_testing.py → scripts/_uat_rerun.py → scripts/_uat_ai_fit.py
+   → scripts/_uat_seed_workflow.py → scripts/_uat_seed_ai_activity.py
    ```
    then re-run the fraud scan and regenerate the two A/E reports. Re-verify every
    `demo_walkthrough.md` quick-reference figure afterwards.

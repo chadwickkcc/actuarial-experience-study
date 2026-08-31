@@ -571,19 +571,31 @@ with st.expander("Recent AI turns (gold_ai_audit_log)", expanded=False):
         try:
             _audit_df = _con.execute(
                 "SELECT entry_ts, source, session_id, turn_index, intent, "
-                "model_string, blocked, block_reason, faithfulness_score, "
+                "provider, model_string, blocked, block_reason, faithfulness_score, "
                 "result_row_count, input_tokens, output_tokens, est_cost_usd "
                 "FROM gold_ai_audit_log ORDER BY entry_ts DESC LIMIT 200"
             ).fetchdf()
         finally:
             _con.close()
         if _audit_df.empty:
-            st.info("No AI activity recorded yet. Use the AI Analyst page.")
+            st.info(
+                "No AI activity recorded yet — the log fills as the AI Analyst "
+                "and the Skills are used. Every turn is recorded here, including "
+                "refusals and turns blocked by the numeric check."
+            )
         else:
             st.caption(
                 "Append-only per-turn audit. Every figure shown to a "
                 "user was traceable to the data; blocked turns are recorded too."
             )
+            if "mock" in set(_audit_df["provider"].dropna().astype(str)):
+                st.caption(
+                    "Rows with provider `mock` were produced offline during setup "
+                    "so this log ships with content: they are real turns through "
+                    "the same routing, SQL gates and numeric checks — only the "
+                    "model's wording was canned. Live turns append here with their "
+                    "real provider."
+                )
             st.dataframe(_audit_df, use_container_width=True, hide_index=True)
     except Exception:
         st.info(
