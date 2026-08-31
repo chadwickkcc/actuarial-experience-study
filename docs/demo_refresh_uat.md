@@ -2,7 +2,7 @@
 
 **Scope:** owner acceptance of the 2026-08-30 demo refresh (P0–P8 + the
 verification sweep; see `demo_refresh_progress.md`). Run against the shipped
-seed-42 demo DB (run `70f2ee85…`) with `streamlit run ui/app.py`. Sections 1–8 mirror the
+seed-42 demo DB (run `c0c86c2f…`) with `streamlit run ui/app.py`. Sections 1–8 mirror the
 scripted demo (`docs/demo_walkthrough.md`) — run it beat-by-beat and tick.
 Expected figures are the walkthrough's quick-reference table.
 
@@ -30,7 +30,7 @@ Expected figures are the walkthrough's quick-reference table.
 | 2.1 | Mortality A/E headline | 1,206 deaths; portfolio A/E 0.6852 | |
 | 2.2 | Management Commentary, Mortality | trend badge 🔴 Worsening; A/E 0.603→0.612→0.754→0.880 (2020–23) | |
 | 2.3 | Driver waterfall 2023 × age band | bars sum exactly to the +0.0722 total | |
-| 2.4 | Lapse YoY | 2022 ≈ 1.194, 2023 ≈ 1.881 | |
+| 2.4 | Discontinuance YoY | 2022 ≈ 1.194, 2023 ≈ 1.881; portfolio A/E 1.1461 | |
 | 2.5 | CI Explorer | 589 claims, 10 illness codes, aggregate A/E 1.2325 | |
 
 ## 3 · Fraud
@@ -46,7 +46,7 @@ Expected figures are the walkthrough's quick-reference table.
 
 | # | Step | Expect | ✓ |
 |---|------|--------|---|
-| 4.1 | Fit AI models (WL / Mortality) | GLM factors + 95% CIs, GBM challenger, SHAP; no adopt affordance. Term mortality is withheld with a stated reason (M-20) | |
+| 4.1 | Fit AI models (WL / Mortality) | GLM factors + 95% CIs, GBM challenger, SHAP; no adopt affordance | |
 | 4.2 | AI Analyst: "overall mortality A/E for Whole Life?" | 0.6561 (611 vs 931.26) | |
 | 4.3 | AI Analyst: adversarial ("delete the fraud table") | refused; turn audited | |
 | 4.4 | (key set) Draft management commentary | four sections incl. Proposed Management Actions; AI-DRAFT banner; export works | |

@@ -3,7 +3,7 @@
 **Audience:** actuaries evaluating "the art of the possible" for an AI-enabled
 experience-study platform.
 **Setup before the session:** `streamlit run ui/app.py` on the shipped demo DB
-(seed-42 dataset, run `70f2ee85…`). Optionally `export ANTHROPIC_API_KEY=…`
+(seed-42 dataset, run `c0c86c2f…`). Optionally `export ANTHROPIC_API_KEY=…`
 (and/or `DEEPSEEK_API_KEY`) to run the live AI drafting beats; without a key
 the AI pages still render and the buttons explain what they would do.
 **Sign-ins used:** `a.analyst` (proposer) and the three approvers `j.junior`,
@@ -43,6 +43,10 @@ If you regenerate the data, refresh them from `docs/demo_refresh_progress.md`.
 3. **The lapse story** — on **Lapse A/E**: Product filter **TERM + UL + ULSG
    + IUL**, Row dimension **calendar_year** — **1.19 in 2022 and 1.88 in
    2023** against ~0.9 before — a rate-environment shock lapse spike.
+   *(The A/E measures* discontinuance *— lapse and surrender both count, since
+   the benchmark is a discontinuance basis. Annuities discontinue by surrender,
+   so they now contribute properly; the portfolio figure is 1.1461, not the
+   0.8753 that used to be diluted by a zero numerator.)*
 4. **Critical Illness A/E** — **589 CI claims across all 10 illness codes**,
    aggregate CI A/E **1.2325**; heat map by age × illness.
 
@@ -77,11 +81,9 @@ If you regenerate the data, refresh them from `docs/demo_refresh_progress.md`.
 ## 6 · AI assistance (4 min)
 
 1. **AI Assumption Proposals** — select the run, Mortality, **WL** → **Fit AI
-   models**. (Use WL: on this build the Term mortality GLM converges to a
-   degenerate solution and is correctly withheld with a "no proposal" reason —
-   see the M-20 note in `docs/adversarial_review_2026-08-31.md`. Showing the
-   withheld state is itself a good talking point: the tool refuses to publish a
-   factor it cannot defend.) Comparison table: A/E-derived factor vs **GLM proposal with 95%
+   models**. Comparison table: A/E-derived factor vs **GLM proposal with 95%
+   CIs** vs GBM challenger; SHAP explainability below. **No adopt button
+   exists on this page** — proposals are advisory. Comparison table: A/E-derived factor vs **GLM proposal with 95%
    CIs** vs GBM challenger; SHAP explainability below. **No adopt button
    exists on this page** — proposals are advisory.
 2. **AI Analyst** — ask: *"What is the overall mortality A/E for Whole
@@ -126,13 +128,13 @@ If you regenerate the data, refresh them from `docs/demo_refresh_progress.md`.
 
 ---
 
-### Expected-figure quick reference (seed-42 demo DB, run `70f2ee85…`)
+### Expected-figure quick reference (seed-42 demo DB, run `c0c86c2f…`)
 
 | Beat | Figure |
 |---|---|
 | Policies / runtime | 25,000 / ~10 s |
 | Deaths, portfolio mortality A/E | 1,206 · 0.6852 |
-| Lapses, portfolio lapse A/E | 5,142 · 0.8753 |
+| Discontinuances, portfolio A/E | 6,733 · 1.1461 |
 | CI claims, CI A/E | 589 (10 codes) · 1.2325 |
 | DQ quarantine | UL 41 (98.0%) · ULSG 128 (93.6%) · IUL 7 (98.6%) |
 | Mortality story (Term+WL, 2020→23) | 0.603 → 0.612 → 0.754 → 0.880 |
@@ -140,4 +142,4 @@ If you regenerate the data, refresh them from `docs/demo_refresh_progress.md`.
 | WL mortality (AI Analyst answer) | 0.6561 = 611 / 931.26 |
 | Fraud scan | 1,808 scored · 32 flagged · max 1.20 |
 | Ring entities | OFF-013 · HOSP-066 · CLM-424242 ×4 · SOUTHWEST |
-| AI models / proposed factors | 14 registry rows · 224 factors |
+| AI models / proposed factors | 16 registry rows · 324 factors |

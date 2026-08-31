@@ -167,7 +167,10 @@ def test_multi_query_synthesis_against_prod(prod_db):
 
 def test_commentary_facts_cover_all_decrements_against_prod(prod_db, prod_run_id):
     """The fact pack spans every product × decrement with finite, rounded numbers,
-    no KeyError (locks SURRENDER in the decrement maps), and a present run_id."""
+    no KeyError (locks SURRENDER in the decrement maps), and a present run_id.
+
+    SURRENDER is the exception: its A/E ratio is deliberately NULL because no
+    separate surrender basis exists (M-1); its counts are still reported."""
     import math
 
     from ui.skills_logic import assemble_commentary_facts
@@ -186,7 +189,19 @@ def test_commentary_facts_cover_all_decrements_against_prod(prod_db, prod_run_id
             if dec == "SURRENDER":
                 surrender_products.append(bp["product"])
             o = d["overall"]
-            # Every reported figure is finite and display-rounded; ratio is defined.
+            if dec == "SURRENDER":
+                # No reference table carries a surrender rate distinct from the
+                # discontinuance rate, so the RATIO is deliberately withheld
+                # (adversarial review M-1) — publishing 0.0000 against the lapse
+                # basis was not a statistic. The actual COUNT is still real
+                # experience and must survive.
+                assert o["ae_ratio"] is None, (
+                    "surrender A/E must stay NULL until a real surrender basis exists"
+                )
+                assert isinstance(o["actual"], (int, float)) and math.isfinite(o["actual"])
+                continue
+
+            # Every other decrement reports a finite, display-rounded ratio.
             assert o["ae_ratio"] is not None
             for key in ("actual", "expected", "exposure", "ae_ratio", "credibility_z"):
                 v = o[key]

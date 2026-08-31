@@ -137,7 +137,7 @@ class TestAcceptanceMetricsWL:
         row = _query(
             db,
             """
-            SELECT SUM(COALESCE(actual_lapses, 0) + COALESCE(actual_surrenders, 0)),
+            SELECT SUM(COALESCE(actual_lapses, 0)),
                    SUM(expected_lapses)
             FROM gold_ae_results
             WHERE study_run_id = ?
@@ -150,13 +150,14 @@ class TestAcceptanceMetricsWL:
         actual, expected = row
         assert actual and actual > 0, "No WL lapses/surrenders recorded — pipeline may have failed"
         ae = actual / expected
-        # ACCEPTED calibration deviation (UAT 2026-05-31): on the canonical seed-42 data the WL
-        # lapse+surrender A/E runs ~1.4x (the combined actuals vs the lapse benchmark). This is the
-        # same class of synthetic-data calibration deviation as the accepted M3 (low mortality A/E)
-        # and M5 (high VUL lapse) items — the band is widened to accept it rather than recalibrate.
-        # Revisit if the WL lapse/surrender basis is recalibrated.
-        assert 0.80 <= ae <= 1.50, (
-            f"WL lapse+surrender A/E = {ae:.4f} outside accepted range [0.80, 1.50]. "
+        # The former "accepted calibration deviation" (band widened to 1.50) was never a
+        # data problem: this query used to add actual_surrenders to actual_lapses, but
+        # actual_lapses ALREADY counts surrenders as discontinuances, so every WL
+        # surrender was counted twice and the ratio came out ~1.48 instead of ~1.02
+        # (adversarial review M-3). With the double-count removed the band returns to
+        # the spec range widened only for sample noise.
+        assert 0.80 <= ae <= 1.10, (
+            f"WL lapse+surrender A/E = {ae:.4f} outside accepted range [0.80, 1.10]. "
             f"actual={actual}, expected={expected:.1f}"
         )
 

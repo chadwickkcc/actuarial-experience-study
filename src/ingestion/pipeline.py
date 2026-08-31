@@ -468,6 +468,11 @@ def _build_policy_events(
 
     for _, pol in silver_df.iterrows():
         policy_id = pol.get(pid_col)
+        # UL/ULSG/IUL share one Silver table and one source CSV, so this frame is
+        # the whole FAMILY whichever variant was invoked. Stamp each policy's own
+        # product_code — labelling every row with the invoked code wrote the
+        # family's events three times under three labels (adversarial review M-6).
+        row_product = pol.get("product_code") or product_code
         issue_date = pol.get("issue_date")
         face_amount = pol.get("face_amount") or pol.get("specified_amount") or pol.get("account_value")
         status_code = pol.get("status_code")
@@ -477,7 +482,7 @@ def _build_policy_events(
         rows.append({
             "event_id":          str(uuid.uuid4()),
             "policy_id":         policy_id,
-            "product_code":      product_code,
+            "product_code":      row_product,
             "event_type":        "ISSUE",
             "event_date":        issue_date,
             "policy_year":       1,
@@ -552,6 +557,19 @@ def _insert_events(con: duckdb.DuckDBPyConnection, events_df: pd.DataFrame) -> N
     df_cols = set(events_df.columns)
     insert_cols = [c for c in table_cols if c in df_cols]
     df_to_insert = events_df[insert_cols]
+
+    # Delete the product codes about to be written before inserting them, so
+    # re-ingesting a shared family CSV (UL then ULSG then IUL) replaces that
+    # family's events instead of appending a second and third copy
+    # (adversarial review M-6). Mirrors the exposure-segment writer.
+    if "product_code" in df_to_insert.columns:
+        codes = sorted({c for c in df_to_insert["product_code"].dropna().unique()})
+        if codes:
+            placeholders = ",".join(["?"] * len(codes))
+            con.execute(
+                f"DELETE FROM silver_policy_events WHERE product_code IN ({placeholders})",
+                codes,
+            )
 
     con.register("_events_staging", df_to_insert)
     col_list = ", ".join(f'"{c}"' for c in insert_cols)

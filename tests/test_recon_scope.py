@@ -146,3 +146,91 @@ def test_recon_without_a_product_code_column_uses_the_invoked_code(recon_db: Pat
     finally:
         con.close()
     assert rows == {"TERM": 4}
+
+
+# ---------------------------------------------------------------------------
+# Segment tie-out (adversarial review M-4)
+# ---------------------------------------------------------------------------
+
+def _segment_rows(run_id: str, product: str, decrements: list[tuple[str, int]]) -> pd.DataFrame:
+    """Minimal exposure segments carrying decrements: [(decrement_type, year), ...]."""
+    rows = []
+    for i, (dec, year) in enumerate(decrements):
+        rows.append({
+            "segment_id": f"{product}-{i}", "study_run_id": run_id,
+            "policy_id": f"{product}-P{i}", "product_code": product,
+            "segment_start_date": date(year, 1, 1), "segment_end_date": date(year, 12, 31),
+            "exposure_years": 1.0, "lapse_exposure_years": 1.0,
+            "face_amount_start": 1000.0, "face_amount_end": 1000.0,
+            "face_amount_wtd_avg": 1000.0, "attained_age_start": 40.0,
+            "attained_age_end": 41.0, "attained_age_band": "40-44",
+            "issue_age_anb": 35, "issue_age_band": "35-39", "policy_year": 3,
+            "duration_band": "2-5", "calendar_year": year, "gender": "M",
+            "smoker_status": "NS", "risk_class": "STD_NS", "plan_code": "X",
+            "is_plt_flag": False, "decrement_flag": dec is not None,
+            "decrement_type": dec, "exposure_method": "ANNUAL",
+            "ci_rider_in_force_flag": False,
+        })
+    return pd.DataFrame(rows)
+
+
+def _write_segments(db: Path, df: pd.DataFrame) -> None:
+    con = duckdb.connect(str(db))
+    try:
+        cols = [r[0] for r in con.execute(
+            "SELECT column_name FROM information_schema.columns "
+            "WHERE table_name='gold_exposure_segments' ORDER BY ordinal_position").fetchall()]
+        for c in cols:
+            if c not in df.columns:
+                df[c] = None
+        df = df[cols]
+        con.register("_seg", df)
+        con.execute("INSERT INTO gold_exposure_segments SELECT * FROM _seg")
+        con.unregister("_seg")
+    finally:
+        con.close()
+
+
+def _deaths(n: int, year: int) -> pd.DataFrame:
+    """n policies that all die in `year`, plus one that stays in force."""
+    return pd.DataFrame({
+        "product_code": ["TERM"] * (n + 1),
+        "issue_date": [date(2015, 1, 1)] * (n + 1),
+        "termination_date": [date(year, 6, 1)] * n + [None],
+        "status_code": ["DEATH"] * n + ["IF"],
+        "face_amount": [1000.0] * (n + 1),
+    })
+
+
+def test_recon_detects_exposure_segments_that_do_not_match_the_movement(recon_db: Path) -> None:
+    """The control is presented as proving the seriatim exposure file ties out, but
+    it only ever compared the policy frame with itself — it passed with ZERO
+    exposure segments in the database, which is why the family-scoping defect
+    (B-3) went unnoticed."""
+    run_id = str(uuid.uuid4())
+    # movement says 3 deaths in 2020; the exposure file only carries 1.
+    _write_segments(recon_db, _segment_rows(run_id, "TERM", [("DEATH", 2020)]))
+    con = duckdb.connect(str(recon_db))
+    try:
+        ok = _run_reconciliation(
+            con, _deaths(3, 2020), "TERM", run_id, date(2020, 1, 1), date(2020, 12, 31)
+        )
+    finally:
+        con.close()
+    assert not ok, "recon must fail when the exposure file disagrees with the movement"
+
+
+def test_recon_passes_when_segments_match(recon_db: Path) -> None:
+    run_id = str(uuid.uuid4())
+    _write_segments(
+        recon_db,
+        _segment_rows(run_id, "TERM", [("DEATH", 2020), ("DEATH", 2020), ("DEATH", 2020)]),
+    )
+    con = duckdb.connect(str(recon_db))
+    try:
+        ok = _run_reconciliation(
+            con, _deaths(3, 2020), "TERM", run_id, date(2020, 1, 1), date(2020, 12, 31)
+        )
+    finally:
+        con.close()
+    assert ok

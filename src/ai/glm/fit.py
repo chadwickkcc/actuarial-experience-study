@@ -77,6 +77,11 @@ _SQL_CI = (
     "LIMIT 2000000"
 )
 
+#: Minimum reference basis (expected events for mortality, exposure for
+#: lapse/CI) for a cell to enter the fit. Below this a cell contributes less
+#: than a hundredth of an event but can still destabilise it (M-20).
+_MIN_BASIS_PER_CELL = 0.01
+
 #: Pearson chi2 / df above this means the fit has diverged rather than fitted
 #: (a sound Poisson/binomial fit here sits around 0.5-1.5). Adversarial review M-20.
 _MAX_CREDIBLE_DISPERSION = 1e6
@@ -256,6 +261,17 @@ def _fit_core(
     # (real Gold data has zero-expected cells; the fit must not be poisoned).
     denom_col = expected_col if decrement is DecrementType.MORTALITY else exposure_col
     fit_cells = fit_cells[fit_cells[denom_col].astype(float) > 0].reset_index(drop=True)
+
+    # Also drop cells whose reference basis is negligible rather than merely
+    # non-zero. A cell with ~1e-05 expected events carries no information but
+    # sits at the edge of the design space, where it drives the separation that
+    # made the Poisson fit diverge depending on physical row order — the same
+    # data in a different order converged or exploded (adversarial review M-20).
+    # Excluding them is the same treatment as a zero basis, one threshold up, and
+    # it is what makes the fit reproducible rather than lucky.
+    fit_cells = fit_cells[
+        fit_cells[denom_col].astype(float) >= _MIN_BASIS_PER_CELL
+    ].reset_index(drop=True)
     if fit_cells.empty:
         raise ValueError(f"no fittable cells (all {denom_col} <= 0)")
     return _fit_from_fitting_cells(fit_cells, used, decrement)

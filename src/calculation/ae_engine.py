@@ -193,6 +193,45 @@ def _vectorised_z(counts: pd.Series, method: str, threshold: float) -> pd.Series
     return pd.Series(z, index=counts.index, dtype=float)
 
 
+#: Decrement types that discontinue a policy for A/E purposes (FR-1B-03).
+_DISCONTINUANCE_TYPES = ("LAPSE", "SURRENDER")
+
+
+def _discontinuance_flag(exp_df: pd.DataFrame) -> np.ndarray:
+    """1 where the segment ended in a discontinuance, else 0 — for EVERY product.
+
+    ``lapse_benchmarks.parquet`` carries one rate per (product, policy_year), and
+    that rate measures whichever discontinuance the product actually produces:
+    lapse for Term/UL/ULSG/IUL/VUL, lapse+surrender for WL, and the FRDA surrender
+    curve for annuities. It is a *discontinuance* basis, so the numerator must
+    count discontinuances of either kind.
+
+    Previously only WL folded surrenders in, so annuities — whose sole
+    discontinuance IS surrender — contributed a full expected denominator against
+    a zero numerator. That understated the portfolio lapse A/E by ~24% and made
+    the headline contradict the study's own lapse-spike finding
+    (adversarial review M-2).
+    """
+    return exp_df["decrement_type"].isin(_DISCONTINUANCE_TYPES).astype(int).to_numpy()
+
+
+def _surrender_expected(exp_df: pd.DataFrame) -> pd.Series:
+    """Expected surrenders — NULL, because no separate surrender basis exists.
+
+    No reference table carries a surrender rate distinct from the discontinuance
+    rate, so a surrender A/E cannot be computed. It was previously set to a
+    verbatim copy of the lapse expectation, which published ``ae_surrender`` =
+    0.0000 for the five products that never surrender and 0.4589 for WL (a subset
+    numerator over a combined denominator) — neither is a statistic
+    (adversarial review M-1).
+
+    Actual surrender COUNTS remain reported; only the ratio is withheld. FR-1B-05
+    (a separate WL surrender A/E) stays unmet pending a real surrender benchmark;
+    inventing a split of the combined WL rate would be fabricating experience.
+    """
+    return pd.Series(np.nan, index=exp_df.index, dtype=float)
+
+
 def _add_stat_columns(
     df: pd.DataFrame,
     ae_col: str,
@@ -614,17 +653,9 @@ def calculate_ae(
                     )
 
         exp_df["expected_lapses"] = exp_df["lapse_exposure_years"] * exp_df["lapse_rate"]
-        # WL lapse benchmark is a combined lapse+surrender rate (SOA/LIMRA WL Lapse/Surrender
-        # Study). Per FR-1B-03 both lapse and surrender count as discontinuances for the lapse
-        # A/E study. For all other products only LAPSE decrements count.
-        _wl_mask = exp_df["product_code"] == "WL"
-        exp_df["actual_lapses"] = np.where(
-            _wl_mask,
-            ((exp_df["decrement_type"] == "LAPSE") | (exp_df["decrement_type"] == "SURRENDER")).astype(int),
-            (exp_df["decrement_type"] == "LAPSE").astype(int),
-        )
+        exp_df["actual_lapses"] = _discontinuance_flag(exp_df)
         exp_df["actual_surrenders"] = (exp_df["decrement_type"] == "SURRENDER").astype(int)
-        exp_df["expected_surrenders_seg"] = exp_df["lapse_exposure_years"] * exp_df["lapse_rate"]
+        exp_df["expected_surrenders_seg"] = _surrender_expected(exp_df)
 
         # 3c. CI incidence (aggregate across all illness codes)
         ci_agg = (
@@ -683,6 +714,10 @@ def calculate_ae(
                 actual_lapses=("actual_lapses", "sum"),
                 expected_lapses=("expected_lapses", "sum"),
                 actual_surrenders=("actual_surrenders", "sum"),
+                # NOTE: pandas sums an all-NaN group to 0.0, so this is forced
+                # back to NULL after the aggregation (see below) — a stored 0.0
+                # would read as "we expected zero surrenders" rather than "no
+                # surrender basis exists" (adversarial review M-1).
                 expected_surrenders=("expected_surrenders_seg", "sum"),
                 ci_exposure_count=("ci_exposure_years", "sum"),
                 actual_ci_claims=("actual_ci_seg", "sum"),
@@ -723,12 +758,15 @@ def calculate_ae(
         # the aggregate CI A/E is computed from events table and stored in AEResult)
         agg = _add_stat_columns(agg, "ae_ci", "actual_ci_claims", "ci", threshold, method)
 
-        # Surrender A/E (WL and UL; zero for TERM/PLT segments)
+        # Surrender exposure is real; the surrender *expectation* is not — no
+        # reference table carries a surrender rate distinct from the discontinuance
+        # rate. pandas sums the all-NaN segment column to 0.0, so force it back to
+        # NULL: a stored 0.0 reads as "we expected zero surrenders" rather than
+        # "no surrender basis exists" (adversarial review M-1). Actual surrender
+        # counts are still reported; only the ratio is withheld.
         agg["surrender_exposure"] = agg["lapse_exposure_count"]
-        agg["ae_surrender"] = _safe_divide(
-            agg["actual_surrenders"].astype(float),
-            agg["expected_surrenders"],
-        )
+        agg["expected_surrenders"] = np.nan
+        agg["ae_surrender"] = np.nan
 
         # Anti-selection flag (FR-1B-10): lapse A/E > 150% in a UL cell
         agg["anti_selection_flag"] = (

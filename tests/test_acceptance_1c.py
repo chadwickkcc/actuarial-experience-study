@@ -409,18 +409,29 @@ class TestDAAE:
         assert 0.60 <= ae <= 1.40, f"DA base surrender A/E {ae:.3f} outside [0.60, 1.40]"
 
     def test_shock_lapse_surrenders_exist(self, pipeline_run_da):
-        """Shock-year (is_plt_flag=TRUE) segments must have non-zero actual and expected surrenders."""
+        """Shock-year (is_plt_flag=TRUE) segments must carry non-zero actual and
+        expected DISCONTINUANCES (FR-1C-09 surrender-charge-expiry shock).
+
+        Asserted on the discontinuance columns, not ``expected_surrenders``: an
+        annuity's only discontinuance is surrender and the benchmark IS the FRDA
+        surrender curve, so that experience lives in the lapse/discontinuance
+        measure. ``expected_surrenders`` is deliberately NULL — no separate
+        surrender basis exists (adversarial review M-1)."""
         db_path, run_id = pipeline_run_da
         conn = duckdb.connect(str(db_path), read_only=True)
         row = conn.execute(
-            "SELECT SUM(actual_surrenders), SUM(expected_surrenders) FROM gold_ae_results "
+            "SELECT SUM(actual_lapses), SUM(expected_lapses), SUM(actual_surrenders) "
+            "FROM gold_ae_results "
             "WHERE study_run_id = ? AND product_code IN ('DA','DA_FIXED','DA_FIA','DA_VA') "
             "AND is_plt_flag = TRUE", [run_id]
         ).fetchone()
         conn.close()
-        actual, expected = (row[0] or 0), (row[1] or 0)
-        assert expected > 0, "Shock-year DA expected_surrenders is zero — SC expiry logic may not be working"
-        assert actual >= 0, "Shock-year DA actual_surrenders is negative"
+        actual, expected, surrenders = (row[0] or 0), (row[1] or 0), (row[2] or 0)
+        assert expected > 0, (
+            "Shock-year DA expected discontinuances are zero — SC expiry logic may not be working"
+        )
+        assert actual > 0, "Shock-year DA recorded no discontinuances"
+        assert surrenders > 0, "DA discontinuances should be surrenders"
 
     def test_annuity_mortality_non_zero(self, pipeline_run_da):
         """DA expected deaths must be non-zero (confirms 2012 IAR was loaded and joined)."""

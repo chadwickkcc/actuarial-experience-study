@@ -474,6 +474,73 @@ def _load_silver_policies(
     """).df()
 
 
+def _segments_tie_out(
+    con: duckdb.DuckDBPyConnection,
+    policies_df: pd.DataFrame,
+    product_code: str,
+    study_run_id: str,
+    study_start: date,
+    study_end: date,
+) -> tuple[bool, str]:
+    """Tie the in-force movement to the exposure segments actually written.
+
+    The movement identity (BEG + NEW - DEC = END) is computed entirely from the
+    policy frame, so on its own it says nothing about ``gold_exposure_segments`` —
+    it passed with ZERO segments in the database, which is exactly why the
+    family-scoping defect went unnoticed (adversarial review M-4). This second
+    control compares the decrements the movement claims against the decrements the
+    exposure file actually carries, for this product and run.
+
+    Reconciling item: a policy issued and terminated on the same day has no
+    exposure segment (the ``exposure_years > 0`` constraint), so it appears in the
+    movement but cannot appear in the exposure file. Those are counted and allowed
+    for explicitly rather than fudged with a tolerance.
+
+    Returns (passes, detail).
+    """
+    in_window = (
+        policies_df["termination_date"].notna()
+        & (policies_df["termination_date"] >= study_start)
+        & (policies_df["termination_date"] <= study_end)
+    )
+    movement_decrements = int(in_window.sum())
+
+    # Decrements the exposure file carries for this product/run.
+    seg_decrements = int(con.execute(
+        "SELECT COUNT(*) FROM gold_exposure_segments "
+        "WHERE study_run_id = ? AND product_code = ? AND decrement_flag = TRUE",
+        [study_run_id, product_code],
+    ).fetchone()[0])
+
+    # Policies that terminated in-window but produced no segment at all.
+    if movement_decrements:
+        terminated_ids = set(
+            policies_df.loc[in_window, "policy_id"].astype(str)
+        ) if "policy_id" in policies_df.columns else set()
+        if terminated_ids:
+            placeholders = ",".join(["?"] * len(terminated_ids))
+            with_segments = {
+                r[0] for r in con.execute(
+                    "SELECT DISTINCT policy_id FROM gold_exposure_segments "
+                    f"WHERE study_run_id = ? AND policy_id IN ({placeholders})",
+                    [study_run_id] + sorted(terminated_ids),
+                ).fetchall()
+            }
+            zero_exposure = len(terminated_ids - with_segments)
+        else:
+            zero_exposure = 0
+    else:
+        zero_exposure = 0
+
+    expected_in_segments = movement_decrements - zero_exposure
+    passes = seg_decrements == expected_in_segments
+    detail = (
+        f"movement={movement_decrements} segments={seg_decrements} "
+        f"zero_exposure={zero_exposure} expected_in_segments={expected_in_segments}"
+    )
+    return passes, detail
+
+
 def _reconcile_one_product(
     policies_df: pd.DataFrame,
     product_code: str,
@@ -612,7 +679,8 @@ def _run_reconciliation(
 
     A frame with no ``product_code`` column is attributed wholly to ``product_code``.
 
-    Returns True if every year of every emitted product passes within ±0.01%.
+    Returns True if every year of every emitted product passes within ±0.01%
+    AND the exposure segments tie to that movement (``_segments_tie_out``).
     """
     if "product_code" in policies_df.columns and not policies_df.empty:
         groups = [
@@ -630,6 +698,18 @@ def _run_reconciliation(
         )
         all_rows.extend(rows)
         all_pass = all_pass and passes
+
+        # Second control: does the exposure file carry the decrements the movement
+        # claims? (M-4 — the movement identity alone never reads the segments.)
+        seg_ok, seg_detail = _segments_tie_out(
+            con, frame, code, study_run_id, study_start, study_end
+        )
+        if not seg_ok:
+            logger.warning(
+                "Exposure segments do not tie to the in-force movement for %s: %s",
+                code, seg_detail,
+            )
+            all_pass = False
 
     if not all_rows:
         return all_pass
