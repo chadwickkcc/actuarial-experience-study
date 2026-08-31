@@ -136,6 +136,8 @@ def rule_claim_exceeds_premiums(claims: pd.DataFrame, cfg: dict) -> FraudRuleRes
     """FR-RULE-02 — claim amount far exceeds the premiums paid to date."""
     rcfg = cfg["rules"]["claim_exceeds_premiums"]
     min_ratio = float(rcfg.get("min_ratio", 25))
+    percentile = float(rcfg.get("percentile", 95))
+    min_product_claims = int(rcfg.get("min_product_claims", 20))
 
     basis = claims.get("premium_basis", pd.Series("ANNUAL_PREMIUM", index=claims.index))
     applicable = basis != "NONE"
@@ -147,22 +149,34 @@ def rule_claim_exceeds_premiums(claims: pd.DataFrame, cfg: dict) -> FraudRuleRes
     paid = claims["annual_premium"].fillna(0.0).where(
         basis != "ANNUAL_PREMIUM", claims["annual_premium"].fillna(0.0) * years_paid
     )
-    ratio = claims["claim_amount"] / paid.replace(0, float("nan"))
+    ratio = (claims["claim_amount"] / paid.replace(0, float("nan"))).where(applicable)
 
-    hits = claims[applicable & (ratio > min_ratio)]
+    # Product-relative threshold (m-12): the ratio a Term claim reaches routinely
+    # is extreme for Whole Life, so compare each claim with its own product's
+    # distribution. Products with too few claims to estimate a percentile fall
+    # back to the absolute floor, which also floors every product threshold.
+    product = claims["product_code"]
+    by_product = ratio.groupby(product)
+    quantiles = by_product.quantile(percentile / 100.0)
+    sparse = by_product.count() < min_product_claims
+    quantiles = quantiles.mask(sparse)
+    thresholds = product.map(quantiles).astype(float).fillna(min_ratio).clip(lower=min_ratio)
+
+    hits = claims[applicable & (ratio > thresholds)]
     return FraudRuleResult(
         rule_id="FR-RULE-02",
-        description="Claim amount exceeds premiums paid by the configured ratio",
+        description=(
+            f"Claim/premium ratio above the {percentile:g}th percentile for its product"
+        ),
         weight=float(rcfg["weight"]),
         hit_claim_ids=hits["claim_event_id"].tolist(),
         evidence={
             cid: {
-                "claim_to_premium_ratio": round(float(rt), 1),
-                "premium_basis": str(basis.loc[cid_idx]),
+                "claim_to_premium_ratio": round(float(ratio.loc[idx]), 1),
+                "product_threshold": round(float(thresholds.loc[idx]), 1),
+                "premium_basis": str(basis.loc[idx]),
             }
-            for cid, rt, cid_idx in zip(
-                hits["claim_event_id"], ratio[hits.index], hits.index
-            )
+            for cid, idx in zip(hits["claim_event_id"], hits.index)
         },
         n_not_applicable=int((~applicable).sum()),
     )

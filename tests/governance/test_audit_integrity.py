@@ -450,12 +450,16 @@ def test_study_run_approve_emits_ae_event(gov_env, tmp_path):
     db = gov_env["db"]
     cfg = _chain_config(tmp_path / "single_chief.yaml", ["chief_actuary"])
     run_id = "run-approve"
+    submit_study_run(run_id, _u(db, "a.analyst").user_id, db_path=db)
     record_signoff(
         _u(db, "c.chief"), ArtifactType.STUDY_RUN, run_id, None,
         Decision.APPROVE, "fit for assumption-setting", db_path=db, config_path=cfg,
     )
     events = _ae_events(db)
-    assert [(e[0], e[1]) for e in events] == [("STUDY_RUN_APPROVED", run_id)]
+    assert [(e[0], e[1]) for e in events] == [
+        ("STUDY_RUN_SUBMITTED", run_id),
+        ("STUDY_RUN_APPROVED", run_id),
+    ]
     # chain still verifies; the event is surfaced in the unified stream
     assert verify_chain("gold_ae_governance_events", db_path=db).ok
     stream = unified_audit_query(AuditFilter(artifact_id=run_id), db_path=db)
@@ -467,11 +471,15 @@ def test_study_run_return_emits_ae_event(gov_env, tmp_path):
     db = gov_env["db"]
     cfg = _chain_config(tmp_path / "single_chief.yaml", ["chief_actuary"])
     run_id = "run-return"
+    submit_study_run(run_id, _u(db, "a.analyst").user_id, db_path=db)
     record_signoff(
         _u(db, "c.chief"), ArtifactType.STUDY_RUN, run_id, None,
         Decision.RETURN, "needs rework", db_path=db, config_path=cfg,
     )
-    assert [(e[0], e[1]) for e in _ae_events(db)] == [("STUDY_RUN_RETURNED", run_id)]
+    assert [(e[0], e[1]) for e in _ae_events(db)] == [
+        ("STUDY_RUN_SUBMITTED", run_id),
+        ("STUDY_RUN_RETURNED", run_id),
+    ]
 
 
 def test_assumption_set_signoff_emits_no_ae_event(gov_env, tmp_path):

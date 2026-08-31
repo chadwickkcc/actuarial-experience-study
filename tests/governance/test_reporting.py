@@ -175,6 +175,8 @@ def _approve_assumption_set(db: str, cfg: str, set_id: str, version: int) -> Non
 
 
 def _approve_study_run(db: str, cfg: str, run_id: str) -> None:
+    # A run must be submitted before any level may sign it (m-8).
+    submit_study_run(run_id, _u(db, "a.analyst").user_id, db_path=db)
     for uname in ("j.junior", "s.senior", "c.chief"):
         record_signoff(
             _u(db, uname), ArtifactType.STUDY_RUN, run_id, None,

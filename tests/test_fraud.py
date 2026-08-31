@@ -77,6 +77,45 @@ class TestRuleUnits:
         rr = rule_claim_exceeds_premiums(df, _cfg())
         assert rr.hit_claim_ids == ["HI"]
 
+    def test_exceeds_premiums_is_product_relative(self):
+        """A ratio that is routine for Term is extreme for Whole Life (m-12).
+
+        An absolute threshold made this rule a product classifier — it fired on
+        81% of Term claims. The percentile is taken within each product, so a
+        typical Term claim stays silent while an equally-sized WL ratio fires.
+        """
+        rows = []
+        for i in range(40):                       # Term: ratio ~= 80 is typical
+            rows.append({"claim_event_id": f"T{i}", "product_code": "TERM",
+                         "policy_days": 365, "annual_premium": 3125.0})
+        rows.append({"claim_event_id": "T-EXTREME", "product_code": "TERM",
+                     "policy_days": 365, "annual_premium": 250.0})       # ratio 1000
+        for i in range(40):                       # WL: ratio ~= 5 is typical
+            rows.append({"claim_event_id": f"W{i}", "product_code": "WL",
+                         "policy_days": 365, "annual_premium": 50000.0})
+        rows.append({"claim_event_id": "W-EXTREME", "product_code": "WL",
+                     "policy_days": 365, "annual_premium": 5000.0})      # ratio 50
+        rr = rule_claim_exceeds_premiums(_claims(rows), _cfg())
+
+        assert set(rr.hit_claim_ids) == {"T-EXTREME", "W-EXTREME"}
+        # The WL outlier fires at a ratio far below the typical Term claim's.
+        assert rr.evidence["W-EXTREME"]["claim_to_premium_ratio"] < 80
+        assert rr.evidence["T-EXTREME"]["product_threshold"] > (
+            rr.evidence["W-EXTREME"]["product_threshold"]
+        )
+
+    def test_exceeds_premiums_falls_back_to_the_floor_when_sparse(self):
+        """Too few claims to estimate a percentile -> the absolute floor applies."""
+        df = _claims([
+            {"claim_event_id": "HI", "policy_days": 200, "annual_premium": 2000.0},
+            {"claim_event_id": "LO", "policy_days": 1830, "annual_premium": 50000.0},
+        ])
+        rr = rule_claim_exceeds_premiums(df, _cfg())
+        assert rr.hit_claim_ids == ["HI"]
+        assert rr.evidence["HI"]["product_threshold"] == pytest.approx(
+            _cfg()["rules"]["claim_exceeds_premiums"]["min_ratio"]
+        )
+
     def test_materiality_thresholds_per_type(self):
         df = _claims([
             {"claim_event_id": "BIGD", "event_type": "DEATH", "claim_amount": 2_000_000.0},
@@ -293,23 +332,32 @@ def test_ring_tops_the_concentrations(live_scan):
 
 @_needs_db
 def test_shared_claimant_cluster_scores_highest(live_scan):
-    """The four shared-claimant ring claims carry the maximum composite score,
-    equal to the hand-computed sum of the weights of the rules they fire."""
-    cfg = _cfg()
-    r = cfg["rules"]
-    expected = round(
+    """The four shared-claimant ring claims are the top-scoring claims in the book,
+    with composites equal to the hand-computed sums of the rules they fire.
+
+    All four fire the four claimant/office/facility/early-claim rules; the
+    claim/premium rule is product-relative (m-12), so it fires only on the one
+    whose ratio is extreme *for Term* — which is the point of the rule.
+    """
+    r = _cfg()["rules"]
+    base = round(
         r["first_policy_year_claim"]["weight"]
-        + r["claim_exceeds_premiums"]["weight"]
         + r["agency_office_concentration"]["weight"]
         + r["similar_claims_same_claimant"]["weight"]
         + r["unknown_or_captive_facility"]["weight"],
         6,
     )
+    with_ratio = round(base + r["claim_exceeds_premiums"]["weight"], 6)
+
     df = live_scan.scores_df
     cluster = df[df["claimant_id"] == "CLM-424242"]
     assert len(cluster) == 4
-    assert all(abs(cluster["composite_score"] - expected) < 1e-9)
-    assert float(df["composite_score"].max()) == pytest.approx(expected)
+    assert set(cluster["composite_score"].round(6)) <= {base, with_ratio}
+    assert float(df["composite_score"].max()) == pytest.approx(with_ratio)
+
+    # The cluster is cleanly separated from every other claim in the book.
+    others = df[df["claimant_id"] != "CLM-424242"]["composite_score"].max()
+    assert float(cluster["composite_score"].min()) > float(others)
 
 
 # --------------------------------------------------------------------------- #

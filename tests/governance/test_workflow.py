@@ -22,6 +22,7 @@ import pytest
 import yaml
 
 from src.governance import audit
+from src.governance.lineage import compare_versions
 from src.governance.rbac import PermissionDenied
 from src.governance.users import get_user_by_username
 from src.governance.workflow import (
@@ -41,6 +42,7 @@ from src.utils.types import (
     ArtifactType,
     AssumptionSetStatus,
     Decision,
+    Role,
     User,
 )
 
@@ -402,6 +404,7 @@ def test_study_run_runs_full_chain(gov_env, cfg_path):
     """A study run always runs the full chain; 'fit' is derived from sign-offs (FR-4-14)."""
     db = gov_env["db"]
     run_id = "studyrun-1"
+    audit.submit_study_run(run_id, _u(db, "a.analyst").user_id, db_path=db)
     assert is_study_run_fit(run_id, db_path=db, config_path=cfg_path) is False
     for uname in ("j.junior", "s.senior"):
         record_signoff(_u(db, uname), ArtifactType.STUDY_RUN, run_id, None,
@@ -541,6 +544,7 @@ def test_study_run_return_makes_it_not_fit(gov_env, cfg_path):
     """A RETURN on a study-run chain leaves it not fit for assumption-setting."""
     db = gov_env["db"]
     run_id = "studyrun-ret"
+    audit.submit_study_run(run_id, _u(db, "a.analyst").user_id, db_path=db)
     record_signoff(_u(db, "j.junior"), ArtifactType.STUDY_RUN, run_id, None,
                    Decision.RETURN, "not fit", db_path=db, config_path=cfg_path)
     assert is_study_run_fit(run_id, db_path=db, config_path=cfg_path) is False
@@ -711,3 +715,103 @@ def test_record_signoff_autocompute_material_requires_chief(gov_env, cfg_path):
     assert _status(db, child) != "APPROVED"
     nxt = next_required_level(ArtifactType.ASSUMPTION_SET, child, db_path=db, config_path=cfg_path)
     assert nxt is not None and nxt.required_role.value == "chief_actuary"
+
+
+# ---------------------------------------------------------------------------
+# Cumulative-drift materiality + the study-run submission gate
+# (adversarial review M-11, m-8)
+# ---------------------------------------------------------------------------
+
+def _mark_status(db: str, set_id: str, status: AssumptionSetStatus) -> None:
+    con = duckdb.connect(db)
+    try:
+        con.execute(
+            "UPDATE gold_assumption_sets SET status = ? WHERE assumption_set_id = ?",
+            [status.value, set_id],
+        )
+    finally:
+        con.close()
+
+
+def _approved_child(db: str, parent: str, *, multiplier: float) -> str:
+    """A child of ``parent`` at ``multiplier``, already marked APPROVED."""
+    child = _seed_child_of(db, parent, author="a.analyst", multiplier=multiplier)
+    _mark_status(db, child, AssumptionSetStatus.APPROVED)
+    return child
+
+
+def test_materiality_measures_cumulative_drift_not_just_the_step(gov_env):
+    """Splitting a change across versions cannot hide it (M-11).
+
+    Three successive 0.04 steps are each immaterial against their immediate
+    parent, but the metric reports the 0.12 drift from the last comprehensively
+    reviewed basis.
+    """
+    from src.governance.workflow import materiality_vs_prior_approved
+    db = gov_env["db"]
+    v1 = _seed_set(db, author="a.analyst", status=AssumptionSetStatus.APPROVED)  # 1.00
+    v2 = _approved_child(db, v1, multiplier=1.04)
+    v3 = _approved_child(db, v2, multiplier=1.08)
+    v4 = _seed_child_of(db, v3, author="a.analyst", multiplier=1.12)
+
+    # The step-wise view of the same change is only 0.04 …
+    assert compare_versions(v3, v4, db_path=db).materiality_value == pytest.approx(0.04)
+    # … but the reported materiality is the cumulative drift from the v1 basis.
+    assert materiality_vs_prior_approved(v4, db_path=db) == pytest.approx(0.12)
+
+
+def test_split_change_still_requires_chief_signoff(gov_env, cfg_path):
+    """The salami-slicing evasion no longer completes below the chief level (M-11)."""
+    db = gov_env["db"]
+    v1 = _seed_set(db, author="a.analyst", status=AssumptionSetStatus.APPROVED)
+    v2 = _approved_child(db, v1, multiplier=1.008)
+    v3 = _seed_child_of(db, v2, author="a.analyst", multiplier=1.016)  # step 0.008 ≤ 0.01
+
+    record_signoff(_u(db, "j.junior"), ArtifactType.ASSUMPTION_SET, v3, 2,
+                   Decision.APPROVE, "jr", db_path=db, config_path=cfg_path)
+    record_signoff(_u(db, "s.senior"), ArtifactType.ASSUMPTION_SET, v3, 2,
+                   Decision.APPROVE, "sr", db_path=db, config_path=cfg_path)
+    # Cumulative drift 0.016 > 0.01, so senior does not complete the chain.
+    assert next_required_level(
+        ArtifactType.ASSUMPTION_SET, v3, db_path=db, config_path=cfg_path
+    ).required_role == Role.CHIEF_ACTUARY
+
+
+def test_materiality_baseline_resets_after_a_chief_signoff(gov_env, cfg_path):
+    """A set signed at the final level becomes the new baseline for later drift (M-11)."""
+    from src.governance.workflow import materiality_vs_prior_approved
+    db = gov_env["db"]
+    v1 = _seed_set(db, author="a.analyst", status=AssumptionSetStatus.APPROVED)
+    v2 = _seed_child_of(db, v1, author="a.analyst", multiplier=1.20)
+    for uname in ("j.junior", "s.senior", "c.chief"):
+        record_signoff(_u(db, uname), ArtifactType.ASSUMPTION_SET, v2, 2,
+                       Decision.APPROVE, uname, db_path=db, config_path=cfg_path)
+    v3 = _seed_child_of(db, v2, author="a.analyst", multiplier=1.22)
+    # Drift is measured from v2 (the last full review), not from the v1 root.
+    assert materiality_vs_prior_approved(
+        v3, db_path=db, config_path=cfg_path
+    ) == pytest.approx(0.02)
+
+
+def test_unsubmitted_study_run_cannot_be_signed(gov_env, cfg_path):
+    """A study run with no submitter has no proposer, so it may not be signed (m-8)."""
+    db = gov_env["db"]
+    run_id = "run-never-submitted"
+    with pytest.raises(ValueError, match="not been submitted"):
+        record_signoff(_u(db, "j.junior"), ArtifactType.STUDY_RUN, run_id, None,
+                       Decision.APPROVE, "fit", db_path=db, config_path=cfg_path)
+    assert is_study_run_fit(run_id, db_path=db, config_path=cfg_path) is False
+
+    audit.submit_study_run(run_id, _u(db, "a.analyst").user_id, db_path=db)
+    record_signoff(_u(db, "j.junior"), ArtifactType.STUDY_RUN, run_id, None,
+                   Decision.APPROVE, "fit", db_path=db, config_path=cfg_path)
+
+
+def test_submitter_cannot_sign_their_own_study_run(gov_env, cfg_path):
+    """With submission mandatory, proposer != approver is live for study runs (m-8)."""
+    db = gov_env["db"]
+    run_id = "run-self-approve"
+    audit.submit_study_run(run_id, _u(db, "j.junior").user_id, db_path=db)
+    with pytest.raises(SegregationViolation):
+        record_signoff(_u(db, "j.junior"), ArtifactType.STUDY_RUN, run_id, None,
+                       Decision.APPROVE, "mine", db_path=db, config_path=cfg_path)

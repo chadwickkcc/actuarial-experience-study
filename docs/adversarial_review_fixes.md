@@ -107,12 +107,37 @@ tracebacks.
 
 ---
 
+## Design decisions — batch 5 (2026-08-31)
+
+The owner assessed the four remaining *design* calls and chose a course for each.
+Gate **1381 → 1393 passed, 3 skipped** (+12 tests, all TDD).
+
+| # | Decision | What was built | Verification |
+|---|---|---|---|
+| **M-11** | Measure cumulative drift, not just the step | `materiality_vs_prior_approved` now reports the larger of (a) the change vs the nearest approved ancestor and (b) the drift since the last set signed at the chain's **final** level (or the oldest approved ancestor if none). | Three 0.04 steps report 0.12, not 0.04; a split change no longer completes below chief. A chief sign-off resets the baseline, so drift does not accumulate forever. 3 tests. |
+| **m-8** | Require submission before sign-off | `record_signoff` refuses a study run with no `STUDY_RUN_SUBMITTED` event. | An unsubmitted run cannot be signed; once submitted, its submitter cannot sign it — proposer ≠ approver is live for study runs for the first time. 2 tests, plus 9 existing tests updated to submit first. |
+| **m-6** | Bind the YAML to its DB row | `yaml_sha256` recorded at save over the volatile-stripped payload; verified at load — fatal for a locked set, logged for an editable one. `verify_assumption_set_integrity` is surfaced in `reproducibility_stamp`, so the compliance pack carries it. | An off-disk edit of an APPROVED set now raises instead of loading silently; a legitimate re-save refreshes the hash (no false alarm); status churn does not trip it. 5 tests. Existing rows are baselined once at migration. |
+| **m-12** | Product-relative claim/premium threshold | Rule 02 compares each claim with its own product's 95th percentile, floored at the absolute ratio, falling back to the floor for products with too few claims. | Rule 02 fires on **5%** of claims, down from 32%; flags 22 → **18**; the ring is still **14/14 at max 1.20** and now occupies the **top 14 places contiguously**, ahead of every other claim. 2 tests. |
+
+**m-7 documented, not built** (owner decision): segregation keys on the account,
+not the person. Recorded as **FU-8** in `DEFERRED_FOLLOWUPS.md` and in the
+`check_segregation` docstring, with the `person_id` design sketched for whenever
+an identity model exists. Exploitability is low — there is no self-service
+account creation, so an administrator would have to issue one human two logins —
+and a partial person model would imply a guarantee it could not enforce.
+
+**Verification:** full suite 1393 passed / 3 skipped / 0 failed; all five
+governance harnesses PASS (6/6, 7/7, 5/5, 4/4, 8/8); Streamlit boot HTTP 200 with
+zero tracebacks. Demo DB migrated (hash column backfilled) and its fraud scan
+re-run; walkthrough and UAT figures updated to 18 flagged.
+
+---
+
 ## Still open
 
-Everything else in `adversarial_review_2026-08-31.md` §4 of the handoff — chiefly
-the actuarial-correctness cluster the owner has already flagged for a later pass:
-**M-1** (surrender A/E invalid in all 158,548 rows), **M-2** (portfolio lapse A/E
-contaminated by annuities, and it contradicts the demo's own lapse-spike story),
-**M-3** (the "WL calibration deviation" is a test double-count), **M-4** (recon
-does not validate the exposure file), **M-6** (`silver_policy_events` triple-write),
-plus the design calls M-11, M-12, M-17/18/19 — and now **M-20** above.
+- **M-12** — traceability is set-membership, not claim-verification (owner chose
+  fact-reference slots; **in progress**).
+- Observations **OBS-6, OBS-7, OBS-8, OBS-10** and the stale documentation items
+  **OBS-1 / OBS-2** in `DEFERRED_FOLLOWUPS.md`.
+- Owner-only: eval-set re-lock, the optional live eval baseline, and the browser
+  walk of the demo script (needs the owner's login keystroke).

@@ -27,6 +27,7 @@ from src.assumptions.assumption_set import (
     create_assumption_set_from_ae_run,
     load_assumption_set,
     save_assumption_set,
+    verify_assumption_set_integrity,
 )
 from src.governance.audit import log_workflow_iteration
 from src.governance.rbac import Action, require
@@ -353,6 +354,11 @@ def reproducibility_stamp(
         "credibility_method": row[7],
         "ai_model_type": row[8],
         "ai_model_fit_ts": row[9],
+        # Whether the YAML artifact still matches the hash recorded at save (m-6);
+        # False means the file was edited outside the application.
+        "yaml_integrity_ok": verify_assumption_set_integrity(
+            assumption_set_id, Path(db_path)
+        ),
     }
 
 

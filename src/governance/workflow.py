@@ -197,21 +197,18 @@ def _effective_final_level(
     return required_final_level(materiality_value, cfg)
 
 
-def materiality_vs_prior_approved(
-    assumption_set_id: str, *, db_path: str = DEFAULT_DB_PATH
-) -> Optional[float]:
-    """Materiality metric for a set: max |Δ multiplier| vs its prior approved version.
+_APPROVED_STATUSES = (
+    AssumptionSetStatus.APPROVED.value,
+    AssumptionSetStatus.SUPERSEDED.value,
+)
 
-    Walks the ``parent_set_id`` chain to the nearest ancestor that reached
-    APPROVED (possibly since SUPERSEDED) and returns
-    ``compare_versions(prior, this).materiality_value``. ``None`` when the set
-    has no approved ancestor (a lineage root or an all-draft chain) — the chain
-    then runs in full (FR-4-16 conservative default).
-    """
+
+def _approved_ancestors(assumption_set_id: str, db_path: str) -> list[str]:
+    """Ancestors of a set that reached APPROVED, nearest first (excludes the set)."""
     con = duckdb.connect(str(db_path), read_only=True)
     try:
         current: Optional[str] = assumption_set_id
-        prior: Optional[str] = None
+        approved: list[str] = []
         seen: set[str] = set()
         while current is not None and current not in seen:
             seen.add(current)
@@ -222,19 +219,84 @@ def materiality_vs_prior_approved(
             ).fetchone()
             if row is None:
                 break
-            parent_id = row[0]
-            if current != assumption_set_id and row[1] in (
-                AssumptionSetStatus.APPROVED.value,
-                AssumptionSetStatus.SUPERSEDED.value,
-            ):
-                prior = current
-                break
-            current = parent_id
+            if current != assumption_set_id and row[1] in _APPROVED_STATUSES:
+                approved.append(current)
+            current = row[0]
     finally:
         con.close()
-    if prior is None:
+    return approved
+
+
+def _fully_reviewed_baseline(
+    candidates: list[str], final_level: int, db_path: str
+) -> Optional[str]:
+    """The nearest ancestor whose chain reached the FINAL level with an APPROVE.
+
+    That set is the last one a chief actuary comprehensively reviewed, so it is the
+    baseline cumulative drift is measured against. ``None`` when no ancestor was
+    ever signed at the final level (then the caller falls back to the oldest
+    approved ancestor — the original approved basis of the lineage).
+    """
+    if not candidates:
         return None
-    return compare_versions(prior, assumption_set_id, db_path=db_path).materiality_value
+    con = duckdb.connect(str(db_path), read_only=True)
+    try:
+        for set_id in candidates:
+            hit = con.execute(
+                f"SELECT 1 FROM {_SIGNOFF_TABLE} "
+                "WHERE artifact_type = ? AND artifact_id = ? "
+                "AND decision = ? AND chain_level >= ? LIMIT 1",
+                [
+                    ArtifactType.ASSUMPTION_SET.value,
+                    set_id,
+                    Decision.APPROVE.value,
+                    final_level,
+                ],
+            ).fetchone()
+            if hit is not None:
+                return set_id
+    finally:
+        con.close()
+    return None
+
+
+def materiality_vs_prior_approved(
+    assumption_set_id: str,
+    *,
+    db_path: str = DEFAULT_DB_PATH,
+    config_path: str = DEFAULT_CONFIG_PATH,
+) -> Optional[float]:
+    """Materiality metric for a set: max |Δ multiplier| vs its approved baselines.
+
+    Measured against **two** baselines and reported as the larger of the two:
+
+    * the nearest approved ancestor — the size of *this* step; and
+    * the last ancestor comprehensively reviewed (signed at the chain's final
+      level), or failing that the oldest approved ancestor — the *cumulative*
+      drift since the last full review.
+
+    The second baseline exists because a purely step-wise metric is evadable by
+    splitting: ten successive 0.04 moves each pass a 0.05 threshold at senior
+    level while shifting the assumption by 0.40 with no chief-actuary review
+    (adversarial review M-11). Returns ``None`` when the set has no approved
+    ancestor (a lineage root or an all-draft chain) — the chain then runs in
+    full (FR-4-16 conservative default).
+    """
+    approved = _approved_ancestors(assumption_set_id, db_path)
+    if not approved:
+        return None
+    chain = load_chain(_load_config(config_path))
+    final_level = chain[-1].level if chain else 0
+    baseline = _fully_reviewed_baseline(approved, final_level, db_path) or approved[-1]
+
+    values: list[float] = []
+    for basis in {approved[0], baseline}:
+        value = compare_versions(basis, assumption_set_id, db_path=db_path).materiality_value
+        if value is not None and value == value:  # skip None / NaN
+            values.append(abs(value))
+    if not values:
+        return None
+    return max(values)
 
 
 # ---------------------------------------------------------------------------
@@ -248,9 +310,10 @@ def _artifact_author(artifact_type: ArtifactType, artifact_id: str, db_path: str
     session username under FR-4-03). For a study run it is the submitter captured by
     the ``gold_ae_governance_events`` STUDY_RUN_SUBMITTED event (the earliest such
     event's ``actor_user_id``); this is what lets ``check_segregation`` enforce
-    proposer ≠ approver for study runs (FR-4-05). When a run has not been submitted
-    (no such event) the author is unknown and the proposer≠approver check is a no-op
-    for it (the distinct-signer-per-level rule still applies).
+    proposer ≠ approver for study runs (FR-4-05). A run that has not been submitted
+    has no author; ``record_signoff`` refuses to sign such a run outright
+    (``_require_submitted``) rather than proceeding with the proposer≠approver check
+    silently disabled (adversarial review m-8).
     """
     if artifact_type == ArtifactType.ASSUMPTION_SET:
         con = duckdb.connect(str(db_path), read_only=True)
@@ -277,6 +340,24 @@ def _artifact_author(artifact_type: ArtifactType, artifact_id: str, db_path: str
     return None
 
 
+def _require_submitted(artifact_type: ArtifactType, artifact_id: str, db_path: str) -> None:
+    """Refuse to sign a study run that was never submitted for approval (FR-4-14).
+
+    Study-run fitness is derived from sign-off rows alone, and the submitter is the
+    only recorded author, so an unsubmitted run could be signed straight to "fit for
+    assumption-setting" with nobody having proposed it and proposer ≠ approver
+    silently inapplicable (adversarial review m-8). Assumption sets are unaffected —
+    their author is recorded at creation.
+    """
+    if artifact_type != ArtifactType.STUDY_RUN:
+        return
+    if _artifact_author(artifact_type, artifact_id, db_path) is None:
+        raise ValueError(
+            f"Study run '{artifact_id}' has not been submitted for approval; "
+            f"submit it first so a proposer is on record (FR-4-14 / FR-4-05)."
+        )
+
+
 def check_segregation(
     user: User,
     artifact_type: ArtifactType,
@@ -291,6 +372,15 @@ def check_segregation(
     authored, at any level). Additionally, unless ``segregation.allow_multi_level_signoff``
     is true, a user who already approved a level in the current round may not sign
     another.
+
+    **Known limitation (accepted, adversarial review m-7).** Segregation keys on the
+    *account* (``user_id``/``username``), not on a person: the system has no person
+    entity distinct from the login. One human holding two accounts could therefore
+    propose under one and approve under the other. Exploitability is low — there is
+    no self-service account creation (FR-4-01), so an administrator would have to
+    deliberately issue one person two logins — and closing it properly needs an
+    identity model this prototype does not have. Recorded rather than half-built,
+    since a partial person model would imply a guarantee it could not enforce.
     """
     author = _artifact_author(artifact_type, artifact_id, db_path)
     if author is not None and author in (user.username, user.user_id):
@@ -364,14 +454,20 @@ def record_signoff(
     study run's "fit for assumption-setting" state is derived from its sign-off rows
     (``is_study_run_fit``), so nothing is mutated in a table for it.
 
+    A **study run must have been submitted** (``audit.submit_study_run``) before any
+    level may sign it, so a proposer is always on record and proposer ≠ approver
+    actually applies to it (m-8).
+
     ``materiality_value`` (FR-4-16) is the max absolute multiplier change vs the
-    prior approved version. When not supplied for an assumption set it is computed
-    automatically via ``materiality_vs_prior_approved``; a set with no approved
-    ancestor gets ``None`` → the full chain.
+    approved baselines. When not supplied for an assumption set it is computed
+    automatically via ``materiality_vs_prior_approved`` (which measures both the
+    step and the cumulative drift since the last full review); a set with no
+    approved ancestor gets ``None`` → the full chain.
     """
     rbac.require(user, Action.SIGN_OFF, config_path=config_path)
     if not comment or not comment.strip():
         raise ValueError("A sign-off comment is mandatory (FR-4-13/15).")
+    _require_submitted(artifact_type, artifact_id, db_path)
 
     cfg = _load_config(config_path)
     if not load_chain(cfg):

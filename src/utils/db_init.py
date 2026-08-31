@@ -1114,6 +1114,10 @@ _COLUMN_MIGRATIONS = [
     ("gold_assumption_sets", "parent_set_id", "VARCHAR(36)"),    # §G.4 / FR-4-07
     ("gold_assumption_sets", "effective_from", "DATE"),          # §G.4 / FR-4-09
     ("gold_assumption_sets", "effective_to", "DATE"),            # §G.4 / FR-4-09
+    # Content hash binding the YAML artifact to its DB row: without it nothing
+    # detects an edit to an APPROVED set's multipliers on disk, since only the
+    # file *path* was stored (adversarial review m-6).
+    ("gold_assumption_sets", "yaml_sha256", "VARCHAR(64)"),
     # Session 26 (§G.5, FR-4-20): additive hash-chain columns on the Phase-2
     # governance logs. Nullable — pre-existing rows carry NULL hashes; the §H.7
     # verifier begins each chain at the first hashed row. No UNIQUE on the migrated
@@ -1145,6 +1149,41 @@ def _ensure_column(con: "duckdb.DuckDBPyConnection", table: str, column: str, co
     con.execute(f"ALTER TABLE {table} ADD COLUMN {column} {col_type}")
 
 
+def _backfill_yaml_hashes(con: "duckdb.DuckDBPyConnection") -> None:
+    """One-time baseline for the m-6 content hash on sets saved before the column.
+
+    Adopts each existing artifact as-is: rows with no recorded hash get the hash of
+    whatever their YAML currently holds, so the check is meaningful from the
+    migration onward. Rows that already carry a hash are never rewritten (that is
+    the whole point of it), and any failure is swallowed — an unreadable legacy
+    artifact must not stop the schema migration.
+    """
+    try:
+        rows = con.execute(
+            "SELECT assumption_set_id FROM gold_assumption_sets WHERE yaml_sha256 IS NULL"
+        ).fetchall()
+    except Exception:  # column or table absent on a partially-built DB
+        return
+    if not rows:
+        return
+    from src.assumptions.assumption_set import AssumptionSet, content_hash
+    import yaml as _yaml
+
+    for (set_id,) in rows:
+        try:
+            path = con.execute(
+                "SELECT yaml_file_path FROM gold_assumption_sets WHERE assumption_set_id = ?",
+                [set_id],
+            ).fetchone()[0]
+            doc = _yaml.safe_load(Path(path).read_text())
+            con.execute(
+                "UPDATE gold_assumption_sets SET yaml_sha256 = ? WHERE assumption_set_id = ?",
+                [content_hash(AssumptionSet.from_yaml_dict(doc)), set_id],
+            )
+        except Exception:
+            continue
+
+
 def init_database(db_path: str = DEFAULT_DB_PATH) -> None:
     """Initialise the DuckDB database, creating all tables in dependency order.
 
@@ -1167,6 +1206,8 @@ def init_database(db_path: str = DEFAULT_DB_PATH) -> None:
 
         for table, column, col_type in _COLUMN_MIGRATIONS:
             _ensure_column(con, table, column, col_type)
+
+        _backfill_yaml_hashes(con)
 
         tables = con.execute(
             "SELECT table_name FROM information_schema.tables "

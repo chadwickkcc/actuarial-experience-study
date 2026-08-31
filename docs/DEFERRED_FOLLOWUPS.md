@@ -257,3 +257,29 @@ Recorded at P8 of the demo refresh (`docs/demo_refresh_scope.md` §6):
    skips on a freshly rebuilt DB until an assumption set exists (the demo
    walkthrough creates one live). Seed a demo set post-rebuild if a green
    no-skip run matters.
+
+---
+
+## [ ] FU-8 — Segregation of duties keys on the account, not the person (m-7) — **ACCEPTED LIMITATION**
+
+Recorded 2026-08-31 from the adversarial review, as an owner decision to document
+rather than build.
+
+`src/governance/workflow.check_segregation` enforces proposer ≠ approver against
+the authenticated `user_id`/`username`. The system has no person entity distinct
+from the login, so one human holding two accounts could propose under one and
+approve under the other — the rule would see two different users and allow it.
+
+**Why it is accepted rather than fixed.** Exploitability is low: there is no
+self-service account creation (FR-4-01) and the registry is seeded from
+`config/governance_config.yaml`, so an administrator would have to deliberately
+issue one person two logins. A real fix needs a person/identity model (person →
+many accounts) that this prototype does not have, and a partial one would imply a
+guarantee it could not enforce.
+
+**What to build if it is ever required:** a `person_id` on `gold_users`, seeded
+alongside the account, with `check_segregation` comparing `person_id` where
+present and falling back to `user_id`. The rest of the chain is unaffected.
+
+**Severity:** Low — documented limitation of the prototype's identity model, not
+a defect in the enforcement path.

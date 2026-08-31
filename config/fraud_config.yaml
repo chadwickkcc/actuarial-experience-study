@@ -13,7 +13,14 @@ rules:
 
   claim_exceeds_premiums:
     weight: 0.15
-    min_ratio: 25                 # claim amount > ratio x premiums paid to date
+    # One absolute ratio across all products is largely a product classifier, not
+    # a fraud signal: on the shipped data the median claim/premium ratio is 79 for
+    # TERM but 4.4 for WL, so `> 25` fired on 81% of Term claims and 32% of all
+    # claims and padded the evidence of every flag (m-12). Flag what is unusual
+    # *for the product* instead — above that product's own percentile.
+    percentile: 95                # per-product percentile of the claim/premium ratio
+    min_ratio: 25                 # absolute floor: never flag a modest ratio
+    min_product_claims: 20        # below this the percentile is unstable -> use the floor
 
   claim_above_materiality:
     weight: 0.15

@@ -68,20 +68,24 @@ If you regenerate the data, refresh them from `docs/demo_refresh_progress.md`.
 ## 5 · Fraud screening — the ring reveal (4 min)
 
 1. **Fraud Monitor** → **Run fraud scan** (as a.analyst).
-2. Headline: **1,808 claims scored, 22 flagged**, max composite score **1.20**.
+2. Headline: **1,808 claims scored, 18 flagged**, max composite score **1.20**.
 3. Concentration tables: office **OFF-013**, hospital **HOSP-066**, region
    **SOUTHWEST** dominate the flags.
 4. Drill into a top claim: CI-001, **policy-year-1 claim**, a facility that is
    not on the roster, and a repeat-claimant cluster — the classic ring pattern,
    surfaced by six configurable rules (weights/thresholds in
-   `config/fraud_config.yaml`). The **ring is the top 15 flags contiguously**,
-   then a clean break to 0.55.
+   `config/fraud_config.yaml`). The **ring is the top 14 flags contiguously** —
+   the entire ring, ahead of every other claim in the book — then a clean break
+   to 0.55.
 5. Worth saying out loud: the office rule needs *corroboration*, not just volume —
    a busy but organic office does not flag. The facility rule checks a
    **roster** (`config/reference_tables/facility_roster.csv`), so a facility
    nobody has on file is caught even though it was never named in advance. And
    the repeat-claimant rule tolerates **178 people in this book who genuinely
-   hold more than one policy** — it fires only on the ring.
+   hold more than one policy** — it fires only on the ring. The claim-to-premium
+   rule is **product-relative**: a ratio that is ordinary for Term is extreme for
+   Whole Life, so each claim is compared with its own product's distribution
+   rather than one book-wide number.
 5. *(With an API key)* **Draft fraud narrative (AI)** — emphasise: the model
    receives **aggregates and institutional ids only**; no policyholder or
    claimant identity ever reaches it.
@@ -154,6 +158,6 @@ If you regenerate the data, refresh them from `docs/demo_refresh_progress.md`.
 | Mortality story (Term+WL, 2020→23) | 0.603 → 0.612 → 0.754 → 0.880 |
 | Lapse story (Term+UL fam, 2022/23) | 1.194 / 1.881 |
 | WL mortality (AI Analyst answer) | 0.6561 = 611 / 931.26 |
-| Fraud scan | 1,808 scored · 22 flagged · max 1.20 |
+| Fraud scan | 1,808 scored · 18 flagged · max 1.20 |
 | Ring entities | OFF-013 · HOSP-066 · CLM-424242 ×4 · SOUTHWEST |
 | AI models / proposed factors | 16 registry rows · 324 factors |

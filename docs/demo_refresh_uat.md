@@ -37,7 +37,7 @@ Expected figures are the walkthrough's quick-reference table.
 
 | # | Step | Expect | ✓ |
 |---|------|--------|---|
-| 3.1 | Run fraud scan | 1,808 scored; 22 flagged; max score 1.20 | |
+| 3.1 | Run fraud scan | 1,808 scored; 18 flagged; max score 1.20 | |
 | 3.2 | Concentrations | OFF-013 / HOSP-066 top the flagged tables (region is no longer a rule) | |
 | 3.3 | Drill a shared-claimant claim | policy-year-1 CI-001, cluster of 4, evidence per rule | |
 | 3.4 | (key set) Draft fraud narrative | AI-DRAFT banner; figures match the scan; no policy/claimant ids in the text | |

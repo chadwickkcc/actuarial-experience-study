@@ -6,8 +6,10 @@ exactly matching the interface contract in Technical Specification Section B.7.
 
 from __future__ import annotations
 
+import hashlib
 import json
 import copy
+import logging
 import uuid
 from dataclasses import dataclass, field
 from datetime import date, datetime
@@ -18,6 +20,8 @@ import duckdb
 import yaml
 
 from src.utils.types import AssumptionSetStatus
+
+logger = logging.getLogger(__name__)
 
 
 # ---------------------------------------------------------------------------
@@ -663,6 +667,15 @@ def _insert_assumption_set_metadata(db_path: Path, aset: AssumptionSet) -> None:
             datetime.utcnow(),
         ])
 
+        # Bind the YAML artifact to this row (m-6). Written after the INSERT and
+        # guarded on the column so a DB predating the migration still saves.
+        if "yaml_sha256" in existing_cols:
+            con.execute(
+                "UPDATE gold_assumption_sets SET yaml_sha256 = ? "
+                "WHERE assumption_set_id = ?",
+                [content_hash(aset), aset.id],
+            )
+
         # Re-apply any preserved column values that were previously recorded.
         to_restore = {c: v for c, v in prior_vals.items() if v is not None}
         if to_restore:
@@ -676,12 +689,21 @@ def _insert_assumption_set_metadata(db_path: Path, aset: AssumptionSet) -> None:
         con.close()
 
 
-def load_assumption_set(assumption_set_id: str, db_path: Path) -> AssumptionSet:
+def load_assumption_set(
+    assumption_set_id: str, db_path: Path, *, verify_integrity: bool = True
+) -> AssumptionSet:
     """Load an AssumptionSet from gold_assumption_sets plus its YAML file.
+
+    When a ``yaml_sha256`` was recorded at save (m-6) the loaded content is
+    checked against it: a mismatch on a locked set (APPROVED / SUPERSEDED) raises
+    ``YamlIntegrityError``, since those artifacts are immutable by contract; on a
+    still-editable set it is logged as a warning. Pass ``verify_integrity=False``
+    to read the artifact without the check (used by the checker itself).
 
     Args:
         assumption_set_id:  UUID of the assumption set to load.
         db_path:            Path to the DuckDB file.
+        verify_integrity:   Check the recorded content hash (default True).
 
     Returns:
         Fully populated AssumptionSet object.
@@ -689,6 +711,7 @@ def load_assumption_set(assumption_set_id: str, db_path: Path) -> AssumptionSet:
     Raises:
         ValueError:    if the assumption_set_id is not found in the DB.
         FileNotFoundError: if the YAML file path stored in the DB does not exist.
+        YamlIntegrityError: if a locked set's YAML no longer matches its hash.
     """
     con = duckdb.connect(str(db_path))
     try:
@@ -697,6 +720,7 @@ def load_assumption_set(assumption_set_id: str, db_path: Path) -> AssumptionSet:
             "WHERE assumption_set_id = ?",
             [assumption_set_id]
         ).fetchone()
+        stored_hash = _stored_hash(con, assumption_set_id) if verify_integrity else None
     finally:
         con.close()
 
@@ -713,6 +737,17 @@ def load_assumption_set(assumption_set_id: str, db_path: Path) -> AssumptionSet:
     aset = AssumptionSet.from_yaml_dict(data)
     aset.status = AssumptionSetStatus(row[1])  # DB is authoritative for status
     aset.yaml_file_path = str(yaml_path)
+
+    if stored_hash is not None and content_hash(aset) != stored_hash:
+        message = (
+            f"Assumption set {assumption_set_id} YAML at {yaml_path} does not match "
+            f"the content hash recorded when it was saved — the file has been "
+            f"modified outside the application."
+        )
+        if row[1] in _LOCKED_STATUSES:
+            raise YamlIntegrityError(message)
+        logger.warning(message)
+
     return aset
 
 
@@ -732,6 +767,59 @@ def _comparable_content(doc: dict) -> dict:
     for key in _VOLATILE_YAML_KEYS:
         body.pop(key, None)
     return body
+
+
+class YamlIntegrityError(Exception):
+    """Raised when a locked set's YAML no longer matches the hash recorded at save."""
+
+
+def content_hash(aset: AssumptionSet) -> str:
+    """sha256 over the assumption payload, volatile fields stripped.
+
+    Binds the YAML artifact to its ``gold_assumption_sets`` row. Only the file
+    *path* was stored before, so the multipliers of an APPROVED set could be
+    edited on disk with nothing detecting it (adversarial review m-6). Hashing
+    the comparable content rather than the file bytes keeps the check immune to
+    the regenerated ``created_ts`` and to DB-authoritative status fields.
+    """
+    payload = json.dumps(
+        _comparable_content(aset.to_yaml_dict()), sort_keys=True, default=str
+    )
+    return hashlib.sha256(payload.encode("utf-8")).hexdigest()
+
+
+def _stored_hash(con, assumption_set_id: str) -> Optional[str]:
+    """The recorded ``yaml_sha256`` (None when unrecorded or the column predates it)."""
+    has_col = con.execute(
+        "SELECT 1 FROM information_schema.columns "
+        "WHERE table_name = 'gold_assumption_sets' AND column_name = 'yaml_sha256'"
+    ).fetchone()
+    if has_col is None:
+        return None
+    row = con.execute(
+        "SELECT yaml_sha256 FROM gold_assumption_sets WHERE assumption_set_id = ?",
+        [assumption_set_id],
+    ).fetchone()
+    return row[0] if row else None
+
+
+_LOCKED_STATUSES = ("APPROVED", "SUPERSEDED")
+
+
+def verify_assumption_set_integrity(assumption_set_id: str, db_path: Path) -> bool:
+    """True iff the YAML on disk still matches the hash recorded at save (m-6).
+
+    True as well when no hash was recorded (a set saved before the column
+    existed) — absence of evidence is not evidence of tampering; callers wanting
+    to distinguish the two can read ``yaml_sha256`` directly.
+    """
+    aset = load_assumption_set(assumption_set_id, db_path, verify_integrity=False)
+    con = duckdb.connect(str(db_path), read_only=True)
+    try:
+        stored = _stored_hash(con, assumption_set_id)
+    finally:
+        con.close()
+    return stored is None or stored == content_hash(aset)
 
 
 def _assert_saveable(db_path: Path, aset: AssumptionSet, yaml_path: Path) -> None:
