@@ -62,8 +62,10 @@ If you regenerate the data, refresh them from `docs/demo_refresh_progress.md`.
 4. Expand **Assumption justification** — credibility-weighted A/E per product.
 5. *(With an API key)* **Draft management commentary (AI)** — four sections
    incl. **Proposed Management Actions**; point at the AI-DRAFT banner and
-   explain the number-verification guardrail (an invented figure blocks the
-   draft; it is never silently repaired).
+   explain the number guardrail: the model does not write figures at all — it
+   cites them by key and the application substitutes the study's own value, so
+   a made-up or mis-attributed number blocks the draft rather than being
+   silently repaired.
 
 ## 5 · Fraud screening — the ring reveal (4 min)
 

@@ -427,13 +427,19 @@ def test_narrative_blocks_untraceable_number():
     ok = draft_fraud_narrative(
         facts, cfg, "claude-sonnet-4-6",
         provider=_Stub(
-            "The scan scored 1808 claims and flagged 32 at the 0.5 threshold. "
-            "Office OFF-013 accounts for 14 flagged claims, all via hospital "
-            "HOSP-066 in the SOUTHWEST region."
+            "The scan scored {{fact:n_claims_scored}} claims and flagged "
+            "{{fact:n_claims_flagged}} at the {{fact:flag_threshold}} threshold. "
+            "Office {{fact:flagged_by_office[0].office}} accounts for "
+            "{{fact:flagged_by_office[0].flagged_claims}} flagged claims, all via "
+            "hospital {{fact:flagged_by_hospital[0].hospital}} in the "
+            "{{fact:flagged_by_region[0].region}} region."
         ),
     )
-    assert ok["blocked"] is False
+    assert ok["blocked"] is False, ok.get("reason")
     assert ok["markdown"].startswith("**AI-DRAFT")
+    # Citations resolved to the scan's own aggregates.
+    assert "1808 claims" in ok["markdown"] and "flagged 32" in ok["markdown"]
+    assert "OFF-013" in ok["markdown"] and "HOSP-066" in ok["markdown"]
 
     bad = draft_fraud_narrative(
         facts, cfg, "claude-sonnet-4-6",

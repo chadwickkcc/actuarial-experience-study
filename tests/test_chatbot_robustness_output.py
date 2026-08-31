@@ -96,7 +96,7 @@ def test_synthesis_result_shape():
 def test_commentary_result_shape_has_no_sql():
     provider = ScriptedProvider(
         routing_reply("COMMENTARY_GENERATION"),
-        commentary_text="WL mortality A/E was 0.5718.",
+        commentary_text="WL mortality A/E was {{fact:by_product[0].decrements.MORTALITY.overall.ae_ratio}}.",
     )
     r = handle_turn(
         "summarise", _state(), llm_cfg(), StubMCP(), allowlist(),
@@ -185,7 +185,7 @@ def test_export_preserves_faithfulness_warning():
     state = _state()
     provider = ScriptedProvider(
         routing_reply("COMMENTARY_GENERATION"),
-        commentary_text="WL mortality A/E was 0.5718.",
+        commentary_text="WL mortality A/E was {{fact:by_product[0].decrements.MORTALITY.overall.ae_ratio}}.",
         faithfulness_text="2",
     )
     handle_turn(
@@ -202,7 +202,7 @@ def test_export_preserves_faithfulness_warning():
 def test_commentary_banner_is_first_even_for_short_prose():
     provider = ScriptedProvider(
         routing_reply("COMMENTARY_GENERATION"),
-        commentary_text="WL A/E 0.5718.",
+        commentary_text="WL A/E {{fact:by_product[0].decrements.MORTALITY.overall.ae_ratio}}.",
     )
     r = handle_turn(
         "summarise", _state(), llm_cfg(), StubMCP(), allowlist(),

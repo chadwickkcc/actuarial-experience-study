@@ -46,6 +46,12 @@ from src.ai.chatbot.mcp_client import MCPClient
 from src.ai.mcp_server.server import QUERYABLE_TABLES as _QUERYABLE_TABLES
 from src.ai.chatbot.session import SessionState, call_cost, model_prices, record_call
 from src.ai.chatbot.traceability import verify_traceability
+from src.ai.skills.facts import (
+    FactSlotError,
+    cite_facts,
+    flatten_facts,
+    render_fact_catalogue,
+)
 from src.ai.llm.base import LLMProvider, LLMProviderError
 from src.ai.llm.client import complete
 from src.ai.prompts import load_prompt_template
@@ -550,6 +556,16 @@ def generate_commentary_plan(
     return plan
 
 
+#: Withheld from the commentary catalogue — a UUID's digits would widen the set.
+_COMMENTARY_EXCLUDED_FACTS = ("run_id",)
+
+_UNKNOWN_FACT_TEXT = (
+    "I could not produce that commentary: the draft referred to a figure that "
+    "is not in this study's results ({detail}). Nothing was shown rather than "
+    "risk an invented number."
+)
+
+
 def _generate_commentary_prose(
     user_msg: str,
     history: list[dict],
@@ -574,11 +590,13 @@ def _generate_commentary_prose(
         if prompts_dir is not None
         else load_prompt_template(_COMMENTARY_TEMPLATE)
     )
-    facts_json = json.dumps(facts or {}, ensure_ascii=False, indent=2, default=str)
+    catalogue = render_fact_catalogue(
+        flatten_facts(facts or {}, exclude=_COMMENTARY_EXCLUDED_FACTS)
+    )
     system = (
         tpl.text
-        + "\n\n## Fact pack — every figure you cite MUST appear here verbatim\n"
-        + facts_json
+        + "\n\n## Fact pack — cite any figure as {{fact:<key>}}, never type it\n"
+        + catalogue
     )
     if rag_context:
         system = system + "\n\n## Grounding context (qualitative claims only)\n" + rag_context
@@ -1426,14 +1444,22 @@ def _commentary_turn(
                         warning + _COMMENTARY_FAIL_HINT_TEXT, llm_response=route_resp)
 
     banner_text = _AI_DRAFT_BANNER + drafted.strip()
-    # Numbers must trace to the fact pack (run_id excluded so its UUID digits don't
-    # leak into the allowed-set) or to the tool's own grounding context (FR-3B-37).
+    # Figures are cited by key and substituted here (M-12); anything typed by hand
+    # must still trace, but only to what was cited or to the pack's key labels —
+    # NOT to every value in the pack, which is what let fabrications through. The
+    # RAG grounding stays qualitative, as the prompt has always scoped it.
     facts_for_trace = {k: v for k, v in (commentary_facts or {}).items() if k != "run_id"}
-    trace = verify_traceability(
-        banner_text,
-        result_set={"facts": facts_for_trace, "context": rag_context},
-        user_msg=user_msg,
-    )
+    try:
+        banner_text, trace = cite_facts(
+            banner_text, commentary_facts or {},
+            exclude=_COMMENTARY_EXCLUDED_FACTS, user_msg=user_msg,
+        )
+    except FactSlotError as exc:
+        return _blocked(
+            state, intent, "commentary_unknown_fact",
+            warning + _UNKNOWN_FACT_TEXT.format(detail=exc),
+            llm_response=route_resp,
+        )
     block_tr, banner_text = _apply_traceability(trace, banner_text, analyst_mode)
     if block_tr:
         return _blocked(

@@ -2,9 +2,10 @@
 
 Round 3 replaced the single-SQL commentary route with a generate-then-verify route
 over an app-assembled **fact pack** (like the memo Skill): the model writes prose,
-no SQL or slot-fill; every number is then checked verbatim against the fact pack
-(``run_id`` excluded) plus the tool's own grounding context. An invented number is
-blocked (default) or flagged (Analyst mode). The persistent AI-draft banner is
+no SQL. Since M-12 it **cites** each figure as ``{{fact:<key>}}`` and the
+application substitutes it; a typed digit or an unknown key blocks the draft, and
+the grounding context is for qualitative claims only (its numbers are no longer a
+free pass). An invented number is blocked (default) or flagged (Analyst mode). The persistent AI-draft banner is
 present and survives export. The faithfulness judge is off by default and, when on,
 flags (never blocks) and is logged. Scripted provider — keys unset, no network.
 """
@@ -73,24 +74,55 @@ def _run(provider, tmp_path, *, cfg=None, facts=_FACTS, events=None, analyst_mod
 
 def test_commentary_is_grounded_and_banner_tagged(tmp_path):
     provider = _commentary_provider(
-        "Whole Life mortality A/E was 0.5718 (232 actual deaths against 405.7611 "
-        "expected). The block exposure was 1234 policy-years."
+        "Whole Life mortality A/E was "
+        "{{fact:by_product[0].decrements.MORTALITY.overall.ae_ratio}} "
+        "({{fact:by_product[0].decrements.MORTALITY.overall.actual}} actual deaths "
+        "against {{fact:by_product[0].decrements.MORTALITY.overall.expected}} "
+        "expected), and persistency was broadly as expected."
     )
     result = _run(provider, tmp_path)
     assert result.intent is IntentLabel.COMMENTARY_GENERATION
     assert result.blocked is False
     assert _AI_BANNER in result.response_text
-    assert "0.5718" in result.response_text   # from the fact pack
-    assert "232" in result.response_text      # from the fact pack
-    assert "1234" in result.response_text     # quoted from the grounding report
+    # The citations resolved to the fact pack's own figures.
+    assert "0.5718" in result.response_text
+    assert "232" in result.response_text
+    assert "405.7611" in result.response_text
     assert result.traceability is not None and result.traceability.passed
     # No SQL is generated on the commentary route any more.
     assert result.sql is None
 
 
+def test_commentary_cannot_quote_a_number_out_of_the_grounding(tmp_path):
+    """Grounding is for qualitative claims; a figure lifted from it must be cited.
+
+    Before M-12 any number appearing in the retrieved report text was accepted,
+    which is a second dense allowed-set alongside the fact pack.
+    """
+    provider = _commentary_provider(
+        "Whole Life mortality A/E was "
+        "{{fact:by_product[0].decrements.MORTALITY.overall.ae_ratio}}. "
+        "The block exposure was 1234 policy-years."
+    )
+    result = _run(provider, tmp_path)
+    assert result.blocked is True
+    assert result.block_reason == "numeric_traceability"
+
+
+def test_commentary_blocks_an_unknown_fact_key(tmp_path):
+    """A mis-citation fails loudly instead of rendering a plausible wrong number."""
+    provider = _commentary_provider(
+        "Whole Life mortality A/E was {{fact:by_product[0].decrements.LAPSE.overall.ae_ratio}}."
+    )
+    result = _run(provider, tmp_path)
+    assert result.blocked is True
+    assert result.block_reason == "commentary_unknown_fact"
+    assert "not in this study" in result.response_text
+
+
 def test_commentary_blocks_an_invented_number(tmp_path):
     provider = _commentary_provider(
-        "Whole Life mortality A/E was 0.5718, and an unsupported figure 999 appears."
+        "Whole Life mortality A/E was {{fact:by_product[0].decrements.MORTALITY.overall.ae_ratio}}, and an unsupported figure 999 appears."
     )
     result = _run(provider, tmp_path)
     assert result.blocked is True
@@ -99,7 +131,7 @@ def test_commentary_blocks_an_invented_number(tmp_path):
 
 def test_commentary_invented_number_flagged_in_analyst_mode(tmp_path):
     provider = _commentary_provider(
-        "Whole Life mortality A/E was 0.5718, plus an unsupported 999."
+        "Whole Life mortality A/E was {{fact:by_product[0].decrements.MORTALITY.overall.ae_ratio}}, plus an unsupported 999."
     )
     result = _run(provider, tmp_path, analyst_mode=True)
     assert result.blocked is False
@@ -116,7 +148,7 @@ def test_commentary_run_id_digits_excluded_from_traceable_set(tmp_path):
             "overall": {"ae_ratio": 0.5718}
         }}}],
     }
-    provider = _commentary_provider("WL A/E was 0.5718; a stray 77777 also appears.")
+    provider = _commentary_provider("WL A/E was {{fact:by_product[0].decrements.MORTALITY.overall.ae_ratio}}; a stray 77777 also appears.")
     result = _run(provider, tmp_path, facts=facts)
     assert result.blocked is True
     assert result.block_reason == "numeric_traceability"
@@ -135,7 +167,7 @@ def test_banner_survives_markdown_export(tmp_path):
     handle_turn(
         "Summarise WL mortality.", state, llm_cfg(), StubMCP(ae=_AE), allowlist(),
         chatbot_cfg=chatbot_cfg(),
-        provider=_commentary_provider("WL mortality A/E was 0.5718."),
+        provider=_commentary_provider("WL mortality A/E was {{fact:by_product[0].decrements.MORTALITY.overall.ae_ratio}}."),
         rag_run_ids=["run1aaaa"], rag_artifact_paths=_ground(tmp_path),
         commentary_facts=_FACTS,
     )
@@ -143,7 +175,7 @@ def test_banner_survives_markdown_export(tmp_path):
 
 
 def test_faithfulness_off_by_default_no_judge_call(tmp_path):
-    provider = _commentary_provider("WL mortality A/E was 0.5718.", faithfulness="2")
+    provider = _commentary_provider("WL mortality A/E was {{fact:by_product[0].decrements.MORTALITY.overall.ae_ratio}}.", faithfulness="2")
     events: list[dict] = []
     _run(provider, tmp_path, events=events)
     assert not any("Faithfulness judge" in (c["system"] or "") for c in provider.calls)
@@ -155,7 +187,7 @@ def test_faithfulness_on_low_score_flags_not_blocks_and_is_logged(tmp_path):
     cfg = copy.deepcopy(chatbot_cfg())
     cfg["faithfulness_llm_judge"] = True
     cfg["faithfulness_flag_threshold"] = 3
-    provider = _commentary_provider("WL mortality A/E was 0.5718.", faithfulness="2")
+    provider = _commentary_provider("WL mortality A/E was {{fact:by_product[0].decrements.MORTALITY.overall.ae_ratio}}.", faithfulness="2")
     events: list[dict] = []
     result = _run(provider, tmp_path, cfg=cfg, events=events)
     assert result.blocked is False                       # flag, never block
@@ -168,7 +200,7 @@ def test_faithfulness_on_low_score_flags_not_blocks_and_is_logged(tmp_path):
 def test_faithfulness_high_score_no_warning(tmp_path):
     cfg = copy.deepcopy(chatbot_cfg())
     cfg["faithfulness_llm_judge"] = True
-    provider = _commentary_provider("WL mortality A/E was 0.5718.", faithfulness="5")
+    provider = _commentary_provider("WL mortality A/E was {{fact:by_product[0].decrements.MORTALITY.overall.ae_ratio}}.", faithfulness="5")
     result = _run(provider, tmp_path, cfg=cfg)
     assert result.blocked is False
     assert "Low faithfulness" not in result.response_text
@@ -178,7 +210,7 @@ def test_faithfulness_unparseable_score_no_warning_no_log(tmp_path):
     cfg = copy.deepcopy(chatbot_cfg())
     cfg["faithfulness_llm_judge"] = True
     provider = _commentary_provider(
-        "WL mortality A/E was 0.5718.", faithfulness="not a score"
+        "WL mortality A/E was {{fact:by_product[0].decrements.MORTALITY.overall.ae_ratio}}.", faithfulness="not a score"
     )
     events: list[dict] = []
     result = _run(provider, tmp_path, cfg=cfg, events=events)
@@ -190,7 +222,7 @@ def test_faithfulness_unparseable_score_no_warning_no_log(tmp_path):
 
 def test_commentary_audit_records_commentary_hash_and_context_ref(tmp_path):
     events: list[dict] = []
-    _run(_commentary_provider("WL mortality A/E was 0.5718."), tmp_path, events=events)
+    _run(_commentary_provider("WL mortality A/E was {{fact:by_product[0].decrements.MORTALITY.overall.ae_ratio}}."), tmp_path, events=events)
     turn = next(e for e in events if e.get("event") == "turn")
     assert "commentary.md" in turn["prompt_template_hashes"]
     assert "routing.md" in turn["prompt_template_hashes"]

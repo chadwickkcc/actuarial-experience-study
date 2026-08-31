@@ -86,7 +86,7 @@ def test_model_switch_used_on_commentary_and_faithfulness(tmp_path):
     cfg["faithfulness_llm_judge"] = True
     provider = ScriptedProvider(
         routing_reply("COMMENTARY_GENERATION"),
-        commentary_text="WL mortality A/E was 0.5718.",
+        commentary_text="WL mortality A/E was {{fact:by_product[0].decrements.MORTALITY.overall.ae_ratio}}.",
         faithfulness_text="4",
     )
     handle_turn(
@@ -178,7 +178,7 @@ class _CommentaryOKJudgeRaises:
         if "Intent router" in system:
             return self._r(routing_reply("COMMENTARY_GENERATION"), model)
         if "Commentary drafting" in system:
-            return self._r("WL mortality A/E was 0.5718.", model)
+            return self._r("WL mortality A/E was {{fact:by_product[0].decrements.MORTALITY.overall.ae_ratio}}.", model)
         if "Faithfulness judge" in system:
             raise LLMProviderError("judge unavailable")
         return self._r("", model)

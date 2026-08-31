@@ -11,14 +11,20 @@ slopes, justification metrics, movement legs) is pre-computed by
 """
 from __future__ import annotations
 
-import json
 from datetime import date
 from typing import Optional
 
-from src.ai.chatbot.traceability import verify_traceability
 from src.ai.llm.base import LLMProvider
 from src.ai.llm.client import complete
 from src.ai.prompts import load_prompt_template
+from src.ai.skills.facts import (
+    FactSlotError,
+    cite_facts,
+    flatten_facts,
+    render_fact_catalogue,
+)
+
+_EXCLUDED_FACTS = ("run_id",)
 
 _TAG = "**AI-DRAFT — requires actuary review and sign-off**"
 
@@ -48,8 +54,10 @@ def draft_management_commentary(
     max_tokens = int(call_cfg.get("max_tokens", 4096))
     temperature = float(call_cfg.get("temperature", 0.0))
 
-    user_msg = json.dumps(facts, indent=2, default=str)
-    messages = [{"role": "user", "content": user_msg}]
+    # Figures are cited by key from a flat catalogue, never written by the model
+    # (M-12); run ids are withheld so their digits cannot widen the allowed set.
+    flat = flatten_facts(facts, exclude=_EXCLUDED_FACTS)
+    messages = [{"role": "user", "content": render_fact_catalogue(flat)}]
     response = complete(
         cfg, model_key, messages, max_tokens,
         temperature=temperature, system=template.text, provider=provider,
@@ -64,14 +72,20 @@ def draft_management_commentary(
             "model": model_key, "hashes": hashes,
         }
 
-    # run_id excluded so its UUID digits can never mask an invented figure.
-    allowed = {k: v for k, v in facts.items() if k != "run_id"}
-    trace = verify_traceability(body, result_set=allowed)
+    try:
+        body, trace = cite_facts(body, facts, exclude=_EXCLUDED_FACTS)
+    except FactSlotError as exc:
+        return {
+            "markdown": "", "blocked": True,
+            "reason": (f"{exc} — the commentary cited a figure that does not exist "
+                       f"in the results, so it was blocked (not repaired)."),
+            "untraceable_nums": exc.keys,
+            "model": model_key, "hashes": hashes,
+        }
     if not trace.passed:
         return {
             "markdown": "", "blocked": True,
-            "reason": "Draft blocked — a number could not be traced to the "
-                      "pre-computed analytics (blocked, never repaired).",
+            "reason": "Draft blocked — a figure was typed rather than cited (every number must be a {{fact:<key>}} citation).",
             "untraceable_nums": trace.untraceable_nums,
             "model": model_key, "hashes": hashes,
         }

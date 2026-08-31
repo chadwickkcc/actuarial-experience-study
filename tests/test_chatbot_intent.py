@@ -87,7 +87,9 @@ def test_commentary_route_drafts_grounded_answer_with_banner():
     events: list[dict] = []
     provider = ScriptedProvider(
         routing_reply("COMMENTARY_GENERATION", "asks for prose"),
-        commentary_text="Term mortality A/E was 0.92 over the study period.",
+        commentary_text=(
+            "Term mortality A/E was {{fact:term_mortality_ae}} over the study period."
+        ),
     )
     result = handle_turn(
         "Write a summary of the Term results.", _state(), llm_cfg(),

@@ -3,9 +3,10 @@
 A *prompt-artifact* Skill (FR-3B-17..20): a versioned prompt template
 (``config/prompts/skills/memo.md``) invoked through the provider abstraction
 (§E.5) so it runs on **any** configured model — Anthropic or DeepSeek. The Skill
-never computes, infers, or extrapolates numbers; the prompt instructs this and
-the deterministic post-check (``verify_traceability``) enforces it: on any
-untraceable number the memo is **blocked, not repaired** (FR-3B-19).
+never computes, infers, or extrapolates numbers — since M-12 it does not write
+them at all: the model cites each figure as ``{{fact:<key>}}`` and the
+application substitutes it from the app-assembled pack. A typed digit or an
+unknown key leaves the memo **blocked, not repaired** (FR-3B-19).
 
 Design notes:
   * The input JSON is **app-assembled** (FR-3B-17), never typed by the user.
@@ -16,17 +17,25 @@ Design notes:
 """
 from __future__ import annotations
 
-import json
 from datetime import date
 from typing import Optional
 
-from src.ai.chatbot.traceability import verify_traceability
 from src.ai.llm.base import LLMProvider
 from src.ai.llm.client import complete
 from src.ai.prompts import load_prompt_template
+from src.ai.skills.facts import (
+    FactSlotError,
+    cite_facts,
+    flatten_facts,
+    render_fact_catalogue,
+)
 
 _TEMPLATE_NAME = "skills/memo.md"
 _AI_DRAFT_TAG = "AI-DRAFT — requires actuary review and sign-off"
+
+#: Withheld from the catalogue: a UUID's digit-runs would widen the allowed set
+#: and could mask an invented figure. run_id is footer metadata, never a metric.
+_EXCLUDED_FACTS = ("run_id",)
 
 
 def interpret_ae_and_draft_memo(
@@ -58,7 +67,10 @@ def interpret_ae_and_draft_memo(
     max_tokens = int(params.get("max_tokens", 2000))
     temperature = float(params.get("temperature", 0.0))
 
-    messages = [{"role": "user", "content": json.dumps(memo_input, sort_keys=True)}]
+    # The model is shown the pack as a flat `key = value` catalogue and cites
+    # figures by key; it never writes one (M-12). `run_id` is withheld entirely.
+    flat = flatten_facts(memo_input, exclude=_EXCLUDED_FACTS)
+    messages = [{"role": "user", "content": render_fact_catalogue(flat)}]
     response = complete(
         cfg, model_key, messages, max_tokens,
         temperature=temperature, system=tpl.text, provider=provider,
@@ -84,16 +96,28 @@ def interpret_ae_and_draft_memo(
             "hashes": hashes,
         }
 
-    # Exclude identifier fields (run_id) from the allowed-number set: a UUID's
-    # digit-runs would otherwise widen the set and could mask an invented figure.
-    # run_id is metadata used only for the footer, never a body metric.
-    traceable_input = {k: v for k, v in memo_input.items() if k != "run_id"}
-    trace = verify_traceability(body, result_set=traceable_input)
+    try:
+        body, trace = cite_facts(body, memo_input, exclude=_EXCLUDED_FACTS)
+    except FactSlotError as exc:
+        return {
+            "markdown": "",
+            "blocked": True,
+            "reason": (
+                f"{exc} — the memo cited a figure that does not exist in the study "
+                f"results, so it was blocked (not repaired)."
+            ),
+            "untraceable_nums": exc.keys,
+            "model": response.model,
+            "hashes": hashes,
+        }
     if not trace.passed:
         return {
             "markdown": "",
             "blocked": True,
-            "reason": "Numeric traceability failed — memo blocked (not repaired).",
+            "reason": (
+                "Numeric traceability failed — memo blocked (not repaired). Every "
+                "figure must be cited as {{fact:<key>}}, never typed."
+            ),
             "untraceable_nums": trace.untraceable_nums,
             "model": response.model,
             "hashes": hashes,

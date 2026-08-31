@@ -133,10 +133,57 @@ re-run; walkthrough and UAT figures updated to 18 flagged.
 
 ---
 
+## M-12 — traceability made claim-bound (2026-08-31)
+
+The last and most consequential design call. Gate **1393 → 1406 passed, 3 skipped**
+(+13 tests).
+
+**The defect.** `verify_traceability` asked "does this number appear *somewhere* in
+the supporting data?" — never "is this the value of the thing the sentence claims".
+With 2,556 flattened facts in the shipped commentary pack and A/E ratios clustered
+in [0, 2] at two decimals, almost any fabricated ratio collided with an unrelated
+product's figure. Measured on the real pack: **88.9% of random two-decimal ratios
+passed**. It applied to the four surfaces that block unconditionally and export as
+signed deliverables.
+
+**The fix.** The model no longer writes figures. It cites them —
+
+    Whole Life mortality came in at {{fact:overall.WL.MORTALITY.ae}}
+
+— and the application substitutes the value from the pack, the same discipline the
+chatbot's data path already used for query results. A key that does not exist
+raises `FactSlotError`: a mis-citation fails loudly instead of rendering a
+plausible wrong number. After substitution the post-check still runs, but against a
+deliberately narrow allowed set: the values the application itself injected, plus
+the pack's **labels** — numbers inside keys, string values (bands, periods, office
+and hospital ids) and year fields. Keys are labels; values are claims. Naming a
+label is prose, stating a figure is a citation.
+
+**Effect, measured on the shipped pack:** fabricated two-decimal ratios fall from
+**88.9% accepted to 1.1%** — and the residue is collisions with label numbers, not
+with study results. A figure that is real but belongs to another product — the
+exact M-12 failure — now blocks.
+
+| Surface | Converted |
+|---|---|
+| A/E memo (`skills/memo.md` → v3.0) | ✅ |
+| Management commentary (`skills/management_commentary.md` → v2.0) | ✅ |
+| Fraud narrative (`skills/fraud_narrative.md` → v2.0) | ✅ |
+| Chat commentary (`commentary.md` → v4.0) | ✅ — grounding text is now qualitative-only, as its prompt always said |
+| SHAP explanation | Deliberately not — it verifies against a single cell (a dozen values) |
+| Exploratory synthesis | Deliberately not — it verifies against the evidence just fetched for that same question |
+
+**Verification:** 21 existing tests encoded the old "type the number" contract and
+were converted to cite, which makes each one stronger — they now assert the
+*substituted* value, proving the citation resolves to the study's own figure. Plus
+11 new tests in `tests/test_fact_citation.py`, including the measurement above and
+the another-product's-ratio case. Full suite 1406 passed / 3 skipped; five
+governance harnesses PASS; boot HTTP 200, no tracebacks.
+
+---
+
 ## Still open
 
-- **M-12** — traceability is set-membership, not claim-verification (owner chose
-  fact-reference slots; **in progress**).
 - Observations **OBS-6, OBS-7, OBS-8, OBS-10** and the stale documentation items
   **OBS-1 / OBS-2** in `DEFERRED_FOLLOWUPS.md`.
 - Owner-only: eval-set re-lock, the optional live eval baseline, and the browser

@@ -220,12 +220,17 @@ def test_commentary_multi_decrement_end_to_end_against_prod(prod_db, prod_run_id
     from ui.skills_logic import assemble_commentary_facts
 
     facts = assemble_commentary_facts(prod_db, prod_run_id)
-    wl = next(bp for bp in facts["by_product"] if bp["product"] == "WL")
+    i = next(i for i, bp in enumerate(facts["by_product"]) if bp["product"] == "WL")
+    wl = facts["by_product"][i]
     mort = wl["decrements"]["MORTALITY"]["overall"]
     lapse = wl["decrements"]["LAPSE"]["overall"]
+    # Figures are cited by key (M-12); the application substitutes the real values.
+    base = f"by_product[{i}].decrements"
     prose = (
-        f"Whole Life mortality A/E was {mort['ae_ratio']} ({mort['actual']} actual deaths "
-        f"against {mort['expected']} expected), while lapse A/E was {lapse['ae_ratio']}."
+        f"Whole Life mortality A/E was {{{{fact:{base}.MORTALITY.overall.ae_ratio}}}} "
+        f"({{{{fact:{base}.MORTALITY.overall.actual}}}} actual deaths against "
+        f"{{{{fact:{base}.MORTALITY.overall.expected}}}} expected), while lapse A/E was "
+        f"{{{{fact:{base}.LAPSE.overall.ae_ratio}}}}."
     )
     provider = ScriptedProvider(
         routing_reply("COMMENTARY_GENERATION", "asks for a narrative"),
@@ -268,18 +273,17 @@ def test_commentary_turn_end_to_end_against_prod(prod_db, prod_run_id):
 
     init_database(str(prod_db))
     facts = assemble_commentary_facts(prod_db, prod_run_id)
-    # The real WL mortality figures the prose will quote (from the fact pack).
-    _wl_overall = next(
-        p for p in facts["by_product"] if p["product"] == "WL"
-    )["decrements"]["MORTALITY"]["overall"]
+    # The real WL mortality figures the prose will cite (from the fact pack).
+    _i = next(i for i, p in enumerate(facts["by_product"]) if p["product"] == "WL")
+    _wl_overall = facts["by_product"][_i]["decrements"]["MORTALITY"]["overall"]
     _fact_ae = _wl_overall["ae_ratio"]
-    _fact_a = _wl_overall["actual"]
-    _fact_e = _wl_overall["expected"]
+    _base = f"by_product[{_i}].decrements.MORTALITY.overall"
     provider = ScriptedProvider(
         routing_reply("COMMENTARY_GENERATION", "asks for a narrative"),
         commentary_text=(
-            f"Whole Life mortality A/E was {_fact_ae} ({_fact_a} actual deaths against "
-            f"{_fact_e} expected), a credibility-weighted result."
+            f"Whole Life mortality A/E was {{{{fact:{_base}.ae_ratio}}}} "
+            f"({{{{fact:{_base}.actual}}}} actual deaths against "
+            f"{{{{fact:{_base}.expected}}}} expected), a credibility-weighted result."
         ),
     )
     state = SessionState(session_id="rd3", model_key=_MODEL)

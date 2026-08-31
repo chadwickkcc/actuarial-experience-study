@@ -248,18 +248,28 @@ def test_management_commentary_clean_draft_carries_banner():
     cfg = load_llm_config(Path("config/llm_config.yaml"))
     body = (
         "## Year-on-Year Movement and Key Drivers\n"
-        "Mortality A/E rose to 0.7691 in 2023 (0.0722 above prior), led by the "
-        "70-74 band contributing 0.034.\n\n"
-        "## Experience Trends\nThe classification is worsening with slope 0.0848.\n\n"
+        "Mortality A/E rose to {{fact:yoy.MORTALITY[1].ae}} in 2023 "
+        "({{fact:yoy.MORTALITY[1].delta_vs_prior}} above prior), led by the "
+        "{{fact:yoy.MORTALITY[1].top_drivers.attained_age_band[0].segment}} band "
+        "contributing "
+        "{{fact:yoy.MORTALITY[1].top_drivers.attained_age_band[0].contribution}}.\n\n"
+        "## Experience Trends\nThe classification is "
+        "{{fact:trends[0].classification}} with slope {{fact:trends[0].slope}}.\n\n"
         "## Proposed Management Actions\nManagement could review underwriting for "
         "the older-age segments driving the deterioration.\n\n"
-        "## Assumption Justification\nWL mortality runs at 0.6561 with credibility "
-        "0.7515, giving a credibility-weighted 0.7416 against the current 1.0."
+        "## Assumption Justification\nWL mortality runs at "
+        "{{fact:justification[0].overall_ae}} with credibility "
+        "{{fact:justification[0].credibility_z}}, giving a credibility-weighted "
+        "{{fact:justification[0].cred_wtd_ae}} against the current "
+        "{{fact:justification[0].current_multiplier}}."
     )
     out = draft_management_commentary(_FACTS, cfg, "claude-sonnet-4-6", provider=_stub(body))
-    assert out["blocked"] is False
+    assert out["blocked"] is False, out.get("reason")
     assert out["markdown"].startswith("**AI-DRAFT")
     assert "## Proposed Management Actions" in out["markdown"]
+    # The citations resolved to the pre-computed analytics, not to model prose.
+    for figure in ("0.7691", "0.0722", "0.034", "0.0848", "0.6561", "0.7416"):
+        assert figure in out["markdown"]
 
 
 def test_management_commentary_blocks_invented_number():

@@ -3,6 +3,11 @@
 MockProvider / stub only — no live API, suite passes with keys unset. The Skill
 runs on any configured model via the provider abstraction and **blocks, never
 repairs** when a number fails the deterministic traceability post-check.
+
+Since M-12 the model cites figures as ``{{fact:<key>}}`` and the application
+substitutes them; a typed digit or an unknown key blocks the draft. The canned
+bodies below therefore cite, and the assertions check the *substituted* value —
+so they prove the citation actually resolves to the study's own number.
 """
 from __future__ import annotations
 
@@ -12,13 +17,12 @@ from src.ai.skills.memo import interpret_ae_and_draft_memo
 from src.utils.types import LLMResponse
 from ui.config import CONFIG_DIR
 
-_EIGHT_HEADERS = [
+_COMPONENT_HEADERS = [
     "Purpose and Scope",
     "Data and Study Basis",
     "Key A/E Findings by Segment",
     "Credibility Assessment",
     "Proposed Assumption Change with Rationale",
-    "TEV Impact",
     "Limitations and Caveats",
     "Recommendation and Required Sign-off",
 ]
@@ -36,22 +40,21 @@ _MEMO_INPUT = {
 }
 
 _CLEAN_BODY = """## Purpose and Scope
-This memo covers the WL experience study for 2016-2023.
+This memo covers the {{fact:product}} experience study for {{fact:study_period}}.
 
 ## Data and Study Basis
-The study window was 2016-2023 on an annual exposure basis with no exclusions.
+The study window was {{fact:study_period}} on an annual exposure basis.
 
 ## Key A/E Findings by Segment
-For duration 6-10 the count A/E was 0.92.
+For {{fact:ae_by_segment[0].segment}} the count A/E was
+{{fact:ae_by_segment[0].ae_count}}.
 
 ## Credibility Assessment
-That cell carried credibility Z of 0.87.
+That cell carried credibility Z of {{fact:ae_by_segment[0].credibility_z}}.
 
 ## Proposed Assumption Change with Rationale
-We propose moving from the prior 1.00 multiplier toward the observed level.
-
-## TEV Impact
-The TEV baseline was 173,400,000 with a delta of 4,480,000 versus prior.
+We propose moving from the prior {{fact:prior_assumption}} multiplier toward the
+observed level.
 
 ## Limitations and Caveats
 Sparse cells were excluded from validation.
@@ -82,14 +85,14 @@ def _cfg():
     return load_llm_config(CONFIG_DIR / "llm_config.yaml")
 
 
-def test_memo_has_tag_eight_components_and_footer():
+def test_memo_has_tag_all_components_and_footer():
     out = interpret_ae_and_draft_memo(
         _MEMO_INPUT, _cfg(), "claude-sonnet-4-6", provider=_StubProvider(_CLEAN_BODY)
     )
     assert out["blocked"] is False
     md = out["markdown"]
     assert md.startswith("AI-DRAFT — requires actuary review and sign-off")
-    for header in _EIGHT_HEADERS:
+    for header in _COMPONENT_HEADERS:
         assert header in md, f"missing component: {header}"
     # Footer appended by the Skill (model, date, run_id) after the body.
     assert "claude-sonnet-4-6" in md
@@ -138,10 +141,13 @@ def test_memo_sends_template_as_system_and_input_as_user_message():
     interpret_ae_and_draft_memo(_MEMO_INPUT, _cfg(), "claude-opus-4-8", provider=cap)
     # System prompt is the versioned memo template body.
     assert "Seven required components" in cap.system
-    # The app-assembled input JSON is the user message (grounding the draft).
+    # The app-assembled pack is the user message, as a flat citable catalogue.
     assert cap.messages[0]["role"] == "user"
-    assert '"product": "WL"' in cap.messages[0]["content"]
-    assert "0.92" in cap.messages[0]["content"]
+    catalogue = cap.messages[0]["content"]
+    assert "product = WL" in catalogue
+    assert "ae_by_segment[0].ae_count = 0.92" in catalogue
+    # run_id is withheld so its digit-runs cannot widen the allowed set.
+    assert _MEMO_INPUT["run_id"] not in catalogue
     assert cap.model == "claude-opus-4-8"
 
 
@@ -152,6 +158,7 @@ def test_memo_is_model_agnostic_same_body_only_footer_differs():
     assert a["blocked"] is False and b["blocked"] is False
     # The eight-component body is identical; only the footer's model line differs.
     assert "claude-sonnet-4-6" in a["markdown"] and "deepseek-v4-pro" in b["markdown"]
+    assert "0.92" in a["markdown"]   # the citation resolved to the study's figure
     body_a = a["markdown"].split("\n\n---\n")[0]
     body_b = b["markdown"].split("\n\n---\n")[0]
     assert body_a == body_b
@@ -180,19 +187,20 @@ def test_memo_run_id_digits_are_not_traceable():
 def test_memo_end_to_end_via_real_mock_provider_fixture_path():
     # Exercise the shipped MockProvider's keyed-fixture lookup (not the fallback):
     # register the canned body under the exact request key the Skill builds.
-    import json
     from src.ai.llm.mock_provider import canonical_key
     from src.ai.prompts import load_prompt_template
+    from src.ai.skills.facts import flatten_facts, render_fact_catalogue
 
     tpl = load_prompt_template("skills/memo.md")
     model = "claude-sonnet-4-6"
-    messages = [{"role": "user", "content": json.dumps(_MEMO_INPUT, sort_keys=True)}]
+    catalogue = render_fact_catalogue(flatten_facts(_MEMO_INPUT, exclude=("run_id",)))
+    messages = [{"role": "user", "content": catalogue}]
     key = canonical_key(model, tpl.text, messages)
     provider = MockProvider(responses={key: {"text": _CLEAN_BODY, "input_tokens": 10, "output_tokens": 20}})
 
     out = interpret_ae_and_draft_memo(_MEMO_INPUT, _cfg(), model, provider=provider)
     assert out["blocked"] is False
-    for header in _EIGHT_HEADERS:
+    for header in _COMPONENT_HEADERS:
         assert header in out["markdown"]
 
 
@@ -212,10 +220,11 @@ def test_memo_blocks_on_empty_response_not_tag_footer_only():
 
 
 def test_memo_not_blocked_when_band_rendered_with_en_dash():
-    # The model commonly re-renders an age/duration band "6-10" with an en-dash
-    # ("6–10") or "6 to 10". The band upper endpoint must still trace, so the
-    # memo is NOT false-blocked (regression guard for the band/date regex bug).
-    body = _CLEAN_BODY.replace("6-10", "6–10")  # en-dash form
+    # A cited segment label carries its band ("duration 6-10"), and the model
+    # commonly re-renders that band in prose with an en-dash ("6–10") or "6 to
+    # 10". Both endpoints must still trace, so the memo is NOT false-blocked
+    # (regression guard for the band/date regex bug).
+    body = _CLEAN_BODY + "\n## Note\nThe 6–10 band dominates the experience.\n"
     out = interpret_ae_and_draft_memo(
         _MEMO_INPUT, _cfg(), "claude-sonnet-4-6", provider=_StubProvider(body)
     )

@@ -39,13 +39,14 @@ def test_memo_skill_end_to_end_on_real_gold(prod_db: Path, prod_run_id: str):
     assert memo_input["product"] == "WL"
     assert memo_input["study_period"] != "N/A"
 
-    # A clean body that quotes only a number present in the assembled input.
-    clean = f"The study period was {memo_input['study_period']}."
+    # A clean body cites the figure by key; the app substitutes the real value.
+    clean = "The study period was {{fact:study_period}}."
     out = interpret_ae_and_draft_memo(
         memo_input, _cfg(), "claude-sonnet-4-6", provider=_Stub(clean)
     )
-    assert out["blocked"] is False
+    assert out["blocked"] is False, out.get("reason")
     assert out["markdown"].startswith("AI-DRAFT")
+    assert memo_input["study_period"] in out["markdown"]  # citation resolved
 
     # Corrupted body with an invented number → blocked, not repaired.
     out_bad = interpret_ae_and_draft_memo(
