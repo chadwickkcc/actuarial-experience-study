@@ -114,6 +114,31 @@ def get_workflow_iterations(
         con.close()
 
 
+def get_iterations_for_set(db_path: Path, assumption_set_id: str) -> list[dict]:
+    """Every logged iteration for an assumption set, oldest first.
+
+    The history a reader wants is the artifact's, not one browser session's.
+    Keying the UI panels on ``workflow_session_id`` meant opening a step page
+    directly — with no session id in state — showed an empty history even though
+    iterations existed, because the page had minted a fresh id (adversarial
+    review OBS-10). ``workflow_session_id`` remains the write-side grouping key.
+    """
+    con = duckdb.connect(str(db_path), read_only=True)
+    try:
+        rows = con.execute("""
+            SELECT iteration_id, iteration_number, stage, action, actuary_id,
+                   actuary_comment, iteration_ts, workflow_session_id
+            FROM gold_workflow_iterations
+            WHERE assumption_set_id = ?
+            ORDER BY iteration_ts, iteration_number
+        """, [assumption_set_id]).fetchall()
+        cols = ["iteration_id", "iteration_number", "stage", "action", "actuary_id",
+                "actuary_comment", "iteration_ts", "workflow_session_id"]
+        return [dict(zip(cols, row)) for row in rows]
+    finally:
+        con.close()
+
+
 def get_next_iteration_number(db_path: Path, workflow_session_id: str) -> int:
     """Return the next iteration number for a workflow session."""
     con = duckdb.connect(str(db_path), read_only=True)

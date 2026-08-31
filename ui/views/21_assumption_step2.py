@@ -28,7 +28,7 @@ from src.assumptions.assumption_set import (
 from src.utils.types import AssumptionSetStatus
 from src.assumptions.workflow import (
     get_next_iteration_number,
-    get_workflow_iterations,
+    get_iterations_for_set,
     transition_assumption_set_status,
 )
 from src.governance.audit import log_workflow_iteration
@@ -541,10 +541,10 @@ else:
 # ---------------------------------------------------------------------------
 # Workflow iteration history
 # ---------------------------------------------------------------------------
-with st.expander("Iteration history for this workflow session", expanded=False):
-    _wf_session = st.session_state.get("workflow_session_id")
-    if _wf_session:
-        history = get_workflow_iterations(DB_PATH, _wf_session)
+with st.expander("Iteration history for this assumption set", expanded=False):
+    _set_id = st.session_state.get("active_assumption_set_id")
+    if _set_id:
+        history = get_iterations_for_set(DB_PATH, _set_id)
         if history:
             hist_df = pd.DataFrame(history)
             display_cols = [
@@ -554,6 +554,6 @@ with st.expander("Iteration history for this workflow session", expanded=False):
             hist_df = hist_df[[c for c in display_cols if c in hist_df.columns]]
             st.dataframe(hist_df, hide_index=True, use_container_width=True)
         else:
-            st.caption("No iterations recorded yet for this session.")
+            st.caption("No iterations recorded yet for this assumption set.")
     else:
-        st.caption("No workflow session active.")
+        st.caption("No assumption set selected.")

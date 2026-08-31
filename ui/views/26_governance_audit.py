@@ -136,9 +136,17 @@ else:
 st.markdown("---")
 st.subheader("Tamper-evidence — chain integrity")
 st.caption(
-    "Recomputes each hash-chained governance log and reports the first divergence "
+    "Recomputes each hash-chained governance log and reports the first divergence. "
     "A log with no hashed rows verifies clean (chain begins at the first "
     "hashed row)."
+)
+st.caption(
+    "**What this proves.** The chain is tamper-**evident**, not tamper-proof: it is an "
+    "unkeyed SHA-256 chain, so an edit made through the application or by anyone without "
+    "database write access is detected, while someone with both write access and the "
+    "source code could re-chain the log after an edit. Detecting that requires a signing "
+    "key held outside the database, or an external append-only store — neither is built "
+    "in this prototype."
 )
 if st.button("Verify integrity", type="primary"):
     for table in _VERIFIABLE_LOGS:

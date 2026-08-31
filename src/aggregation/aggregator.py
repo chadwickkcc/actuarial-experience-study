@@ -53,6 +53,7 @@ def aggregate_ae(
     col_dims: list[str],
     filters: dict[str, list],
     measure: str = "ae_count",
+    min_claims: int = 0,
 ) -> pd.DataFrame:
     """
     Aggregate gold_ae_results into a pivot table for UI display.
@@ -64,6 +65,13 @@ def aggregate_ae(
         col_dims:       Dimension columns for pivot columns
         filters:        Dict of dimension -> list of allowed values
         measure:        Column to aggregate
+        min_claims:     For a ratio measure, blank any cell built on fewer than
+                        this many actual claims. A cell with one claim against
+                        0.0005 expected is arithmetically an A/E of ~2,000 and
+                        statistically nothing; the ratio is correct but unreadable
+                        beside credible cells (adversarial review OBS-10). Default
+                        0 shows every cell — the data is never hidden by default.
+                        Totals are unaffected: they always aggregate every cell.
 
     Returns:
         DataFrame in pivot format with totals row/column appended.
@@ -126,6 +134,8 @@ def aggregate_ae(
         # Sum both components, then divide to get the correct aggregate ratio
         agg_df = df.groupby(group_keys, dropna=False)[[num_col, den_col]].sum().reset_index()
         agg_df[measure] = agg_df[num_col] / agg_df[den_col].replace(0, np.nan)
+        if min_claims > 0:
+            agg_df.loc[agg_df[num_col] < min_claims, measure] = np.nan
         agg_df = agg_df.drop(columns=[num_col, den_col])
     else:
         agg_func = "mean" if measure in mean_measures else "sum"

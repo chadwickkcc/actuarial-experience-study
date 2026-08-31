@@ -180,6 +180,21 @@ elif plt_filter_opt == "PLT only":
 
 # ── Pivot table ───────────────────────────────────────────────────────────────
 
+# ── Sparse-cell control ───────────────────────────────────────────────────────
+# A cell with one claim against 0.0005 expected is arithmetically an A/E in the
+# thousands and statistically nothing. The figure is correct, so it is shown by
+# default; this raises the floor when a reader wants only credible cells
+# (adversarial review OBS-10).
+min_claims = st.number_input(
+    "Minimum actual claims per cell (0 = show every cell)",
+    min_value=0, max_value=100, value=0, step=1,
+    help=(
+        "Blanks A/E cells built on fewer than this many actual claims. Sparse "
+        "cells are arithmetically correct but carry near-zero credibility. "
+        "Totals always aggregate every cell."
+    ),
+)
+
 st.subheader("A/E Pivot Table")
 try:
     pivot_df = aggregate_ae(
@@ -189,6 +204,7 @@ try:
         col_dims=col_dims,
         filters=filters,
         measure=measure,
+        min_claims=min_claims,
     )
 
     if pivot_df.empty:
@@ -251,6 +267,7 @@ try:
         col_dims=[hm_col],
         filters=filters,
         measure=heatmap_measure,
+        min_claims=min_claims,
     )
 
     if not hm_df.empty:

@@ -44,10 +44,14 @@ _PII_SUBSTRINGS = (
     "first_name", "last_name", "file_path", "artifact_path", "shap_json_path",
 )
 # Exact person-identifier / sensitive columns that must never be allowlisted.
+# `agent_id` is included deliberately (adversarial review OBS-8): a selling agent
+# is a natural person and the id is pseudonymous personal data, even though it
+# looks institutional next to `agency_office_id`. An office is an organisation and
+# stays reachable; the agent behind a claim does not.
 _PII_EXACT = {
     "ssn", "author_id", "approved_by", "reviewer_id", "actuary_id",
     "proposer_id", "override_actuary_id", "yaml_file_path",
-    "run_by", "claimant_id",
+    "run_by", "claimant_id", "agent_id",
 }
 # Tables that carry PII (policy_id) or are raw layers — never allowlist keys.
 _FORBIDDEN_TABLES = {

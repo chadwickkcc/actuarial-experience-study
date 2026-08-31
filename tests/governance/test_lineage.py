@@ -584,3 +584,69 @@ def test_create_version_clone_isolated_from_parent(gov_env):
     save_assumption_set(cset, Path(db))
     parent_set = load_assumption_set(root, Path(db))
     assert parent_set.mortality_multipliers[0].multiplier == 0.92
+
+
+# ---------------------------------------------------------------------------
+# "≤1 APPROVED-current per lineage" as an invariant (adversarial review OBS-7)
+# ---------------------------------------------------------------------------
+
+def test_second_chain_completion_supersedes_the_first(gov_env, tmp_path):
+    """Two sets reaching APPROVED via their own chains must not both stay current.
+
+    Supersession used to live only on the publish path (``approve_and_supersede``),
+    which a completing sign-off chain never calls — so a lineage could hold two
+    APPROVED-current sets with nothing complaining (FR-4-08 / NFR-G-05).
+    """
+    import yaml as _yaml
+    from src.governance.lineage import approved_current, lineage_root
+    from src.governance.workflow import record_signoff
+    from src.governance.users import get_user_by_username
+    from src.utils.types import ArtifactType, Decision
+
+    db = gov_env["db"]
+    cfg_path = tmp_path / "chain.yaml"
+    cfg_path.write_text(_yaml.safe_dump({
+        "permissions": {
+            "analyst": ["propose", "view"],
+            "junior_actuary": ["sign_off", "view", "export"],
+            "senior_actuary": ["sign_off", "view", "export"],
+            "chief_actuary": ["sign_off", "view", "export"],
+        },
+        "approval_chain": [{"level": 1, "required_role": "chief_actuary"}],
+        "segregation": {"allow_multi_level_signoff": False},
+        "materiality": {"max_multiplier_delta_threshold": 0.05,
+                        "final_level_below_threshold": "chief_actuary"},
+        "attestation_text": "I attest.",
+    }), encoding="utf-8")
+    cfg = str(cfg_path)
+
+    chief = get_user_by_username("c.chief", db)
+    v1 = _seed_aset(db)
+    v2 = _seed_aset(db, version=2)
+    con = duckdb.connect(db)
+    try:
+        con.execute(
+            "UPDATE gold_assumption_sets SET parent_set_id = ? WHERE assumption_set_id = ?",
+            [v1, v2],
+        )
+    finally:
+        con.close()
+
+    for set_id in (v1, v2):
+        record_signoff(chief, ArtifactType.ASSUMPTION_SET, set_id, 1,
+                       Decision.APPROVE, "approved", db_path=db, config_path=cfg)
+
+    root = lineage_root(v1, db_path=db)
+    assert approved_current(root, db_path=db) == [v2], (
+        "the earlier approved set should have been superseded by the later one"
+    )
+    con = duckdb.connect(db, read_only=True)
+    try:
+        status, superseded_by = con.execute(
+            "SELECT status, superseded_by FROM gold_assumption_sets "
+            "WHERE assumption_set_id = ?", [v1],
+        ).fetchone()
+    finally:
+        con.close()
+    assert status == "SUPERSEDED"
+    assert superseded_by == v2

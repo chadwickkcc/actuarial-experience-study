@@ -112,3 +112,70 @@ def test_every_dimension_pair_renders(ae_db):
             except Exception as exc:  # noqa: BLE001 - the point of the test
                 failures.append(f"{r} x {c}: {type(exc).__name__}: {exc}")
     assert not failures, "dimension pairs raised:\n" + "\n".join(failures)
+
+
+# ---------------------------------------------------------------------------
+# Sparse-cell floor (adversarial review OBS-10)
+# ---------------------------------------------------------------------------
+
+def test_min_claims_blanks_thin_cells_but_never_the_totals(ae_db):
+    """A cell resting on one claim is arithmetically a ratio and statistically
+    nothing. The floor blanks it; the totals still count it."""
+    import numpy as np
+
+    db, run_id = ae_db
+
+    def _ae(min_claims: int):
+        df = aggregate_ae(
+            db_path=db, study_run_id=run_id, row_dims=["attained_age_band"],
+            col_dims=[], filters={}, measure="ae_count", min_claims=min_claims,
+        )
+        return df.set_index("attained_age_band")["ae_count"]
+
+    unfiltered, floored = _ae(0), _ae(3)
+    # "50-54" rests on a single claim: shown by default, blanked at the floor.
+    assert not np.isnan(unfiltered["50-54"])
+    assert np.isnan(floored["50-54"])
+    # A credible cell is untouched, and the total is identical either way.
+    assert floored["45-49"] == pytest.approx(unfiltered["45-49"])
+    assert floored["Total"] == pytest.approx(unfiltered["Total"])
+
+
+def test_min_claims_defaults_to_showing_everything(ae_db):
+    """Data is never hidden by default — the floor is an opt-in reading aid."""
+    db, run_id = ae_db
+    default = aggregate_ae(
+        db_path=db, study_run_id=run_id, row_dims=["attained_age_band"],
+        col_dims=[], filters={}, measure="ae_count",
+    )
+    explicit_zero = aggregate_ae(
+        db_path=db, study_run_id=run_id, row_dims=["attained_age_band"],
+        col_dims=[], filters={}, measure="ae_count", min_claims=0,
+    )
+    assert default.equals(explicit_zero)
+
+
+def test_recon_and_ae_share_a_product_join_key(prod_db, prod_run_id):
+    """In-force reconciliation and A/E must label products identically (OBS-10).
+
+    Recon used to label every annuity ``DA`` while A/E split them three ways, so
+    the two could not be joined at all. Fixed with the recon attribution bug
+    (B-3); locked here because the fix is invisible until someone tries to join.
+    """
+    con = duckdb.connect(str(prod_db), read_only=True)
+    try:
+        recon = {
+            r[0] for r in con.execute(
+                "SELECT DISTINCT product_code FROM gold_inforce_reconciliation "
+                "WHERE study_run_id = ?", [prod_run_id]).fetchall()
+        }
+        ae = {
+            r[0] for r in con.execute(
+                "SELECT DISTINCT product_code FROM gold_ae_results "
+                "WHERE study_run_id = ? AND product_code IS NOT NULL",
+                [prod_run_id]).fetchall()
+        }
+    finally:
+        con.close()
+    assert recon and ae
+    assert recon == ae, f"recon-only={recon - ae}, ae-only={ae - recon}"

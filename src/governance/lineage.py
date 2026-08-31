@@ -128,6 +128,68 @@ _PUBLISHABLE_STATUSES = frozenset({
 })
 
 
+def supersede_other_approved(
+    assumption_set_id: str, *, db_path: str = DEFAULT_DB_PATH
+) -> list[str]:
+    """Mark every OTHER APPROVED set in the lineage SUPERSEDED by this one.
+
+    Called wherever a set *becomes* APPROVED, so "at most one APPROVED-current per
+    lineage" (FR-4-08 / NFR-G-05) is an invariant rather than a property of the
+    publish path alone. Before this, a second set completing its sign-off chain
+    reached APPROVED with the first left APPROVED beside it, and only
+    ``approve_and_supersede`` — which a chain completion never calls — would have
+    tidied it (adversarial review OBS-7).
+
+    Returns the ids it superseded (empty when there were none).
+
+    A lineage that cannot be resolved — an orphan whose recorded parent is missing
+    from the table — yields no supersession rather than refusing the approval: a
+    broken parent link is a data defect, not grounds to block a governed decision
+    the chain has already made.
+    """
+    try:
+        root = lineage_root(assumption_set_id, db_path=db_path)
+    except ValueError:
+        return []
+    if root is None:
+        return []
+    superseded: list[str] = []
+    con = duckdb.connect(str(db_path))
+    try:
+        for mid, status, _f, _t in _lineage_members(con, root):
+            if mid == assumption_set_id or status != AssumptionSetStatus.APPROVED.value:
+                continue
+            con.execute(
+                "UPDATE gold_assumption_sets "
+                "SET status = ?, superseded_by = ? WHERE assumption_set_id = ?",
+                [AssumptionSetStatus.SUPERSEDED.value, assumption_set_id, mid],
+            )
+            superseded.append(mid)
+    finally:
+        con.close()
+    return superseded
+
+
+def approved_current(lineage_id: str, *, db_path: str = DEFAULT_DB_PATH) -> list[str]:
+    """The APPROVED (not superseded) sets in a lineage — the FR-4-08 invariant.
+
+    Accepts any member id; normalised to the lineage root. A conforming lineage
+    returns at most one id.
+    """
+    root = lineage_root(lineage_id, db_path=db_path)
+    if root is None:
+        return []
+    con = duckdb.connect(str(db_path), read_only=True)
+    try:
+        return [
+            mid
+            for mid, status, _f, _t in _lineage_members(con, root)
+            if status == AssumptionSetStatus.APPROVED.value
+        ]
+    finally:
+        con.close()
+
+
 def approve_and_supersede(
     assumption_set_id: str,
     effective_from: date,
@@ -198,7 +260,9 @@ def approve_and_supersede(
                 assumption_set_id,
             ],
         )
-        # Supersede any other currently-APPROVED set(s) in the lineage.
+        # Supersede any other currently-APPROVED set(s) in the lineage. Same rule as
+        # supersede_other_approved, applied on the open connection so the publish
+        # stays one transaction.
         for mid, status, _m_from, _m_to in members:
             if mid == assumption_set_id:
                 continue

@@ -28,6 +28,12 @@ _SILVER_TABLES = (
     "silver_annuity_contracts",
 )
 
+# NOTE on ``agent_id`` (adversarial review OBS-8): a selling agent is a natural
+# person, so the id is pseudonymous personal data despite reading like
+# institutional metadata beside ``agency_office_id`` (an organisation). It stays
+# inside the engine for rule evidence and investigator drill-down, and is barred
+# from the chatbot allowlist and from every LLM fact pack — both guard-tested in
+# tests/test_data_surface.py and tests/test_fraud.py.
 _CLAIM_SQL = """
     SELECT
         e.policy_id                            AS claim_event_id,

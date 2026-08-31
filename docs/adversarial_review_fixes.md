@@ -182,9 +182,24 @@ governance harnesses PASS; boot HTTP 200, no tracebacks.
 
 ---
 
+## Observations closed (2026-08-31)
+
+Gate **1406 → 1412 passed, 3 skipped** (+6 tests).
+
+| # | Finding | What was done |
+|---|---|---|
+| **OBS-1** | `DEFERRED_FOLLOWUPS.md` Remaining-1 named `test_tev_engine`, `test_envelope` and `scripts/_uat_tev_baseline.py` — all deleted in P3 — and would have sent a maintainer on an unnecessary rebuild. | Closed. The two surviving tests are properly isolated and a full run leaves the live DB unchanged. **Remaining-2** (WL lapse A/E 1.39) closed too: M-3 showed it was a test double-count, and the band is back to 0.80–1.10. |
+| **OBS-2** | Remaining-3 (RPU/ETT) was already answered — the generator produces zero RPU/ETT policies by a deliberate 2026-05-21 removal. | Closed, with the note that this is what makes the M-1/M-3 discontinuance semantics legible. |
+| **OBS-6** | The hash chain is unkeyed, so "intact ✓" could be read as cryptographic proof. The docs were already careful ("tamper-evident", never "tamper-proof"); the page a client actually reads was not. | The integrity panel now states the limit plainly — an actor with both database write access and the source can re-chain after an edit, and closing that needs a key held outside the database. `verify_chain`'s docstring says the same. 1 guard test. |
+| **OBS-7** | "≤1 APPROVED-current per lineage" was enforced only on the publish path. Two sets completing their own sign-off chains both stayed APPROVED, since a chain completion never calls `approve_and_supersede`. | Supersession moved to wherever a set *becomes* APPROVED (`supersede_other_approved`), making it an invariant rather than a property of one code path; `approved_current()` exposes it for checking. An unresolvable lineage yields no supersession rather than blocking a decision the chain has already made. 1 test. |
+| **OBS-8** | `agent_id` is a pseudonymous identifier for a natural person, and was correctly absent from every LLM-reachable surface — but only incidentally. | Classification made deliberate: `agent_id` added to the PII guard's exact-match list, and the reasoning recorded where it is selected. An office is an organisation and stays reachable; the agent behind a claim does not. |
+| **OBS-10** | Four smaller notes. | **(a)** 11 policies contribute no exposure (issue = termination date) — correct per the `exposure_years > 0` constraint, and the reason recon counts one more death than A/E. **(b)** The recon↔A/E join gap is already closed by B-3; both now carry the same nine product codes, locked by a test. **(c)** Sparse cells reach A/E in the thousands (one claim against 0.0005 expected). The heat map already clamps and captions; the pivot had no signal, so both A/E explorers gain a minimum-claims floor — **default 0, so nothing is hidden by default** — and totals always aggregate every cell. 2 tests. **(d)** Iteration history was keyed on `workflow_session_id`, so opening a step page directly showed an empty history while the page minted a fresh id. Both panels now read the history of the **assumption set**; the session id remains the write-side grouping key. |
+
+---
+
 ## Still open
 
-- Observations **OBS-6, OBS-7, OBS-8, OBS-10** and the stale documentation items
-  **OBS-1 / OBS-2** in `DEFERRED_FOLLOWUPS.md`.
 - Owner-only: eval-set re-lock, the optional live eval baseline, and the browser
   walk of the demo script (needs the owner's login keystroke).
+- **FU-7** demo-refresh deferrals and **FU-8** (segregation keys on the account,
+  not the person) remain recorded as accepted, not defects.

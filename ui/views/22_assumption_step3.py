@@ -26,7 +26,7 @@ import yaml
 
 from src.utils.types import ArtifactType, Decision, DecrementType
 from src.assumptions.assumption_set import load_assumption_set
-from src.assumptions.workflow import get_workflow_iterations
+from src.assumptions.workflow import get_iterations_for_set
 
 # Phase 4 — configurable approval chain (FR-4-12..18).
 from src.governance.auth import current_user
@@ -181,7 +181,7 @@ st.divider()
 # Iteration history for audit trail
 # ---------------------------------------------------------------------------
 st.subheader("Iteration History")
-history = get_workflow_iterations(DB_PATH, workflow_session_id)
+history = get_iterations_for_set(DB_PATH, aset_id)
 total_iterations = len([h for h in history if h.get("stage") in (2, 3)])
 
 if history:

@@ -22,7 +22,7 @@ simulation. Implementation:
 
 ---
 
-## [x] Pre-existing test-suite failures + test hygiene — **RESOLVED (2026-05-31)**
+## [x] Pre-existing test-suite failures + test hygiene — **RESOLVED (2026-05-31; last three items closed 2026-08-31)**
 
 Started at **51 failures**; the full suite now reports **679 passed, 6 skipped, 0 failed**, and the
 production DB is rebuilt clean (1 study run, DA DQ 100%, one TEV baseline). Detail of the final round:
@@ -68,28 +68,29 @@ Final result: **679 passed, 6 skipped, 0 failed.** (`scripts/_uat_rerun.py` +
   prior failure was a degenerate/stale baseline, not a bug. `test_assumption_set` was fixed to resolve
   the latest run dynamically (its hardcoded run_id went stale after the DB rebuild). 38/38 pass.
 
-### [ ] Remaining 1 — Integration-test DB isolation (causes 5 flaky TEV directional failures)
-`test_tev_engine`, `test_assumption_set`, `test_envelope`, `test_workflow` use the **real**
-`DB_PATH` directly and **write** assumption sets / TEV runs to it. The TEV directional tests pick the
-"latest assumption set / baseline", which earlier tests overwrite — so they **pass in isolation but
-fail in the full suite** (order-dependent). Fix: extend the conftest temp-copy pattern to these
-integration tests (and have the TEV tests create their own baseline in the copy). Medium refactor.
+### [x] Remaining 1 — Integration-test DB isolation — **RESOLVED (superseded 2026-08-30/31)**
+Named `test_tev_engine`, `test_assumption_set`, `test_envelope` and `test_workflow` as writing to
+the real `DB_PATH`. Three of the four no longer exist: `test_tev_engine` and `test_envelope` were
+**deleted with the TEV module in demo-refresh P3**, and `scripts/_uat_tev_baseline.py` with them.
+The two survivors are properly isolated — `test_assumption_set.py` mirrors the DB to a temp copy,
+`tests/test_workflow.py` builds a fresh temp DB — and a full `pytest tests/` leaves
+`data/experience_study.duckdb` unchanged. Verified during the 2026-08-31 adversarial review
+(OBS-1). Nothing to do.
 
-### [ ] Remaining 2 — WL lapse+surrender A/E calibration (1 test)
-`test_acceptance_wl::test_wl_lapse_ae_in_spec` expects WL lapse+surrender A/E in [0.80, 1.10]; the
-canonical seed-42 data yields **1.39** (812 actual / 584 expected). This is the **same class** as the
-accepted M3 (low mortality A/E) and M5 (VUL high lapse) calibration deviations. **Decision needed:**
-accept (widen the acceptance band / mark as known deviation) or recalibrate the WL lapse basis.
+### [x] Remaining 2 — WL lapse+surrender A/E calibration — **RESOLVED (2026-08-31)**
+The "accepted calibration deviation" (A/E 1.39 against a spec band of 0.90–1.05) was never a data
+problem: the test summed `actual_surrenders` on top of `actual_lapses`, but `actual_lapses` already
+counts surrenders as discontinuances, so every WL surrender was counted twice. Fixed in the
+adversarial-review actuarial batch (M-3); the acceptance band is back to 0.80–1.10 and passes on the
+canonical seed-42 data. The double-count is documented in the test's own docstring.
 
-### [ ] Remaining 3 — RPU/ETT exposure segments (1 test, pre-existing)
-`test_exposure_wl_ul::test_rpu_and_ett_policies_have_exposure_segments` finds **no** exposure segments
-for non-forfeiture (RPU/ETT) WL policies. Pre-existing (in the original 51). Investigate whether the
-WL generator produces RPU/ETT policies and whether the exposure engine emits segments for them.
-
-> **Test-hygiene note:** until Remaining-1 is done, running `pytest tests/` writes assumption-set/TEV
-> rows to `data/experience_study.duckdb`. The DB has been rebuilt clean (1 study run, DA DQ 100%, one
-> TEV baseline); re-run `scripts/_uat_rerun.py` + `scripts/_uat_tev_baseline.py` after a full pytest
-> run if you need a pristine DB.
+### [x] Remaining 3 — RPU/ETT exposure segments — **RESOLVED (closed 2026-08-31)**
+The test found no exposure segments for non-forfeiture (RPU/ETT) WL policies because the generator
+produces **none** — all 7,000 WL policies are `ACTIVE`. Non-forfeiture simulation was deliberately
+removed from the WL generator on 2026-05-21, at which point the base lapse rate came to represent
+lapse **and** surrender combined (the context that makes the M-1/M-3 discontinuance semantics
+legible). `tests/test_exposure_wl_ul.py:271` records this and skips with that reason. Closed as
+answered (OBS-2); re-open only if non-forfeiture election is reintroduced.
 
 ---
 

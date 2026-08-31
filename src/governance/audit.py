@@ -268,6 +268,13 @@ def verify_chain(table: str, *, db_path: str = DEFAULT_DB_PATH) -> IntegrityResu
     row's stored ``entry_hash`` (empty string for the first) — and (b) integrity —
     the ``entry_hash`` recomputed from the stored business columns (per the §G.2
     rule, exactly as ``append_event`` computed it) equals the stored ``entry_hash``.
+    The chain is tamper-**evident**, not tamper-proof (adversarial review OBS-6):
+    the hash is unkeyed, so an actor holding both database write access and the
+    source can recompute a consistent chain after an edit. Closing that needs a
+    signing key held outside the database or an external append-only store;
+    neither is in scope here, and the UI states the limit where the result is
+    shown rather than letting "intact" read as cryptographic proof.
+
     Passes on an untouched log; fails on a tampered business column or a broken
     link, reporting the ``seq`` of the first failing row (FR-4-21). A log with no
     hashed rows (pre-Phase-4 Phase-2 rows have NULL hashes) verifies as

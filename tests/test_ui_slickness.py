@@ -118,3 +118,29 @@ def test_every_download_surface_gates_on_export() -> None:
         if "export_button" in src and "st.download_button(" in src:
             offenders.append(f"{view.name} (mixed raw/gated)")
     assert not offenders, f"ungated download surfaces: {offenders}"
+
+
+# ---------------------------------------------------------------------------
+# Claims the UI makes about its own guarantees (adversarial review OBS-6, OBS-10)
+# ---------------------------------------------------------------------------
+
+def test_integrity_panel_states_the_limit_of_an_unkeyed_chain():
+    """"intact ✓" must not be readable as cryptographic proof.
+
+    The hash chain is unkeyed, so an actor with database write access AND the
+    source can re-chain after an edit. The docs have always said "tamper-evident"
+    rather than "tamper-proof"; the page where a client reads the verdict has to
+    say so too (OBS-6).
+    """
+    page = (_VIEWS / "26_governance_audit.py").read_text(encoding="utf-8")
+    assert "tamper-**evident**, not tamper-proof" in page
+    assert "unkeyed" in page
+    assert "re-chain" in page
+
+
+def test_ae_explorers_offer_the_sparse_cell_floor():
+    """Both A/E explorers expose the minimum-claims control (OBS-10)."""
+    for name in ("04_mortality_ae.py", "05_lapse_ae.py"):
+        page = (_VIEWS / name).read_text(encoding="utf-8")
+        assert "min_claims" in page, f"{name} has no sparse-cell floor"
+        assert "0 = show every cell" in page, f"{name} does not say the default shows all"

@@ -226,6 +226,16 @@ tab_base, tab_plt, tab_persist = st.tabs(
 
 # ── Base lapse tab ────────────────────────────────────────────────────────────
 
+min_claims = st.number_input(
+    "Minimum actual discontinuances per cell (0 = show every cell)",
+    min_value=0, max_value=100, value=0, step=1,
+    help=(
+        "Blanks A/E cells built on fewer than this many actual events. Sparse "
+        "cells are arithmetically correct but carry near-zero credibility. "
+        "Totals always aggregate every cell."
+    ),
+)
+
 with tab_base:
     st.subheader("Base Lapse A/E Pivot Table")
     base_filters = dict(filters)
@@ -239,6 +249,7 @@ with tab_base:
             col_dims=col_dims,
             filters=base_filters,
             measure=measure,
+            min_claims=min_claims,
         )
 
         if pivot_df.empty:

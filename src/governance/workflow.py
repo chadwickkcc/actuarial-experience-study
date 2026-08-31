@@ -39,7 +39,11 @@ import yaml
 
 from src.governance import rbac
 from src.governance.audit import append_event, record_ae_event
-from src.governance.lineage import compare_versions, create_version
+from src.governance.lineage import (
+    compare_versions,
+    create_version,
+    supersede_other_approved,
+)
 from src.governance.rbac import Action, PermissionDenied
 from src.governance.users import DEFAULT_CONFIG_PATH
 from src.assumptions.workflow import transition_assumption_set_status
@@ -524,6 +528,11 @@ def record_signoff(
             transition_assumption_set_status(
                 Path(db_path), artifact_id, "APPROVED", approved_by=user.username
             )
+            # A completing chain makes this the current approved set, so any earlier
+            # one in the lineage is superseded here rather than only on the publish
+            # path — "at most one APPROVED-current per lineage" is an invariant
+            # (FR-4-08 / NFR-G-05; adversarial review OBS-7).
+            supersede_other_approved(artifact_id, db_path=db_path)
         elif artifact_type == ArtifactType.STUDY_RUN:
             # Study run: "fit" is derived from sign-off rows; nothing to lock. Record
             # the lifecycle milestone in the A/E governance-events log (FR-4-19).
