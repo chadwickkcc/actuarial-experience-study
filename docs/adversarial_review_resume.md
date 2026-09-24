@@ -78,7 +78,7 @@ Run `3f883e90-580a-42c8-8533-f32efebf3f05`, COMPLETE in ~12 s.
 | Fraud scan | 1,808 claims scored · **18 flagged** · max composite 1.20 · ring is the **top 14 contiguously** |
 | Assumption sets | 1 APPROVED (3 hash-chained sign-offs) + 1 at STAGE3_APPROVED awaiting level 1, so Step 3 is demonstrable |
 | AI activity log | 4 seeded offline turns — 2 answered, 1 refused, 1 blocked by the numeric check |
-| AI models | 16 registry rows · 324 proposed factors |
+| AI models | 22 registry rows (16 current + 6 superseded by the 2026-09-25 GLM refit) · 320 proposed factors |
 
 `docs/demo_walkthrough.md` and `docs/demo_refresh_uat.md` carry the current figures
 and were updated whenever a fix moved one. If the DB is ever rebuilt, the documented
