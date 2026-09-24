@@ -127,6 +127,34 @@ def test_fit_excludes_zero_expected_cells():
     assert bands == {"1", "2-5"}            # the zero-expected band is excluded
 
 
+def test_fit_excludes_zero_event_covariate_level():
+    """A covariate level with no events at all has no finite MLE: its coefficient
+    runs to -inf (separation), so the fit wobbles on float noise and publishes an
+    artefact factor near zero. Its cells must be left out of the fit.
+
+    Here the zero-event level is also the reference level (first alphabetically),
+    which is how the live WL mortality fit failed: age 25-29, 0 deaths.
+    """
+    rows = []
+    for gender in ("F", "M"):
+        for band, expected, actual in (("25-29", 0.3, 0), ("30-34", 20.0, 18), ("35-39", 40.0, 44)):
+            rows.append({
+                "study_run_id": "R", "product_code": "WL", "gender": gender,
+                "attained_age_band": band, "expected_deaths_count": expected,
+                "actual_deaths_count": actual, "exposure_count": expected * 100,
+            })
+    res = fit_glm(
+        pd.DataFrame(rows), DecrementType.MORTALITY, "WL",
+        covariates=["gender", "attained_age_band"], output_grain=["attained_age_band"],
+        min_events_to_fit=10, seed=42,
+    )
+    assert res.converged, res.message
+    factors = {fc.grain_key["attained_age_band"]: fc.factor for fc in res.factors}
+    assert set(factors) == {"30-34", "35-39"}      # the zero-event band is excluded
+    assert factors["30-34"] == pytest.approx(0.9, abs=1e-4)
+    assert factors["35-39"] == pytest.approx(1.1, abs=1e-4)
+
+
 def test_load_cells_mortality_detail_rows(synthetic_db):
     cells = load_cells(synthetic_db.db_path, synthetic_db.run_id,
                        DecrementType.MORTALITY, "TERM")

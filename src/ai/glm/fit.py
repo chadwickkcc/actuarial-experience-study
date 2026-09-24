@@ -272,6 +272,20 @@ def _fit_core(
     fit_cells = fit_cells[
         fit_cells[denom_col].astype(float) >= _MIN_BASIS_PER_CELL
     ].reset_index(drop=True)
+
+    # Drop cells in any covariate level with no events at all. Such a level has
+    # no finite MLE: its coefficient runs to -inf (separation), IRLS stops
+    # wherever float noise leaves it, and the level's factor publishes as a
+    # ~1e-8 artefact. This is what still made the fit order-dependent after the
+    # cell-level threshold above — WL mortality age 25-29 had 0 deaths (M-20).
+    # Removed cells all carry zero events, so no other level's total changes and
+    # one pass is exact.
+    keep = np.ones(len(fit_cells), dtype=bool)
+    for cov in used:
+        level_events = fit_cells.groupby(cov, dropna=False)[actual_col].transform("sum")
+        keep &= level_events.to_numpy(dtype=float) > 0
+    fit_cells = fit_cells[keep].reset_index(drop=True)
+    used = _used_covariates(fit_cells, used)   # a covariate may now be constant
     if fit_cells.empty:
         raise ValueError(f"no fittable cells (all {denom_col} <= 0)")
     return _fit_from_fitting_cells(fit_cells, used, decrement)
