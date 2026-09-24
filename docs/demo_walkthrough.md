@@ -162,4 +162,4 @@ If you regenerate the data, refresh them from `docs/demo_refresh_progress.md`.
 | WL mortality (AI Analyst answer) | 0.6561 = 611 / 931.26 |
 | Fraud scan | 1,808 scored · 18 flagged · max 1.20 |
 | Ring entities | OFF-013 · HOSP-066 · CLM-424242 ×4 · SOUTHWEST |
-| AI models / proposed factors | 22 registry rows (16 current) · 320 factors |
+| AI models / proposed factors | 16 registry rows · 320 factors |

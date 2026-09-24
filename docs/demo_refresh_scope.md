@@ -189,7 +189,8 @@ from client-visible copy (grep-guarded).
   6 skipped**.
 - **Live-DB rebuild rule:** any phase changing DDL or the generator ends with a headless
   rebuild (`scripts/reset_for_testing.py` → `scripts/_uat_rerun.py` → `scripts/_uat_ai_fit.py`
-  → `scripts/_uat_seed_workflow.py` → `scripts/_uat_seed_ai_activity.py`) so realdata
+  → `scripts/_uat_seed_workflow.py` → `scripts/_uat_seed_ai_activity.py`
+  → `scripts/_uat_finish.py`) so realdata
   tests + the running app stay coherent, hash
   chains restart fresh, and the DB ships with seeded users + one completed example
   assumption-set workflow (P8 addition — `_uat_rerun.py` also seeds `gold_users`).

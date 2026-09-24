@@ -62,8 +62,12 @@ Read on demand (not auto-loaded — they are large):
   Data quality is custom rule-based validators.
 - Test gate (no API keys, MockProvider only):
   `unset ANTHROPIC_API_KEY DEEPSEEK_API_KEY OPENAI_API_KEY && .venv/bin/python -m pytest tests/ -v --tb=short`
-- Rebuild the demo DB: `scripts/reset_for_testing.py` (clears rows, then compacts the file) →
-  `scripts/_uat_rerun.py` → `scripts/_uat_ai_fit.py` → `scripts/_uat_seed_workflow.py` →
-  `scripts/_uat_seed_ai_activity.py`, then re-run the fraud scan. Source CSVs come from
-  `synthetic_data/generate_all.py` (output in `synthetic_data/output/`, gitignored).
+- Rebuild the demo DB: `scripts/_uat_rerun.py` → `scripts/_uat_ai_fit.py` →
+  `scripts/_uat_seed_workflow.py` → `scripts/_uat_seed_ai_activity.py` → `scripts/_uat_finish.py`
+  (fraud scan + the two A/E reports). Works from no DB at all; on an existing DB run
+  `scripts/reset_for_testing.py` first (clears rows, then compacts the file). Source CSVs come
+  from `synthetic_data/generate_all.py` (output in `synthetic_data/output/`, gitignored).
+- **Parked 2026-09-25:** `.venv/` and the demo DB were deleted to free disk space. Restore with
+  `uv venv --python 3.12 && uv pip sync requirements.lock --python .venv/bin/python`, then the
+  rebuild above (see `docs/adversarial_review_resume.md` §5).
 - Run the app: `.venv/bin/streamlit run ui/app.py`.

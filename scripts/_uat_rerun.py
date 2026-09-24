@@ -25,6 +25,7 @@ from ui.config import (
 )
 from src.calculation.ae_engine import calculate_ae
 from src.governance.users import seed_users_from_config
+from src.utils.db_init import init_database
 from src.data_quality.runner import DQCriticalFailure, run_dq_checks
 from src.exposure.engine import build_exposure_file
 from src.ingestion.pipeline import run_etl_pipeline
@@ -57,6 +58,7 @@ def main() -> None:
         credibility_method=CredibilityMethod("LF"),
     )
 
+    init_database(str(DB_PATH))  # idempotent — lets a rebuild start from no DB at all
     seed_users_from_config()  # idempotent — headless rebuilds must not ship an empty gold_users
     con = duckdb.connect(str(DB_PATH))
     con.execute(

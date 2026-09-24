@@ -69,21 +69,35 @@ for s in uat_section2 uat_section3_3_runner uat_section3_7_runner uat_section4_4
 
 ---
 
-## 5. The demo database as it stands
+## 5. The demo database
 
-Run `3f883e90-580a-42c8-8533-f32efebf3f05`, COMPLETE in ~12 s.
+**Parked on 2026-09-25 to free disk space:** `.venv/`, the database, the AI model files,
+the assumption-set YAMLs and the generated reports were deleted. All of them are derived
+and rebuild in a few minutes from the repo. The source CSVs in `synthetic_data/output/`
+were kept (regenerate with `synthetic_data/generate_all.py` if they are ever missing).
+To restore, from the project root:
+
+```bash
+uv venv --python 3.12 && uv pip sync requirements.lock --python .venv/bin/python
+for s in _uat_rerun _uat_ai_fit _uat_seed_workflow _uat_seed_ai_activity _uat_finish; do
+  .venv/bin/python scripts/$s.py
+done
+```
+
+This sequence was tested from no DB at all before the deletion; it reproduces every
+figure below. Only the IDs change (a new run ID each rebuild). The table shows the state
+a rebuild produces:
 
 | Surface | State |
 |---|---|
 | Fraud scan | 1,808 claims scored · **18 flagged** · max composite 1.20 · ring is the **top 14 contiguously** |
 | Assumption sets | 1 APPROVED (3 hash-chained sign-offs) + 1 at STAGE3_APPROVED awaiting level 1, so Step 3 is demonstrable |
 | AI activity log | 4 seeded offline turns — 2 answered, 1 refused, 1 blocked by the numeric check |
-| AI models | 22 registry rows (16 current + 6 superseded by the 2026-09-25 GLM refit) · 320 proposed factors |
+| AI models | 16 registry rows · 320 proposed factors |
 
 `docs/demo_walkthrough.md` and `docs/demo_refresh_uat.md` carry the current figures
-and were updated whenever a fix moved one. If the DB is ever rebuilt, the documented
-sequence is reset → `_uat_rerun.py` → `_uat_ai_fit.py` → `_uat_seed_workflow.py` →
-`_uat_seed_ai_activity.py`, then re-run the fraud scan.
+and were updated whenever a fix moved one. They quote run `3f883e90…`, the run that was
+live before the 2026-09-25 parking; a rebuild gets a new run ID with the same figures.
 
 ---
 
