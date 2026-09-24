@@ -1,7 +1,8 @@
 # Deferred Follow-ups — Revisit Before / During Next Phase
 
 Status of the two items deferred during the 2026-05-31 UAT remediation, plus the test-suite
-repair that followed. See `docs/UAT_EVIDENCE_EVALUATION_2026-05-31.md` for the original context.
+repair that followed. The original context (`docs/UAT_EVIDENCE_EVALUATION_2026-05-31.md`) was
+deleted in the 2026-09-25 cleanup; it is recoverable from git history.
 
 ---
 
@@ -103,7 +104,9 @@ separate tasks rather than folded into the docs-only reconciliation.
 
 ### [ ] FU-1 — Stale spec-filename references in source & tests
 **Root cause:** docstrings/comments still cite the old archived spec names (`technical_spec.md`,
-`requirements_spec_v2.md`), which now resolve only to `docs_archive/`.
+`requirements_spec_v2.md`). `docs_archive/` was deleted in the 2026-09-25 cleanup, so these now
+resolve to nothing; the same Phase 1 content lives in `docs/experience_study_requirements_spec_v4_0.md`
+and `docs/experience_study_technical_spec_v3_0.md`.
 **Locations:** all 5 generators (`synthetic_data/generators/{term,annuity,whole_life,ul,vul}.py`),
 `src/data_quality/runner.py:3`, `tests/test_acceptance.py:5`, `tests/test_acceptance_1c.py:5`.
 **Action:** `technical_spec.md` → `experience_study_technical_spec_v1.2.md`;

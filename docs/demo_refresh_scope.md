@@ -2,8 +2,8 @@
 
 **Status:** ACTIVE (authored 2026-08-30, P0). This document is the **authoritative record of
 every decision, schema and contract this demo refresh changes**. Where it conflicts with the
-legacy specs (`experience_study_requirements_spec_v3_0_1.md` / `_v4_0.md`,
-`experience_study_technical_spec_v2_0_1.md` / `_v3_0.md`), **this document supersedes them** —
+legacy specs (`experience_study_requirements_spec_v4_0.md`,
+`experience_study_technical_spec_v3_0.md`), **this document supersedes them** —
 the legacy specs remain valid for everything not named here. CLAUDE.md rules 1–2 (exact DDL /
 exact interfaces) now point here for the schemas and interfaces changed by the refresh.
 
