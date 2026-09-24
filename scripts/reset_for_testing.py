@@ -30,8 +30,10 @@ until you next use the AI features (Fit AI models, AI Analyst, eval harness), wh
 desired clean state for a fresh end-to-end test.
 
 Notes on disk usage:
-  - DuckDB DELETE removes rows but does not shrink the .duckdb file on disk; this applies to
-    every table, AI Gold tables included.
+  - DuckDB DELETE removes rows but does not shrink the .duckdb file on disk, so after
+    clearing, the script rewrites the file into a fresh copy (compact_database) to release
+    the space. It also deletes the assumption-set YAMLs under data/assumption_sets/, whose
+    only index (gold_assumption_sets) is always cleared.
   - The on-disk model artifacts under data/ai_models/ live OUTSIDE the database and are never
     overwritten (each fit gets a unique model_id), so they grow indefinitely. A normal reset
     empties the registry that indexes them but leaves the files (harmless orphans); pass
@@ -134,6 +136,40 @@ def clear_ai_model_artifacts(ai_models_dir: Path, dry_run: bool = False) -> None
     print(f"  {status}: {ai_models_dir}  ({len(files):,} files, {total_mb:.1f} MB removed)")
 
 
+def clear_assumption_set_yamls(yaml_dir: Path, dry_run: bool = False) -> None:
+    """Delete the per-set YAML files under data/assumption_sets/.
+
+    gold_assumption_sets (their only index) is always cleared, so the YAMLs would
+    otherwise be left behind as orphans after every reset.
+    """
+    files = list(yaml_dir.glob("*.yaml")) if yaml_dir.exists() else []
+    if not dry_run:
+        for p in files:
+            p.unlink()
+    status = "DRY RUN" if dry_run else "cleared"
+    print(f"  {status}: {yaml_dir}  ({len(files):,} assumption-set YAML files)")
+
+
+def compact_database(db_path: Path) -> None:
+    """Rewrite the DuckDB file so the space freed by the DELETEs is released.
+
+    DuckDB's DELETE never shrinks the file, so without this the file grows with
+    every reset/rebuild cycle. Copying into a fresh file keeps schema, indexes and
+    constraints and drops the dead space.
+    """
+    tmp = db_path.with_name(db_path.stem + ".compact.duckdb")
+    tmp.unlink(missing_ok=True)
+    before = db_path.stat().st_size
+    con = duckdb.connect()
+    con.execute(f"ATTACH '{str(db_path).replace(chr(39), chr(39) * 2)}' AS src (READ_ONLY)")
+    con.execute(f"ATTACH '{str(tmp).replace(chr(39), chr(39) * 2)}' AS dst")
+    con.execute("COPY FROM DATABASE src TO dst")
+    con.close()
+    tmp.replace(db_path)
+    after = db_path.stat().st_size
+    print(f"  compacted: {db_path.name}  ({before / 1e6:,.0f} MB -> {after / 1e6:,.0f} MB)")
+
+
 def reset(
     db_path: Path,
     dry_run: bool = False,
@@ -191,6 +227,10 @@ def reset(
         cleared += 1
 
     con.close()
+
+    clear_assumption_set_yamls(db_path.parent / "assumption_sets", dry_run=dry_run)
+    if not dry_run:
+        compact_database(db_path)
 
     if include_ai_models:
         ai_models_dir = db_path.parent / "ai_models"
