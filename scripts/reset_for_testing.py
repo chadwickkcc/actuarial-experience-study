@@ -11,7 +11,7 @@ Clears by default:
     log, eval results)
 A plain run therefore returns the database to an empty-schema state so old runs do
 not pile up across reset/Run-Study cycles. Bronze is rebuilt from the source CSVs
-under data/raw/ on the next "Run Study", so clearing it loses nothing recoverable.
+under synthetic_data/output/ on the next "Run Study", so clearing it loses nothing recoverable.
 
 Preserves:
   - Bronze tables                                [only if --keep-bronze is passed]
@@ -21,7 +21,7 @@ Preserves:
                                                  [unless --include-governance is passed]
   - Login accounts (gold_users) — ALWAYS preserved; the app also re-seeds them from
     config/governance_config.yaml on start, so a reset never locks you out
-  - Source CSVs (data/raw/) and reference Parquet files — never in the DB, never touched
+  - Source CSVs (synthetic_data/output/) and reference Parquet files — never in the DB, never touched
   - Database schema (tables remain; only rows are deleted)
 
 After running this script, use "Run Study" in the Study Setup page to repopulate Bronze,

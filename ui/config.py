@@ -21,7 +21,6 @@ DEFAULT_STUDY_END = "2023-12-31"
 DEFAULT_MORTALITY_TABLE = str(REFERENCE_TABLES_DIR / "mortality_2015vbt.parquet")
 DEFAULT_LAPSE_TABLE = str(REFERENCE_TABLES_DIR / "lapse_benchmarks.parquet")
 DEFAULT_CI_TABLE = str(REFERENCE_TABLES_DIR / "ci_incidence.parquet")
-DEFAULT_ANNUITY_MORTALITY_TABLE = str(REFERENCE_TABLES_DIR / "mortality_2012iar.parquet")
 
 def require_auth():
     """Block a page unless a user is authenticated; return the current ``User``.

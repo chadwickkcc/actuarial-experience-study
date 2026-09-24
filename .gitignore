@@ -26,13 +26,10 @@ tests/_artifacts/
 backups/
 
 # --- Runtime data & generated output (kept locally, not published) ---
-# Ignore everything under data/ except the directory placeholders, so a fresh
+# Ignore everything under data/ except the directory placeholder, so a fresh
 # clone has the structure the app + init_database() expect but no run data.
 data/*
 !data/.gitkeep
-!data/raw/
-data/raw/*
-!data/raw/.gitkeep
 reports/*
 !reports/.gitkeep
 synthetic_data/output/
