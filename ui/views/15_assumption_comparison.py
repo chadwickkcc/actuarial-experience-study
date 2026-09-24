@@ -154,7 +154,24 @@ rename = {
     "approved_factor": "Currently-approved factor",
 }
 display = table.rename(columns=rename)
-st.dataframe(display, use_container_width=True)
+# Fixed 4 dp so a bootstrap lower bound of ~1e-15 reads as 0.0000, not in
+# scientific notation. Display only: the CSV below keeps full precision.
+_factor_format = st.column_config.NumberColumn(format="%.4f")
+st.dataframe(
+    display,
+    use_container_width=True,
+    column_config={
+        col: _factor_format for col in (
+            "A/E-derived factor", "GLM proposed factor", "GLM 95% CI low",
+            "GLM 95% CI high", "GBM reference factor (challenge)",
+            "Currently-approved factor",
+        )
+    },
+)
+st.caption(
+    "A CI lower bound of 0.0000 means the interval runs down to zero: in cells "
+    "with only a death or two expected, many bootstrap resamples draw no deaths."
+)
 export_button(
     "Download factors (CSV)",
     data=display.to_csv(index=False).encode("utf-8"),
