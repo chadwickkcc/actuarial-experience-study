@@ -7,6 +7,7 @@ gold_assumption_sets table.
 from __future__ import annotations
 
 from datetime import datetime
+from pathlib import Path
 
 import duckdb
 import pytest
@@ -118,6 +119,39 @@ def test_find_ai_proposal_for_set(tmp_path):
     assert find_ai_proposal_for_set(db, "OTHER_RUN") is None
 
 
+def test_find_ai_proposal_matches_the_decrement_and_product_being_edited(tmp_path):
+    """Filtered lookup returns the model for that pair, not the latest fit overall.
+
+    Without filters the latest GLM of *any* product wins, so an actuary editing WL
+    mortality could be offered a TERM CI model just because it was fitted last.
+    """
+    db = _fresh_db(tmp_path)
+    con = duckdb.connect(str(db))
+    try:
+        for model_id, dec, prod, ts in (
+            ("WL_MORT", "MORTALITY", "WL", datetime(2026, 1, 1)),
+            ("TERM_CI", "CI_INCIDENCE", "TERM", datetime(2026, 1, 2)),   # fitted last
+        ):
+            con.execute(
+                """
+                INSERT INTO gold_ai_model_registry (
+                    model_id, run_id, model_type, decrement, product_code, fit_ts,
+                    converged, n_cells, artifact_path, data_snapshot_hash, config_hash,
+                    code_version, seed
+                ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)
+                """,
+                [model_id, "RUN1", "GLM", dec, prod, ts, True, 10, "/tmp/x.pkl",
+                 "snap", "cfg", "0.17", 42],
+            )
+    finally:
+        con.close()
+
+    assert find_ai_proposal_for_set(db, "RUN1")["model_id"] == "TERM_CI"
+    matched = find_ai_proposal_for_set(db, "RUN1", decrement="MORTALITY", product_code="WL")
+    assert matched["model_id"] == "WL_MORT"
+    assert find_ai_proposal_for_set(db, "RUN1", decrement="LAPSE", product_code="WL") is None
+
+
 def _minimal_aset(aset_id):
     return AssumptionSet(
         id=aset_id, version=1, status=AssumptionSetStatus.PROPOSED,
@@ -148,3 +182,57 @@ def test_provenance_survives_a_plain_resave(tmp_path):
         con.close()
     assert abs(row[0] - 0.917) < 1e-9, "provenance value was wiped on re-save"
     assert row[1] == "model-keep", "provenance model_id was wiped on re-save"
+
+
+# --------------------------------------------------------------------------
+# Step 2 page: the adopt box offers the model for the pair the actuary names
+# --------------------------------------------------------------------------
+_LIVE_DB = Path("data/experience_study.duckdb")
+
+
+def _live_set_with_wl_mortality_glm():
+    """(assumption_set_id) of a live set whose source run has a WL mortality GLM."""
+    if not _LIVE_DB.exists():
+        return None
+    con = duckdb.connect(str(_LIVE_DB), read_only=True)
+    try:
+        row = con.execute(
+            "SELECT s.assumption_set_id FROM gold_assumption_sets s "
+            "JOIN gold_ai_model_registry r ON r.run_id = s.source_study_run_id "
+            "WHERE r.model_type = 'GLM' AND r.converged "
+            "AND r.decrement = 'MORTALITY' AND r.product_code = 'WL' LIMIT 1"
+        ).fetchone()
+    finally:
+        con.close()
+    return row[0] if row else None
+
+
+def test_step2_adopt_box_matches_the_edited_decrement_and_product():
+    set_id = _live_set_with_wl_mortality_glm()
+    if set_id is None:
+        pytest.skip("live DB has no assumption set with a WL mortality GLM")
+    from unittest.mock import patch
+
+    from streamlit.testing.v1 import AppTest
+    from src.utils.types import Role, User
+
+    analyst = User(user_id="t-analyst", username="a.analyst", display_name="A. Analyst",
+                   role=Role.ANALYST, active=True)
+    with patch("src.governance.auth.current_user", return_value=analyst):
+        at = AppTest.from_file("ui/views/21_assumption_step2.py", default_timeout=60)
+        at.session_state["active_assumption_set_id"] = set_id
+        at.run()
+        assert not at.exception, list(at.exception)
+
+        at.selectbox(key="s2_ai_decrement").set_value("Mortality")
+        at.selectbox(key="s2_ai_product").set_value("WL")
+        at.run()
+        captions = " ".join(c.value for c in at.caption)
+        assert "GLM proposal for Mortality / WL" in captions
+        assert not at.checkbox(key="s2_adopt_ai").disabled
+
+        at.selectbox(key="s2_ai_product").set_value("IUL")   # no IUL mortality GLM
+        at.run()
+        captions = " ".join(c.value for c in at.caption)
+        assert "No GLM proposal was fitted for Mortality / IUL" in captions
+        assert at.checkbox(key="s2_adopt_ai").disabled

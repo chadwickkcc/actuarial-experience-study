@@ -1021,18 +1021,26 @@ def record_ai_provenance(
 def find_ai_proposal_for_set(
     db_path: Path,
     source_study_run_id: str,
+    decrement: Optional[str] = None,
+    product_code: Optional[str] = None,
 ) -> Optional[dict]:
     """Return the latest registered GLM model for a study run, if any.
 
-    Used by the Stage 2 editor to know whether an AI proposal exists for the
+    Used by the Step 2 editor to know whether an AI proposal exists for the
     assumption set's source experience-study run (so it can offer the adopt
     affordance). Reads only ``gold_ai_model_registry`` (read-only). Returns the
     most recently fitted *converged* GLM row as a dict, or ``None`` when no AI
     model has been fitted for the run.
 
+    Pass ``decrement`` and ``product_code`` to get the model for the cells the
+    actuary is editing; without them the latest fit of *any* product/decrement
+    is returned, which only answers "does any proposal exist for this run".
+
     Args:
         db_path:             Path to the DuckDB file.
         source_study_run_id: The study run the assumption set was built from.
+        decrement:           Optional ``DecrementType`` value to match, e.g. ``"MORTALITY"``.
+        product_code:        Optional product code to match, e.g. ``"WL"``.
 
     Returns:
         ``{"model_id", "decrement", "product_code", "fit_ts"}`` or ``None``.
@@ -1043,8 +1051,10 @@ def find_ai_proposal_for_set(
             "SELECT model_id, decrement, product_code, fit_ts "
             "FROM gold_ai_model_registry "
             "WHERE run_id = ? AND model_type = 'GLM' AND converged = TRUE "
+            "AND (CAST(? AS VARCHAR) IS NULL OR decrement = ?) "
+            "AND (CAST(? AS VARCHAR) IS NULL OR product_code = ?) "
             "ORDER BY fit_ts DESC LIMIT 1",
-            [source_study_run_id],
+            [source_study_run_id, decrement, decrement, product_code, product_code],
         ).fetchone()
     finally:
         con.close()

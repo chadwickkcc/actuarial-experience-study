@@ -345,24 +345,50 @@ with col_save:
 # If a GLM proposal was fitted for this assumption set's source study run (on the
 # Assumption Comparison page), the actuary may record that this edit adopts it.
 # Adoption happens here — never on the read-only comparison page (FR-3A-44).
-_ai_proposal = find_ai_proposal_for_set(DB_PATH, aset.source_study_run_id)
+#
+# The set spans every product and three decrements, and the tabs above don't report
+# which one is open, so the actuary names the cells the adoption is for; only the GLM
+# fitted for exactly that decrement/product is offered.
+_ai_proposal = None
 _adopt_ai = False
 _adopted_value = None
-if _ai_proposal is not None:
+if find_ai_proposal_for_set(DB_PATH, aset.source_study_run_id) is not None:
     with st.expander("🤖 Adopt AI proposal (records provenance)"):
-        st.caption(
-            f"A GLM proposal exists for this source study run "
-            f"(model `{_ai_proposal['model_id'][:8]}…`, {_ai_proposal['decrement']} / "
-            f"{_ai_proposal['product_code']}). Tick below and enter the adopted "
-            "factor; on save, the AI-proposed value and model id are stamped onto "
-            "this assumption set. The save comment above is the required justification. "
-            "This **updates the assumption set you are editing in place** — it does "
-            "not create a new set (new sets are minted only in Step 1)."
+        _dec_labels = {"Mortality": "MORTALITY", "Lapse": "LAPSE", "CI incidence": "CI_INCIDENCE"}
+        # CI rows are keyed by illness code, but the CI GLM is fitted per policy
+        # product, so every decrement offers the set's policy products.
+        _products = sorted(
+            {m.product for m in aset.mortality_multipliers + aset.lapse_multipliers}
         )
-        _adopt_ai = st.checkbox("This save adopts the AI proposal", key="s2_adopt_ai")
+        _col_dec, _col_prod = st.columns(2)
+        _dec = _col_dec.selectbox("Decrement you edited", list(_dec_labels), key="s2_ai_decrement")
+        _prod = _col_prod.selectbox("Product you edited", _products, key="s2_ai_product")
+        if _prod:
+            _ai_proposal = find_ai_proposal_for_set(
+                DB_PATH, aset.source_study_run_id,
+                decrement=_dec_labels[_dec], product_code=_prod,
+            )
+        if _ai_proposal is None:
+            st.caption(
+                f"No GLM proposal was fitted for {_dec} / {_prod} on this study run, "
+                "so there is nothing to adopt for these cells."
+            )
+        else:
+            st.caption(
+                f"GLM proposal for {_dec} / {_prod} "
+                f"(model `{_ai_proposal['model_id'][:8]}…`). Tick below and enter the "
+                "adopted factor; on save, the AI-proposed value and model id are stamped "
+                "onto this assumption set. The save comment above is the required "
+                "justification. This **updates the assumption set you are editing in "
+                "place** — it does not create a new set (new sets are minted only in Step 1)."
+            )
+        _adopt_ai = st.checkbox(
+            "This save adopts the AI proposal", key="s2_adopt_ai",
+            disabled=_ai_proposal is None,
+        )
         _adopted_value = st.number_input(
             "AI-proposed factor adopted", value=1.0, step=0.01, format="%.4f",
-            key="s2_adopted_value", disabled=not _adopt_ai,
+            key="s2_adopted_value", disabled=not _adopt_ai or _ai_proposal is None,
         )
 
 def _validate_bounds(df: pd.DataFrame, label: str) -> list[str]:

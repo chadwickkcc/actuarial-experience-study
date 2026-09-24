@@ -13,7 +13,7 @@ linked from here.
 
 All 53 findings from `adversarial_review_2026-08-31.md` are triaged and closed:
 fixed, or recorded as an accepted limitation with the reasoning. The offline gate is
-**1414 passed, 3 skipped, 0 failed**, five governance harnesses pass, and the app
+**1416 passed, 3 skipped, 0 failed**, five governance harnesses pass, and the app
 boots clean.
 
 ---
@@ -57,7 +57,7 @@ record, and the fix log below summarises them.
 unset ANTHROPIC_API_KEY DEEPSEEK_API_KEY OPENAI_API_KEY && .venv/bin/python -m pytest tests/ -v --tb=short
 ```
 
-Expect **1414 passed, 3 skipped, 0 failed**. The three skips are the long-standing
+Expect **1416 passed, 3 skipped, 0 failed**. The three skips are the long-standing
 ones: no DA expected surrenders in the base years, and two RPU/ETT cases the
 generator deliberately does not produce.
 
